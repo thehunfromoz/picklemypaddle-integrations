@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   release:
-    uses: thehunfromoz/picklemypaddle-infra/.github/workflows/release.yml@scrum-15-shared-workflows
+    uses: thehunfromoz/picklemypaddle-infra/.github/workflows/release.yml@main
     permissions:
       contents: read
       packages: write
