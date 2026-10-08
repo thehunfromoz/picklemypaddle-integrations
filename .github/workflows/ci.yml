@@ -1,5 +1,6 @@
-# Checks every pull request and push to main. On main, publishes the tested image to
-# GHCR as :staging and :<sha> (home-server pulls :staging).
+# Checks every pull request and push to main using the shared workflows in
+# picklemypaddle-infra (SCRUM-13/15). On main, the image job publishes
+# :staging and :<sha>; home-server pulls :staging.
 name: CI
 
 on:
@@ -15,109 +16,20 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  IMAGE: ghcr.io/${{ github.repository }}
-
 jobs:
-  test:
-    name: Type-check, unit tests and build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: ${{ hashFiles('pnpm-lock.yaml') != '' && 'pnpm' || '' }}
-      - run: pnpm install --frozen-lockfile=${{ hashFiles('pnpm-lock.yaml') != '' }}
-      - run: pnpm typecheck
-      - run: pnpm test
-      - run: pnpm build
+  checks:
+    uses: thehunfromoz/picklemypaddle-infra/.github/workflows/node-checks.yml@scrum-15-shared-workflows
+    with:
+      scripts: typecheck test build
 
-  secrets-scan:
-    name: Secret scan
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  secrets:
+    uses: thehunfromoz/picklemypaddle-infra/.github/workflows/secret-scan.yml@scrum-15-shared-workflows
 
   image:
-    name: Container image + startup checks
-    needs: [test, secrets-scan]
-    runs-on: ubuntu-latest
+    needs: [checks, secrets]
+    uses: thehunfromoz/picklemypaddle-infra/.github/workflows/image.yml@scrum-15-shared-workflows
     permissions:
       contents: read
       packages: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/build-push-action@v6
-        with:
-          context: .
-          load: true
-          tags: picklemypaddle-integrations:test
-          labels: |
-            org.opencontainers.image.revision=${{ github.sha }}
-      - name: Refuses to start without required settings, and names them
-        run: |
-          set +e
-          out=$(docker run --rm picklemypaddle-integrations:test 2>&1); code=$?
-          set -e
-          echo "$out"
-          test "$code" = 78
-          grep -q "APP_ENV is required but not set" <<<"$out"
-          grep -q "PUBLIC_SITE_ORIGIN is required but not set" <<<"$out"
-      - name: Refuses a live Stripe key on staging (without echoing it)
-        run: |
-          key="sk_live_$(head -c 18 /dev/urandom | base64 | tr -dc 'A-Za-z0-9')"
-          set +e
-          out=$(docker run --rm -e APP_ENV=staging -e PUBLIC_SITE_ORIGIN=http://home-server:8088 \
-                -e STRIPE_SECRET_KEY="$key" -e STRIPE_WEBHOOK_SECRET=whsec_x \
-                picklemypaddle-integrations:test 2>&1); code=$?
-          set -e
-          echo "$out" | sed "s/$key/[REDACTED]/g"
-          test "$code" = 78
-          grep -q "STRIPE_SECRET_KEY is a LIVE key" <<<"$out"
-          if grep -qF "$key" <<<"$out"; then echo "secret value leaked into output"; exit 1; fi
-      - name: Starts and becomes healthy with valid settings
-        run: |
-          docker run -d --name svc -p 8080:8080 -e APP_ENV=staging -e PUBLIC_SITE_ORIGIN=http://home-server:8088 picklemypaddle-integrations:test
-          for i in $(seq 1 20); do
-            [ "$(docker inspect -f '{{.State.Health.Status}}' svc)" = healthy ] && break; sleep 2
-          done
-          docker inspect -f '{{.State.Health.Status}}' svc | grep -qx healthy
-          curl -fsS http://127.0.0.1:8080/api/status
-          test "$(docker inspect -f '{{.Config.User}}' svc)" = node
-      - name: Scan image for vulnerabilities
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          image-ref: picklemypaddle-integrations:test
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true
-          exit-code: '1'
-          format: table
-          output: trivy.txt
-      - name: Report vulnerability findings
-        if: failure()
-        run: |
-          [ -f trivy.txt ] || exit 0
-          out="$(grep -E 'CRITICAL|HIGH|Total:|^[a-z/.-]+ \(' trivy.txt | head -40)"
-          echo "::error title=trivy::${out//$'\n'/%0A}"
-      - name: Log in to GHCR
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Publish :staging and :sha
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: |
-          docker tag picklemypaddle-integrations:test $IMAGE:staging
-          docker tag picklemypaddle-integrations:test $IMAGE:${{ github.sha }}
-          docker push $IMAGE:staging
-          docker push $IMAGE:${{ github.sha }}
+    with:
+      container-test: ci/container-test.sh

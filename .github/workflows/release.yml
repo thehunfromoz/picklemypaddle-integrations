@@ -1,0 +1,16 @@
+# A vX.Y.Z git tag points the already-tested image at that version (SCRUM-15).
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    uses: thehunfromoz/picklemypaddle-infra/.github/workflows/release.yml@scrum-15-shared-workflows
+    permissions:
+      contents: read
+      packages: write
