@@ -12,6 +12,10 @@ FROM node:22-alpine
 LABEL org.opencontainers.image.source="https://github.com/thehunfromoz/picklemypaddle-integrations" \
       org.opencontainers.image.licenses="MIT"
 ENV NODE_ENV=production
+# The runtime needs only node: drop the bundled npm/corepack (unused, and the usual
+# source of scanner findings).
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+      /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack /opt/yarn* /usr/local/bin/yarn*
 WORKDIR /app
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist

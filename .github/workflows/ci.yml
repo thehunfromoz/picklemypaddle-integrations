@@ -99,6 +99,14 @@ jobs:
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: '1'
+          format: table
+          output: trivy.txt
+      - name: Report vulnerability findings
+        if: failure()
+        run: |
+          [ -f trivy.txt ] || exit 0
+          out="$(grep -E 'CRITICAL|HIGH|Total:|^[a-z/.-]+ \(' trivy.txt | head -40)"
+          echo "::error title=trivy::${out//$'\n'/%0A}"
       - name: Log in to GHCR
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: docker/login-action@v3
