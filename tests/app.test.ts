@@ -26,6 +26,18 @@ describe('app', () => {
     expect(other.headers.get('access-control-allow-origin')).not.toBe('https://evil.example');
   });
 
+  it('allows CORS from each listed origin (LAN and Tailscale)', async () => {
+    const lan = 'http://home-server:8088';
+    const ts = 'https://home-server.tail8bc7ae.ts.net:8443';
+    const staging = createApp(loadConfig({ APP_ENV: 'staging', PUBLIC_SITE_ORIGIN: `${lan},${ts}` }));
+    for (const origin of [lan, ts]) {
+      const res = await staging.request('/api/status', { headers: { Origin: origin } });
+      expect(res.headers.get('access-control-allow-origin')).toBe(origin);
+    }
+    const other = await staging.request('/api/status', { headers: { Origin: 'https://evil.example' } });
+    expect(other.headers.get('access-control-allow-origin')).not.toBe('https://evil.example');
+  });
+
   it('sets security headers and returns JSON 404s', async () => {
     const res = await app.request('/nope');
     expect(res.status).toBe(404);

@@ -18,14 +18,41 @@ export type AppEnv = (typeof APP_ENVS)[number];
 const optional = (schema: z.ZodString) =>
   z.preprocess((v) => (typeof v === 'string' && v.trim() === '' ? undefined : v), schema.optional());
 
+/** One web origin: scheme, host and optional port, nothing else (no path or trailing slash). */
+const isOrigin = (value: string): boolean => {
+  try {
+    const url = new URL(value);
+    return (url.protocol === 'http:' || url.protocol === 'https:') && url.origin === value;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Comma-separated list of website origins allowed to call this service (CORS).
+ * Staging is reached on the LAN and over Tailscale (SCRUM-38), so it lists both.
+ */
+const originList = z.preprocess(
+  (v) => {
+    if (typeof v !== 'string') return v;
+    const items = v.split(',').map((s) => s.trim()).filter(Boolean);
+    return items.length ? items : undefined;
+  },
+  z.array(
+    z.string().refine(isOrigin, {
+      message: 'must be origins like http://home-server:8088 (comma-separated, no path or trailing slash)',
+    }),
+  ),
+);
+
 const schema = z
   .object({
     APP_ENV: z.enum(APP_ENVS, {
       errorMap: () => ({ message: `must be one of: ${APP_ENVS.join(', ')}` }),
     }),
     PORT: z.coerce.number().int().min(1).max(65535).default(8080),
-    /** Origin of the website allowed to call this service (CORS), e.g. http://home-server:8088 */
-    PUBLIC_SITE_ORIGIN: z.string().url({ message: 'must be a URL like http://home-server:8088' }),
+    /** Website origins allowed to call this service (CORS), e.g. http://home-server:8088,https://… */
+    PUBLIC_SITE_ORIGIN: originList,
 
     // ── Stripe (SCRUM-9). Optional until payments are built. ──────────────────
     STRIPE_SECRET_KEY: optional(
@@ -93,7 +120,8 @@ export function describeConfig(config: Config): Record<string, string | number> 
   const out: Record<string, string | number> = {};
   for (const [key, value] of Object.entries(config)) {
     if (value === undefined) continue;
-    out[key] = (SECRET_KEYS as readonly string[]).includes(key) ? '[set]' : value;
+    if ((SECRET_KEYS as readonly string[]).includes(key)) out[key] = '[set]';
+    else out[key] = Array.isArray(value) ? value.join(', ') : value;
   }
   return out;
 }
