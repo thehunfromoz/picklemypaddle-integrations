@@ -18,16 +18,16 @@ concurrency:
 
 jobs:
   checks:
-    uses: thehunfromoz/picklemypaddle-infra/.github/workflows/node-checks.yml@main
+    uses: thehunfromoz/picklemypaddle-infra/.github/workflows/node-checks.yml@scrum-38-pipefail
     with:
       scripts: typecheck test build
 
   secrets:
-    uses: thehunfromoz/picklemypaddle-infra/.github/workflows/secret-scan.yml@main
+    uses: thehunfromoz/picklemypaddle-infra/.github/workflows/secret-scan.yml@scrum-38-pipefail
 
   image:
     needs: [checks, secrets]
-    uses: thehunfromoz/picklemypaddle-infra/.github/workflows/image.yml@main
+    uses: thehunfromoz/picklemypaddle-infra/.github/workflows/image.yml@scrum-38-pipefail
     permissions:
       contents: read
       packages: write
