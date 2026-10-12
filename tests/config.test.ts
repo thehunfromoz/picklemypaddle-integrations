@@ -30,6 +30,25 @@ describe('loadConfig', () => {
     ]);
   });
 
+  it('reads one or more site origins (SCRUM-38)', () => {
+    expect(loadConfig(base).PUBLIC_SITE_ORIGIN).toEqual(['http://home-server:8088']);
+    const both = loadConfig({
+      ...base,
+      PUBLIC_SITE_ORIGIN: ' http://home-server:8088 , https://home-server.tail8bc7ae.ts.net:8443 ,',
+    });
+    expect(both.PUBLIC_SITE_ORIGIN).toEqual(['http://home-server:8088', 'https://home-server.tail8bc7ae.ts.net:8443']);
+  });
+
+  it('rejects site origins with a path, a trailing slash or a non-web scheme', () => {
+    for (const bad of ['http://home-server:8088/', 'http://home-server:8088/api', 'ftp://home-server', 'home-server:8088']) {
+      expect(problems({ ...base, PUBLIC_SITE_ORIGIN: bad })[0]).toMatch(/^PUBLIC_SITE_ORIGIN must be origins like/);
+    }
+  });
+
+  it('treats an empty origin list as unset', () => {
+    expect(problems({ ...base, PUBLIC_SITE_ORIGIN: ' , ' })).toEqual(['PUBLIC_SITE_ORIGIN is required but not set']);
+  });
+
   it('rejects an unknown environment', () => {
     expect(problems({ ...base, APP_ENV: 'prod' })[0]).toMatch(/^APP_ENV must be one of/);
   });
@@ -73,6 +92,7 @@ describe('describeConfig', () => {
     expect(shown.STRIPE_SECRET_KEY).toBe('[set]');
     expect(shown.STRIPE_WEBHOOK_SECRET).toBe('[set]');
     expect(shown.HUBSPOT_PORTAL_ID).toBe('123');
+    expect(shown.PUBLIC_SITE_ORIGIN).toBe('http://home-server:8088');
     expect(JSON.stringify(shown)).not.toContain(testKey);
   });
 });
