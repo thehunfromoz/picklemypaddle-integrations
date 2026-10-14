@@ -5,6 +5,7 @@ const base = { APP_ENV: 'staging', PUBLIC_SITE_ORIGIN: 'http://home-server:8088'
 const testKey = 'sk_test_' + 'a'.repeat(24);
 const liveKey = 'sk_live_' + 'b'.repeat(24);
 const whsec = 'whsec_' + 'c'.repeat(24);
+const hubspotKey = 'pat-ap1-' + 'a'.repeat(36);
 
 function problems(env: Record<string, string>): string[] {
   try {
@@ -51,6 +52,10 @@ describe('loadConfig', () => {
 
   it('rejects an unknown environment', () => {
     expect(problems({ ...base, APP_ENV: 'prod' })[0]).toMatch(/^APP_ENV must be one of/);
+  });
+
+  it('accepts a HubSpot service key', () => {
+    expect(loadConfig({ ...base, HUBSPOT_ACCESS_TOKEN: hubspotKey }).HUBSPOT_ACCESS_TOKEN).toBe(hubspotKey);
   });
 
   it('treats empty values as unset', () => {
