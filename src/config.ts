@@ -61,7 +61,7 @@ const schema = z
     STRIPE_WEBHOOK_SECRET: optional(z.string().regex(/^whsec_[A-Za-z0-9]+$/, 'must start with whsec_')),
 
     // ── HubSpot (SCRUM-8). Optional until the CRM adapter is built. ───────────
-    HUBSPOT_ACCESS_TOKEN: optional(z.string().regex(/^pat-[a-z0-9]+-[A-Za-z0-9-]+$/, 'must be a HubSpot private app token (pat-…)')),
+    HUBSPOT_ACCESS_TOKEN: optional(z.string().regex(/^pat-[a-z0-9]+-[A-Za-z0-9-]+$/, 'must be a HubSpot service key (pat-…)')),
     /** Public: also built into the site's forms. */
     HUBSPOT_PORTAL_ID: optional(z.string().regex(/^\d+$/, 'must be the numeric HubSpot portal (account) ID')),
   })
