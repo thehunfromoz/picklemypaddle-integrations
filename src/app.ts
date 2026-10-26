@@ -18,6 +18,8 @@ export interface AppDeps {
   mailer?: LinksMailer | null;
   now?: () => Date;
   peer?: (c: Context) => string;
+  /** Which photo engine runs (SCRUM-66), for /api/status. */
+  imageEngine?: string;
 }
 
 /** The HTTP app. CRM and payment routes are added by their own stories. */
@@ -49,6 +51,7 @@ export function createApp(config: Config, deps: AppDeps) {
         hubspot: config.HUBSPOT_ACCESS_TOKEN ? 'configured' : 'not configured',
         email: deps.mailer ? 'configured' : 'not configured',
       },
+      ...(deps.imageEngine ? { imageEngine: deps.imageEngine } : {}),
     });
   });
 

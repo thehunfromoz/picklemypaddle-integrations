@@ -92,8 +92,18 @@ links. Until then it changes nothing, so no working link is ever lost.
 
 - 10 MB per photo, 60 MB per request (the site shrinks photos to 2560 px before sending).
 - The type is decided from the file's first bytes: JPEG, PNG or WebP only (HEIC is left to iOS).
-- Each photo is decoded (at most 100 megapixels and 20 seconds) and re-encoded to a JPEG of at
-  most 2560 px, upright, with **all** metadata removed (EXIF incl. GPS, XMP, IPTC, ICC).
+- Each photo is decoded (at most 100 megapixels, checked from the header before decoding, and
+  20 seconds) and re-encoded to a JPEG of at most 2560 px, upright, transparency on white, with
+  **all** metadata removed (EXIF incl. GPS, XMP, IPTC, ICC).
+- **Engine (`IMAGE_ENGINE`):** the image uses the **libvips command-line tools** from Alpine
+  (`vips`). Alpine builds them for the baseline x86-64 CPU, so they run on home-server, whose
+  processor predates x86-64-v2 (no SSE4.2). sharp's prebuilt binaries need x86-64-v2 and crashed
+  the service there on 26 Oct 2026, so **sharp is a development dependency only** and is never in
+  the image. On a Mac, `auto` uses the libvips tools if installed (`brew install vips`), otherwise
+  sharp. The tests run every photo case against each engine available; CI installs the libvips
+  tools and requires them (`REQUIRE_VIPS=1`).
+- **Don't add native modules that need a newer CPU.** The container test starts the image under
+  an emulated Core 2 (Penryn) CPU, home-server's class, and places an order through it.
 - Only the re-encoded copy is written, under a random name in `PHOTO_DIR`, a private volume that
   nothing serves. The database keeps the path, size and dimensions, never the image.
 
@@ -164,7 +174,9 @@ Docker image and, beside a real Postgres 18, checks that it:
 - passes the whole test suite against real Postgres (annotated);
 - starts healthy as a non-root user, migrates and reports the database on `/api/status`;
 - takes a real order end to end and stores a metadata-free 2560 px photo;
+- contains no sharp, uses the libvips tools, and runs read-only like the stacks;
+- starts and takes an order on an emulated Penryn CPU (home-server class, no SSE4.2);
 - refuses a 61 MB body with 413;
-- passes Trivy (sharp's native image library included).
+- passes Trivy (Alpine's libvips packages included).
 
 Merges to `main` publish `ghcr.io/thehunfromoz/picklemypaddle-integrations:staging` and `:<sha>`.

@@ -179,7 +179,7 @@ describe(`POST /api/orders (${DB_BACKEND})`, () => {
   it('retries with a new reference when the random one is already taken', async () => {
     t = await makeApp();
     const first = (await (await post(t, await orderForm(t))).json()) as Created;
-    const photo = await processPhoto(await img.jpeg(), 'front');
+    const photo = await processPhoto(await img.jpeg(), 'front'); // the default engine (auto)
     let calls = 0;
     const order = await createOrder(
       { db: t.db, photos: t.photos, isProduction: false, now: () => t.clock.now, newReference: () => (++calls === 1 ? first.reference : 'PMP-ZZZZZ') },
