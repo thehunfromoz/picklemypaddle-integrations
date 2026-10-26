@@ -4,14 +4,15 @@
  *  1. Decide the type from the file's first bytes (never its name or declared type).
  *  2. Decode with a pixel-count and time limit (decompression-bomb protection).
  *  3. Re-encode to JPEG, long edge at most 2560 px, upright, with ALL metadata dropped
- *     (EXIF incl. GPS, XMP, IPTC, ICC: sharp keeps none unless asked, and converts to sRGB).
+ *     (EXIF incl. GPS, XMP, IPTC, ICC), using the image engine chosen at start-up
+ *     (./image-engine.ts: the libvips tools in the image, sharp on a developer's Mac).
  *  4. Only the re-encoded copy is ever written, under a random name on the private volume.
  *     Uploads are held in memory only; the original never touches the disk.
  */
 import { randomBytes } from 'node:crypto';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import sharp from 'sharp';
+import { ImageRejected, selectImageEngine, type ImageEngine, type ImageEngineSetting } from './image-engine.js';
 import { MAX_PHOTO_BYTES, MAX_PHOTO_EDGE } from './rules.js';
 
 export type SniffedType = 'jpeg' | 'png' | 'webp';
@@ -55,27 +56,39 @@ export class PhotoError extends Error {
   }
 }
 
-export async function processPhoto(bytes: Uint8Array, label: string): Promise<ProcessedPhoto> {
+let engine: Promise<ImageEngine> | undefined;
+
+/**
+ * Chooses the image engine once, at start-up (server.ts), so a missing library stops the service
+ * before it takes orders. Tests and scripts that skip this get IMAGE_ENGINE from the environment,
+ * or "auto".
+ */
+export function useImageEngine(setting: ImageEngineSetting): Promise<ImageEngine> {
+  engine = selectImageEngine(setting);
+  return engine;
+}
+
+export function currentImageEngine(): Promise<ImageEngine> {
+  engine ??= selectImageEngine((process.env.IMAGE_ENGINE as ImageEngineSetting | undefined) ?? 'auto');
+  return engine;
+}
+
+export async function processPhoto(bytes: Uint8Array, label: string, using?: ImageEngine): Promise<ProcessedPhoto> {
   if (bytes.length === 0) throw new PhotoError(`Add a photo of the ${label} of the paddle.`);
   if (bytes.length > MAX_PHOTO_BYTES) throw new PhotoError(`The ${label} photo must be 10 MB or smaller.`);
   const type = sniffImageType(bytes);
   if (!type) throw new PhotoError(`The ${label} photo must be a JPEG, PNG or WebP image.`);
   try {
-    const image = sharp(bytes, { limitInputPixels: MAX_INPUT_PIXELS, failOn: 'error', sequentialRead: true });
-    const meta = await image.metadata();
-    if (meta.format !== type) {
+    return await (using ?? (await currentImageEngine())).reencode(bytes, type, {
+      maxEdge: MAX_PHOTO_EDGE,
+      maxPixels: MAX_INPUT_PIXELS,
+      timeoutSeconds: PROCESS_TIMEOUT_SECONDS,
+      quality: 85,
+    });
+  } catch (err) {
+    if (err instanceof ImageRejected && err.reason === 'wrong_format') {
       throw new PhotoError(`The ${label} photo must be a JPEG, PNG or WebP image.`);
     }
-    const { data, info } = await image
-      .timeout({ seconds: PROCESS_TIMEOUT_SECONDS })
-      .rotate() // apply the camera's orientation before its EXIF is dropped
-      .resize({ width: MAX_PHOTO_EDGE, height: MAX_PHOTO_EDGE, fit: 'inside', withoutEnlargement: true })
-      .flatten({ background: '#ffffff' }) // transparent PNG/WebP areas become white, not black
-      .jpeg({ quality: 85, mozjpeg: true })
-      .toBuffer({ resolveWithObject: true });
-    return { data, width: info.width, height: info.height };
-  } catch (err) {
-    if (err instanceof PhotoError) throw err;
     // Corrupt, truncated, too many pixels or too slow: the customer gets a field error, not a 500.
     throw new PhotoError(`We couldn't read the ${label} photo. Please take or choose another one.`);
   }

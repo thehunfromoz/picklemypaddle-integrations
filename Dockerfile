@@ -16,6 +16,12 @@ ENV NODE_ENV=production
 # source of scanner findings).
 RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
       /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack /opt/yarn* /usr/local/bin/yarn*
+# SCRUM-66: paddle photos are processed by the libvips command-line tools. Alpine builds them for
+# the baseline x86-64 CPU, so they run on home-server's older processor, where sharp's prebuilt
+# binaries (which need x86-64-v2) crashed the service on 26 Oct 2026. sharp is a development
+# dependency only and is never in this image.
+RUN apk add --no-cache vips-tools
+ENV IMAGE_ENGINE=vips
 WORKDIR /app
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist

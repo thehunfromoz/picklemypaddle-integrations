@@ -6,7 +6,7 @@ import { migrate } from './db/migrations.js';
 import { startJobs } from './jobs.js';
 import { log, logError } from './log.js';
 import { loadAbuseKeys, TrustedProxies } from './orders/abuse.js';
-import { fsPhotoStore } from './orders/photos.js';
+import { fsPhotoStore, useImageEngine } from './orders/photos.js';
 
 function configOrExit(): Readonly<Config> {
   try {
@@ -22,6 +22,16 @@ function configOrExit(): Readonly<Config> {
 }
 
 const config = configOrExit();
+
+// SCRUM-66: the photo engine must work before we take orders. Exit 78 like any setting problem.
+let imageEngine: string;
+try {
+  imageEngine = (await useImageEngine(config.IMAGE_ENGINE)).name;
+} catch (err) {
+  console.error(`picklemypaddle-integrations will not start.\n  - ${(err as Error).message}`);
+  process.exit(78);
+}
+log('image_engine_ready', { engine: imageEngine });
 const db = createPgDb(config.DATABASE_URL);
 
 // The schema must be current before we accept a single request (SCRUM-64). If it can't be
@@ -42,6 +52,7 @@ const app = createApp(config, {
   keys: await loadAbuseKeys(db),
   trusted: new TrustedProxies(config.TRUSTED_PROXIES),
   mailer: null, // order emails arrive with SCRUM-69
+  imageEngine,
 });
 
 const server = serve({ fetch: app.fetch, port: config.PORT }, (info) => {

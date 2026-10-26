@@ -15,6 +15,7 @@
  * relaxed above the defaults, so a test setting can't leak into production.
  */
 import { z } from 'zod';
+import { IMAGE_ENGINES } from './orders/image-engine.js';
 
 export const APP_ENVS = ['development', 'staging', 'production'] as const;
 export type AppEnv = (typeof APP_ENVS)[number];
@@ -98,6 +99,8 @@ const schema = z
     LINKS_LIMIT_PER_IP_HOUR: count(LIMIT_DEFAULTS.LINKS_LIMIT_PER_IP_HOUR),
     /** Submissions faster than this after the form loaded are treated as bots. */
     ORDER_MIN_FILL_SECONDS: z.coerce.number().int().min(0).max(60).default(LIMIT_DEFAULTS.ORDER_MIN_FILL_SECONDS),
+    /** Photo engine (SCRUM-66): vips (the image's libvips tools), sharp (development), or auto. */
+    IMAGE_ENGINE: z.enum(IMAGE_ENGINES, { error: `must be one of: ${IMAGE_ENGINES.join(', ')}` }).default('auto'),
 
     // ── Stripe (SCRUM-9). Optional until payments are built. ──────────────────
     STRIPE_SECRET_KEY: optional(

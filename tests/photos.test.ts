@@ -1,7 +1,8 @@
 /** Server-side photo pipeline (SCRUM-66). */
 import { describe, expect, it } from 'vitest';
 import sharp from 'sharp';
-import { PhotoError, processPhoto, sniffImageType } from '../src/orders/photos.js';
+import { sharpEngine, vipsAvailable, vipsEngine, type ImageEngine } from '../src/orders/image-engine.js';
+import { PhotoError, processPhoto as process_, sniffImageType } from '../src/orders/photos.js';
 import * as img from './helpers/images.js';
 
 describe('sniffImageType: by content, never by name', () => {
@@ -17,7 +18,42 @@ describe('sniffImageType: by content, never by name', () => {
   });
 });
 
-describe('processPhoto', () => {
+// Every engine that can run here gets the same tests. CI's container test installs the libvips
+// tools and sets REQUIRE_VIPS=1, so the engine the image uses is always covered.
+const engines: { name: string; get: () => Promise<ImageEngine> }[] = [];
+const haveVips = await vipsAvailable();
+if (haveVips) engines.push({ name: 'vips', get: async () => vipsEngine() });
+else if (process.env.REQUIRE_VIPS === '1') throw new Error('REQUIRE_VIPS=1 but the libvips tools are not installed');
+let sharpOk = true;
+try {
+  await sharpEngine();
+} catch {
+  sharpOk = false;
+}
+if (sharpOk) engines.push({ name: 'sharp', get: sharpEngine });
+
+it('has at least one image engine to test', () => expect(engines.length).toBeGreaterThan(0));
+
+describe.each(engines)('processPhoto ($name engine)', ({ get }) => {
+  let engine: ImageEngine;
+  const processPhoto = async (bytes: Uint8Array, label: string) => process_(bytes, label, (engine ??= await get()));
+
+  it('turns a sideways camera photo upright (EXIF orientation applied before it is dropped)', async () => {
+    const input = await sharp({ create: { width: 4000, height: 3000, channels: 3, background: '#4565A6' } })
+      .withMetadata({ orientation: 6 })
+      .jpeg()
+      .toBuffer();
+    const out = await processPhoto(input, 'front');
+    expect([out.width, out.height]).toEqual([1920, 2560]);
+    expect((await sharp(out.data).metadata()).orientation).toBeUndefined();
+  });
+
+  it('turns transparent areas white, not black', async () => {
+    const input = await sharp({ create: { width: 200, height: 100, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).png().toBuffer();
+    const stats = await sharp((await processPhoto(input, 'front')).data).stats();
+    for (const c of stats.channels.slice(0, 3)) expect(c.mean).toBeGreaterThan(250);
+  });
+
   it('drops every bit of metadata, GPS included', async () => {
     const input = await img.jpegWithGps();
     expect((await sharp(input).metadata()).exif).toBeDefined(); // the fixture really has EXIF

@@ -10,7 +10,11 @@ NET=pmp-ci
 PG_IMAGE=postgres:18-alpine
 PG_PASSWORD="$(head -c 18 /dev/urandom | base64 | tr -dc 'A-Za-z0-9')"
 DB_URL="postgres://pmp:${PG_PASSWORD}@pg:5432/pmp"
-cleanup() { docker rm -f svc svc-bad pg >/dev/null 2>&1 || true; docker network rm "$NET" >/dev/null 2>&1 || true; }
+cleanup() {
+  docker rm -f svc svc-bad svc-oldcpu pg >/dev/null 2>&1 || true
+  docker volume rm pmp-ci-photos pmp-ci-photos-oldcpu >/dev/null 2>&1 || true
+  docker network rm "$NET" >/dev/null 2>&1 || true
+}
 trap cleanup EXIT
 cleanup
 fail() { echo "::error title=container test::$*"; exit 1; }
@@ -60,8 +64,10 @@ sed "s/$PG_PASSWORD/[REDACTED]/g" /tmp/svc-bad.log
 grep -q '"event":"migration_failed"' /tmp/svc-bad.log || fail "no migration_failed event"
 if grep -qF "$PG_PASSWORD" /tmp/svc-bad.log; then fail "the database password leaked into the log"; fi
 
-echo "5. Database tests against real Postgres 18 (locally they run on PGlite)"
-TEST_DATABASE_URL="postgres://pmp:${PG_PASSWORD}@127.0.0.1:5433/pmp" \
+echo "5. Database tests against real Postgres 18 (locally they run on PGlite), photos via the libvips tools"
+# The image processes photos with the libvips tools (SCRUM-66), so the suite must test that engine too.
+sudo apt-get update -q >/dev/null && sudo apt-get install -y -q libvips-tools >/dev/null
+REQUIRE_VIPS=1 TEST_DATABASE_URL="postgres://pmp:${PG_PASSWORD}@127.0.0.1:5433/pmp" \
   pnpm exec vitest run --reporter=default --reporter=json --outputFile=/tmp/vitest-pg.json
 read -r passed total files < <(node -e '
   const r = JSON.parse(require("fs").readFileSync("/tmp/vitest-pg.json", "utf8"));
@@ -70,8 +76,13 @@ read -r passed total files < <(node -e '
 version="$(docker exec pg psql -U pmp -d pmp -tAc 'show server_version')"
 echo "::notice title=database tests ran on real Postgres::$passed of $total tests passed against PostgreSQL $version (TEST_DATABASE_URL)"
 
-echo "6. Starts healthy as non-root, migrates, and reports the database (SCRUM-64)"
-docker run -d --name svc --network "$NET" -p 8080:8080 -e APP_ENV=staging -e PUBLIC_SITE_ORIGIN=http://home-server:8088 \
+echo "6. Image has no sharp; photos use the libvips tools (SCRUM-66, home-server's CPU can't run sharp)"
+if docker run --rm --entrypoint sh "$IMAGE" -c 'ls /app/node_modules/.pnpm | grep -q "^sharp@"'; then fail "sharp is in the image"; fi
+docker run --rm --entrypoint sh "$IMAGE" -c 'vipsthumbnail --version && test "$IMAGE_ENGINE" = vips' || fail "libvips tools missing or IMAGE_ENGINE isn't vips"
+
+echo "6b. Starts healthy as non-root (read-only, like the stacks), migrates, and reports the database (SCRUM-64)"
+docker run -d --name svc --network "$NET" -p 8080:8080 --read-only --tmpfs /tmp -v pmp-ci-photos:/data/photos \
+  -e APP_ENV=staging -e PUBLIC_SITE_ORIGIN=http://home-server:8088 \
   -e DATABASE_URL="$DB_URL" -e ORDER_MIN_FILL_SECONDS=0 "$IMAGE" >/dev/null
 for _ in $(seq 1 30); do
   [ "$(docker inspect -f '{{.State.Health.Status}}' svc)" = healthy ] && break; sleep 2
@@ -80,6 +91,7 @@ docker inspect -f '{{.State.Health.Status}}' svc | grep -qx healthy || { docker 
 [ "$(docker inspect -f '{{.Config.User}}' svc)" = node ]
 status="$(curl -fsS http://127.0.0.1:8080/api/status)"; echo "$status"
 grep -q '"database":{"reachable":true,"migration":1,"latest":1}' <<<"$status" || fail "database not reported reachable at migration 1"
+grep -q '"imageEngine":"vips"' <<<"$status" || fail "the service isn't using the libvips tools"
 if docker logs svc 2>&1 | grep -qF "$PG_PASSWORD"; then fail "the database password leaked into the service log"; fi
 
 echo "7. A real order through the running image (SCRUM-65)"
@@ -118,5 +130,36 @@ head -c $((61*1024*1024)) /dev/zero >/tmp/big.bin
 code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 60 -H 'Expect:' -X POST http://127.0.0.1:8080/api/orders \
   -H 'Content-Type: multipart/form-data; boundary=x' --data-binary @/tmp/big.bin || true)"
 [ "$code" = 413 ] || fail "61 MB body got '$code', expected 413"
+
+echo "9. Starts and takes an order on an older CPU like home-server's (Core 2 era: no SSE4.2, not x86-64-v2)"
+# QEMU emulates that processor for the service's own process (Node), which is what crashed on
+# home-server on 26 Oct 2026 when sharp needed x86-64-v2. The libvips tools are then run under the
+# same emulation directly, since programs the service starts would otherwise run natively.
+sudo apt-get install -y -q qemu-user-static >/dev/null  # package lists refreshed in step 5
+QEMU="$(command -v qemu-x86_64-static)"
+docker run -d --name svc-oldcpu --network "$NET" -p 8081:8080 --read-only --tmpfs /tmp -v pmp-ci-photos-oldcpu:/data/photos \
+  -v "$QEMU:/usr/local/bin/qemu-x86_64-static:ro" --entrypoint /usr/local/bin/qemu-x86_64-static \
+  -e APP_ENV=staging -e PUBLIC_SITE_ORIGIN=http://home-server:8088 -e DATABASE_URL="$DB_URL" -e ORDER_MIN_FILL_SECONDS=0 \
+  "$IMAGE" -cpu Penryn /usr/local/bin/node dist/server.js >/dev/null
+for _ in $(seq 1 45); do
+  [ "$(docker inspect -f '{{.State.Health.Status}}' svc-oldcpu)" = healthy ] && break
+  [ "$(docker inspect -f '{{.State.Status}}' svc-oldcpu)" = exited ] && break
+  sleep 2
+done
+if [ "$(docker inspect -f '{{.State.Health.Status}}' svc-oldcpu)" != healthy ]; then
+  docker logs svc-oldcpu 2>&1 | tail -20
+  fail "not healthy on an emulated Penryn CPU (home-server class)"
+fi
+token="$(curl -fsS http://127.0.0.1:8081/api/orders/form | node -pe 'JSON.parse(require("fs").readFileSync(0)).formToken')"
+code="$(curl -sS -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8081/api/orders -H 'Origin: http://home-server:8088' \
+  -F name='CI Player' -F email='ci+oldcpu@example.com' -F street='1 Court St' -F suburb=Sydney -F state=NSW \
+  -F postcode=2000 -F consent=yes -F tournamentAck=yes -F formToken="$token" -F website= \
+  -F 'paddles[0][brand]=Selkirk' -F 'paddles[0][front]=@/tmp/paddle.jpg;type=image/jpeg' \
+  -F 'paddles[0][back]=@/tmp/paddle.jpg;type=image/jpeg')"
+[ "$code" = 201 ] || fail "order on the emulated older CPU got $code"
+docker run --rm -v "$QEMU:/usr/local/bin/qemu-x86_64-static:ro" -v /tmp/paddle.jpg:/in/paddle.jpg:ro --tmpfs /out \
+  --entrypoint /usr/local/bin/qemu-x86_64-static "$IMAGE" -cpu Penryn /usr/bin/vipsthumbnail /in/paddle.jpg \
+  --size '2560x2560>' -o '/out/p.jpg[Q=85,keep=none]' || fail "vipsthumbnail fails on an emulated Penryn CPU"
+echo "::notice title=older CPU::the image starts, takes an order and runs vipsthumbnail on an emulated Penryn CPU (home-server class, no SSE4.2)"
 
 echo "All container tests passed."
