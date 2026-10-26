@@ -135,8 +135,13 @@ echo "9. Starts and takes an order on an older CPU like home-server's (Core 2 er
 # QEMU emulates that processor for the service's own process (Node), which is what crashed on
 # home-server on 26 Oct 2026 when sharp needed x86-64-v2. The libvips tools are then run under the
 # same emulation directly, since programs the service starts would otherwise run natively.
-sudo apt-get install -y -q qemu-user-static >/dev/null  # package lists refreshed in step 5
-QEMU="$(command -v qemu-x86_64-static)"
+# Ubuntu 24.04 ships the static emulator as qemu-user-static; from 25.04 the qemu-user package
+# itself is static and qemu-user-static is gone. Take whichever exists (lists refreshed in step 5).
+sudo apt-get install -y -q qemu-user-static >/dev/null 2>&1 || sudo apt-get install -y -q qemu-user >/dev/null
+QEMU="$(command -v qemu-x86_64-static || command -v qemu-x86_64 || true)"
+[ -n "$QEMU" ] || fail "no qemu-x86_64 emulator after installing qemu-user(-static)"
+# It's mounted into the Alpine image, so it must not need the runner's shared libraries.
+if ldd "$QEMU" >/dev/null 2>&1; then fail "$QEMU is dynamically linked; it can't run inside the image"; fi
 docker run -d --name svc-oldcpu --network "$NET" -p 8081:8080 --read-only --tmpfs /tmp -v pmp-ci-photos-oldcpu:/data/photos \
   -v "$QEMU:/usr/local/bin/qemu-x86_64-static:ro" --entrypoint /usr/local/bin/qemu-x86_64-static \
   -e APP_ENV=staging -e PUBLIC_SITE_ORIGIN=http://home-server:8088 -e DATABASE_URL="$DB_URL" -e ORDER_MIN_FILL_SECONDS=0 \
