@@ -73,16 +73,14 @@ export const LIMIT_DEFAULTS = {
 
 const schema = z
   .object({
-    APP_ENV: z.enum(APP_ENVS, {
-      errorMap: () => ({ message: `must be one of: ${APP_ENVS.join(', ')}` }),
-    }),
+    APP_ENV: z.enum(APP_ENVS, { error: `must be one of: ${APP_ENVS.join(', ')}` }),
     PORT: z.coerce.number().int().min(1).max(65535).default(8080),
     /** Website origins allowed to call this service (CORS), e.g. http://home-server:8088,https://… */
     PUBLIC_SITE_ORIGIN: originList,
 
     // ── Orders (SCRUM-64 to 70) ────────────────────────────────────────────────
     /** The order database. Required: the service won't start without it. */
-    DATABASE_URL: z.string({ required_error: 'is required' }).refine(isPostgresUrl, {
+    DATABASE_URL: z.string().refine(isPostgresUrl, {
       message: 'must be a postgres:// URL (postgres://user:password@host:5432/database)',
     }),
     /** Where processed photos are kept: a private volume, never served statically. */
@@ -118,7 +116,7 @@ const schema = z
         const tooLoose = key === 'ORDER_MIN_FILL_SECONDS' ? c[key] < max : c[key] > max;
         if (tooLoose) {
           ctx.addIssue({
-            code: z.ZodIssueCode.custom,
+            code: 'custom',
             path: [key],
             message: `can't be relaxed in production (default ${max}); production limits are never loosened for tests`,
           });
@@ -127,21 +125,21 @@ const schema = z
     }
     if (c.APP_ENV !== 'production' && c.STRIPE_SECRET_KEY && /_live_/.test(c.STRIPE_SECRET_KEY)) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: 'custom',
         path: ['STRIPE_SECRET_KEY'],
         message: `is a LIVE key, but APP_ENV is ${c.APP_ENV}; use a test-mode key (sk_test_…) outside production`,
       });
     }
     if (c.APP_ENV === 'production' && c.STRIPE_SECRET_KEY && /_test_/.test(c.STRIPE_SECRET_KEY)) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: 'custom',
         path: ['STRIPE_SECRET_KEY'],
         message: 'is a test-mode key, but APP_ENV is production',
       });
     }
     if (c.STRIPE_SECRET_KEY && !c.STRIPE_WEBHOOK_SECRET) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: 'custom',
         path: ['STRIPE_WEBHOOK_SECRET'],
         message: 'is required when STRIPE_SECRET_KEY is set',
       });
@@ -166,7 +164,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Readonly<Confi
   if (!result.success) {
     const problems = result.error.issues.map((issue) => {
       const name = String(issue.path[0] ?? 'configuration');
-      const missing = issue.code === 'invalid_type' && issue.received === 'undefined';
+      // Missing: not in the environment at all, or a list that was only separators (" , ").
+      // Decided from the environment, not Zod's issue details, so no input value is ever echoed.
+      const raw = env[name];
+      // Cross-setting rules (custom issues) keep their own message even when the setting is unset.
+      const missing = issue.code !== 'custom' && (raw === undefined || issue.code === 'invalid_type');
       return missing ? `${name} is required but not set` : `${name} ${issue.message}`;
     });
     throw new ConfigError(problems);

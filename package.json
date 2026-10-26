@@ -21,7 +21,7 @@
     "hono": "^4.6.12",
     "pg": "^8.23.1",
     "sharp": "^0.35.5",
-    "zod": "^3.23.8"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.11",
