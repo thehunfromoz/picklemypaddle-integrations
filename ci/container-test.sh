@@ -141,7 +141,8 @@ sudo apt-get install -y -q qemu-user-static >/dev/null 2>&1 || sudo apt-get inst
 QEMU="$(command -v qemu-x86_64-static || command -v qemu-x86_64 || true)"
 [ -n "$QEMU" ] || fail "no qemu-x86_64 emulator after installing qemu-user(-static)"
 # It's mounted into the Alpine image, so it must not need the runner's shared libraries.
-if ldd "$QEMU" >/dev/null 2>&1; then fail "$QEMU is dynamically linked; it can't run inside the image"; fi
+ldd "$QEMU" 2>&1 | grep -qE 'not a dynamic executable|statically linked' ||
+  fail "$QEMU is dynamically linked; it can't run inside the image"
 docker run -d --name svc-oldcpu --network "$NET" -p 8081:8080 --read-only --tmpfs /tmp -v pmp-ci-photos-oldcpu:/data/photos \
   -v "$QEMU:/usr/local/bin/qemu-x86_64-static:ro" --entrypoint /usr/local/bin/qemu-x86_64-static \
   -e APP_ENV=staging -e PUBLIC_SITE_ORIGIN=http://home-server:8088 -e DATABASE_URL="$DB_URL" -e ORDER_MIN_FILL_SECONDS=0 \
