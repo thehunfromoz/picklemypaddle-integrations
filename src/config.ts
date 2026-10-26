@@ -9,6 +9,10 @@
  * The service refuses to start if a required value is missing or invalid, and the
  * error names the setting (never its value). Outside production, Stripe keys must be
  * test-mode keys, so staging can never charge a real card.
+ *
+ * SCRUM-64/67: DATABASE_URL (the order of record, a secret because it carries the password),
+ * the photo folder, and the abuse limits. Production limits can be tightened but never
+ * relaxed above the defaults, so a test setting can't leak into production.
  */
 import { z } from 'zod';
 
@@ -45,6 +49,28 @@ const originList = z.preprocess(
   ),
 );
 
+/** postgres://user:password@host:port/db — checked for shape only; the value is never printed. */
+const isPostgresUrl = (value: string): boolean => {
+  try {
+    const url = new URL(value);
+    return (url.protocol === 'postgres:' || url.protocol === 'postgresql:') && !!url.hostname && url.pathname.length > 1;
+  } catch {
+    return false;
+  }
+};
+
+/** A positive whole number, as text in the environment. */
+const count = (fallback: number) => z.coerce.number().int().min(1).max(100_000).default(fallback);
+
+/** Default abuse limits (SCRUM-67, agreed 26 Oct 2026). Production may only go lower. */
+export const LIMIT_DEFAULTS = {
+  ORDER_LIMIT_PER_IP_HOUR: 5,
+  ORDER_LIMIT_PER_EMAIL_DAY: 3,
+  LINKS_LIMIT_PER_EMAIL_DAY: 3,
+  LINKS_LIMIT_PER_IP_HOUR: 10,
+  ORDER_MIN_FILL_SECONDS: 3,
+} as const;
+
 const schema = z
   .object({
     APP_ENV: z.enum(APP_ENVS, {
@@ -53,6 +79,27 @@ const schema = z
     PORT: z.coerce.number().int().min(1).max(65535).default(8080),
     /** Website origins allowed to call this service (CORS), e.g. http://home-server:8088,https://… */
     PUBLIC_SITE_ORIGIN: originList,
+
+    // ── Orders (SCRUM-64 to 70) ────────────────────────────────────────────────
+    /** The order database. Required: the service won't start without it. */
+    DATABASE_URL: z.string({ required_error: 'is required' }).refine(isPostgresUrl, {
+      message: 'must be a postgres:// URL (postgres://user:password@host:5432/database)',
+    }),
+    /** Where processed photos are kept: a private volume, never served statically. */
+    PHOTO_DIR: z.string().min(1).default('/data/photos'),
+    /**
+     * Who may set X-Forwarded-For: comma-separated IPs, CIDR ranges or host names (resolved),
+     * e.g. "gateway" in the Compose stacks. Empty = trust nobody (use the socket address).
+     */
+    TRUSTED_PROXIES: z
+      .preprocess((v) => (typeof v === 'string' ? v : ''), z.string())
+      .transform((v) => v.split(',').map((s) => s.trim()).filter(Boolean)),
+    ORDER_LIMIT_PER_IP_HOUR: count(LIMIT_DEFAULTS.ORDER_LIMIT_PER_IP_HOUR),
+    ORDER_LIMIT_PER_EMAIL_DAY: count(LIMIT_DEFAULTS.ORDER_LIMIT_PER_EMAIL_DAY),
+    LINKS_LIMIT_PER_EMAIL_DAY: count(LIMIT_DEFAULTS.LINKS_LIMIT_PER_EMAIL_DAY),
+    LINKS_LIMIT_PER_IP_HOUR: count(LIMIT_DEFAULTS.LINKS_LIMIT_PER_IP_HOUR),
+    /** Submissions faster than this after the form loaded are treated as bots. */
+    ORDER_MIN_FILL_SECONDS: z.coerce.number().int().min(0).max(60).default(LIMIT_DEFAULTS.ORDER_MIN_FILL_SECONDS),
 
     // ── Stripe (SCRUM-9). Optional until payments are built. ──────────────────
     STRIPE_SECRET_KEY: optional(
@@ -66,6 +113,18 @@ const schema = z
     HUBSPOT_PORTAL_ID: optional(z.string().regex(/^\d+$/, 'must be the numeric HubSpot portal (account) ID')),
   })
   .superRefine((c, ctx) => {
+    if (c.APP_ENV === 'production') {
+      for (const [key, max] of Object.entries(LIMIT_DEFAULTS) as [keyof typeof LIMIT_DEFAULTS, number][]) {
+        const tooLoose = key === 'ORDER_MIN_FILL_SECONDS' ? c[key] < max : c[key] > max;
+        if (tooLoose) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [key],
+            message: `can't be relaxed in production (default ${max}); production limits are never loosened for tests`,
+          });
+        }
+      }
+    }
     if (c.APP_ENV !== 'production' && c.STRIPE_SECRET_KEY && /_live_/.test(c.STRIPE_SECRET_KEY)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -92,7 +151,7 @@ const schema = z
 export type Config = z.infer<typeof schema>;
 
 /** Settings whose values must never be printed or logged. */
-export const SECRET_KEYS = ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'HUBSPOT_ACCESS_TOKEN'] as const;
+export const SECRET_KEYS = ['DATABASE_URL', 'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'HUBSPOT_ACCESS_TOKEN'] as const;
 
 export class ConfigError extends Error {
   constructor(public readonly problems: string[]) {

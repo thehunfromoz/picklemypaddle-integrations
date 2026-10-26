@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { ConfigError, describeConfig, loadConfig } from '../src/config.js';
 
-const base = { APP_ENV: 'staging', PUBLIC_SITE_ORIGIN: 'http://home-server:8088' };
+const dbUrl = 'postgres://pmp:' + 's3cretPassw0rd' + '@postgres:5432/pmp';
+const base = { APP_ENV: 'staging', PUBLIC_SITE_ORIGIN: 'http://home-server:8088', DATABASE_URL: dbUrl };
 const testKey = 'sk_test_' + 'a'.repeat(24);
 const liveKey = 'sk_live_' + 'b'.repeat(24);
 const whsec = 'whsec_' + 'c'.repeat(24);
@@ -28,7 +29,45 @@ describe('loadConfig', () => {
     expect(problems({})).toEqual([
       'APP_ENV is required but not set',
       'PUBLIC_SITE_ORIGIN is required but not set',
+      'DATABASE_URL is required but not set',
     ]);
+  });
+
+  describe('order settings (SCRUM-64, SCRUM-67)', () => {
+    it('refuses an invalid DATABASE_URL without printing it', () => {
+      for (const bad of ['', 'mysql://u:p@db/x', 'postgres://u:p@db', 'not a url at all']) {
+        const p = problems({ ...base, DATABASE_URL: bad });
+        expect(p).toHaveLength(1);
+        expect(p[0]).toMatch(/^DATABASE_URL (must be a postgres:\/\/ URL|is required)/);
+        if (bad) expect(p[0]).not.toContain(bad);
+      }
+    });
+
+    it('never shows the database URL (it carries the password)', () => {
+      const shown = JSON.stringify(describeConfig(loadConfig(base)));
+      expect(shown).not.toContain('s3cretPassw0rd');
+      expect(describeConfig(loadConfig(base)).DATABASE_URL).toBe('[set]');
+    });
+
+    it('defaults the photo folder, limits and trusted proxies', () => {
+      const c = loadConfig(base);
+      expect(c.PHOTO_DIR).toBe('/data/photos');
+      expect(c.TRUSTED_PROXIES).toEqual([]);
+      expect([c.ORDER_LIMIT_PER_IP_HOUR, c.ORDER_LIMIT_PER_EMAIL_DAY, c.LINKS_LIMIT_PER_EMAIL_DAY, c.LINKS_LIMIT_PER_IP_HOUR, c.ORDER_MIN_FILL_SECONDS])
+        .toEqual([5, 3, 3, 10, 3]);
+      expect(loadConfig({ ...base, TRUSTED_PROXIES: 'gateway, 10.0.0.0/8' }).TRUSTED_PROXIES).toEqual(['gateway', '10.0.0.0/8']);
+    });
+
+    it('lets staging raise its limits for smoke traffic', () => {
+      expect(loadConfig({ ...base, ORDER_LIMIT_PER_IP_HOUR: '60' }).ORDER_LIMIT_PER_IP_HOUR).toBe(60);
+    });
+
+    it('never lets production relax a limit, only tighten it', () => {
+      const prod = { ...base, APP_ENV: 'production' };
+      expect(problems({ ...prod, ORDER_LIMIT_PER_IP_HOUR: '6' })[0]).toMatch(/^ORDER_LIMIT_PER_IP_HOUR can't be relaxed in production/);
+      expect(problems({ ...prod, ORDER_MIN_FILL_SECONDS: '1' })[0]).toMatch(/^ORDER_MIN_FILL_SECONDS can't be relaxed in production/);
+      expect(loadConfig({ ...prod, ORDER_LIMIT_PER_IP_HOUR: '2', ORDER_MIN_FILL_SECONDS: '5' }).ORDER_LIMIT_PER_IP_HOUR).toBe(2);
+    });
   });
 
   it('reads one or more site origins (SCRUM-38)', () => {
