@@ -20,6 +20,9 @@ WORKDIR /app
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY package.json ./
+# Processed paddle photos (SCRUM-66) go on a private named volume mounted here. Creating the folder
+# owned by the service user means a new, empty volume starts out writable by it (and by no one else).
+RUN mkdir -p /data/photos && chown node:node /data/photos && chmod 700 /data/photos
 USER node
 EXPOSE 8080
 HEALTHCHECK --interval=15s --timeout=3s --retries=3 CMD wget -qO- http://127.0.0.1:${PORT:-8080}/healthz || exit 1

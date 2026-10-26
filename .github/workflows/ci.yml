@@ -33,3 +33,6 @@ jobs:
       packages: write
     with:
       container-test: ci/container-test.sh
+      # SCRUM-64: the container test also runs the test suite against a real Postgres 18 beside
+      # the image, and makes its test photo with sharp, so it needs the project's dependencies.
+      setup-node: true

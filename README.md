@@ -13,8 +13,9 @@ Planned responsibilities:
   - Scheduling: HubSpot Meetings
 - HubSpot properties/pipelines and Stripe products kept as configuration-as-code.
 
-**Status:** skeleton (SCRUM-13/18). Health check, settings validation, CORS and security
-headers; no business routes yet.
+**Status:** order intake (SCRUM-8 part 1): the order database, `POST /api/orders` with photo
+processing and abuse limits, and private status links. Emails (SCRUM-69), admin (SCRUM-71/72),
+HubSpot (SCRUM-74) and retention (SCRUM-75) come next.
 
 ## Stack
 
@@ -27,9 +28,111 @@ settings, Vitest for tests, pnpm. Same toolchain as the site.
 corepack enable
 pnpm install
 cp .env.example .env      # local settings; .env is git-ignored
+# a local Postgres for pnpm dev (tests don't need one):
+docker run -d --name pmp-pg -p 5432:5432 -e POSTGRES_USER=pmp -e POSTGRES_PASSWORD=pmp -e POSTGRES_DB=pmp postgres:18-alpine
 pnpm dev                  # http://localhost:8080/healthz
-pnpm test                 # unit tests
+pnpm test                 # all tests, on PGlite
 ```
+
+## Order API (SCRUM-65 to 67, SCRUM-70)
+
+Served behind the gateway at `/api/*`, on the same origin as the site. Every answer from
+`/api/orders*` is `Cache-Control: no-store` and `Referrer-Policy: no-referrer`.
+
+### `GET /api/orders/form`
+
+`200 { open: true, formToken }`. The site calls it when the order form loads. The token is the
+signed load time (minimum fill time, below), and a failed call tells the site that ordering is
+closed (production answers `503` until it is switched on, see the infra production runbook).
+
+### `POST /api/orders`
+
+`multipart/form-data`, exactly as the site's form sends it:
+
+| Field | Notes |
+| --- | --- |
+| `name`, `email`, `phone` (optional), `street`, `suburb`, `state`, `postcode` | rules in `src/orders/rules.ts` |
+| `consent`, `tournamentAck` | must both be `yes`; stored with timestamps |
+| `paddles[i][brand]`, `paddles[i][model]` (optional), `paddles[i][front]`, `paddles[i][back]` | 1 to 10 paddles; `i` is the form's stable index and may have gaps, positions follow its order |
+| `formToken` | from `GET /api/orders/form` |
+| `idempotencyKey` | 16 to 64 of `A-Z a-z 0-9 _ -`, one per submission (see below) |
+| `website` | the honeypot: always empty from a person |
+
+| Answer | When |
+| --- | --- |
+| `201 { reference, statusToken, test? }` | stored, status **Submitted**. `reference` is `PMP-` + 5 characters with no 0/O, 1/I/L. `statusToken` opens `/order/status#<token>` (only its SHA-256 is stored). `test: true` outside production. Nothing personal is returned. |
+| `400 { errors: { <field key>: message } }` | invalid details or photos. Keys match the form's: `email`, `paddles.0.front`, … Nothing is stored. `errors.form` means reload the page (missing, forged or day-old form token). |
+| `413` | body over 60 MB, refused from `Content-Length` or while streaming |
+| `415` | not `multipart/form-data` |
+| `429 { message, retryAfter }` + `Retry-After` | a rate limit was hit |
+
+**Idempotent:** a repeat with the same `idempotencyKey` within 24 hours answers with the original
+reference (and a fresh status link to it) and creates nothing (double taps, flaky mobile
+connections). **All or nothing:** the order, paddles, photos, first status and status token are
+written in one transaction; photo files written before a failure are deleted again.
+
+**Shared rules:** `src/orders/rules.ts` is the original; the site carries a byte-identical copy
+(`src/lib/order-rules.ts`) and its unit tests fail if the two differ. Change it here first.
+
+### `POST /api/orders/status`
+
+JSON `{ token }`. `200` with the minimal view (reference, status in plain words, dated history,
+paddles by brand and model, tracking number once posted back, `test`), never name, address,
+phone, email or photos. Unknown, malformed, revoked and expired links all get the same `404`.
+Links stop 90 days after **Completed**, 30 days after **Rejected** or **Lapsed**, and at once when
+**Withdrawn** or deleted.
+
+### `POST /api/orders/links`
+
+JSON `{ email }`. Always `202` with the same message, whatever the address. With an email service
+(SCRUM-69) it sends one email with a fresh link per live order and only then revokes the old
+links. Until then it changes nothing, so no working link is ever lost.
+
+### Photos (SCRUM-66)
+
+- 10 MB per photo, 60 MB per request (the site shrinks photos to 2560 px before sending).
+- The type is decided from the file's first bytes: JPEG, PNG or WebP only (HEIC is left to iOS).
+- Each photo is decoded (at most 100 megapixels and 20 seconds) and re-encoded to a JPEG of at
+  most 2560 px, upright, with **all** metadata removed (EXIF incl. GPS, XMP, IPTC, ICC).
+- Only the re-encoded copy is written, under a random name in `PHOTO_DIR`, a private volume that
+  nothing serves. The database keeps the path, size and dimensions, never the image.
+
+### Abuse limits (SCRUM-67)
+
+| Control | Default |
+| --- | --- |
+| Honeypot field filled, or submitted under `ORDER_MIN_FILL_SECONDS` (3) after the form loaded | normal-looking `201`, nothing stored, counted in the logs |
+| Orders per IP | 5 per hour (`ORDER_LIMIT_PER_IP_HOUR`) |
+| Orders per email address | 3 per 24 hours (`ORDER_LIMIT_PER_EMAIL_DAY`) |
+| "Email me my links" | 3 per address per day, 10 per IP per hour |
+| Request timeout | 120 s |
+
+The client IP is the socket peer, or the right-most `X-Forwarded-For` entry when the peer is in
+`TRUSTED_PROXIES` (the gateway). Counts live in Postgres, so restarts don't reset them, and are
+kept two days. Only salted hashes of IPs and emails are stored or logged. Staging may raise the
+per-IP limit for its smoke traffic; **production refuses to start with any limit relaxed.**
+
+### Smoke-test orders
+
+Outside production, orders from `@example.com` addresses are smoke tests (SCRUM-68): stored like
+any other, and deleted with their photos after 24 hours.
+
+## Database (SCRUM-64)
+
+PostgreSQL 18, one server per app, never shared. `DATABASE_URL` is required and secret. Versioned
+migrations (`src/db/migrations.ts`) run on startup before the service listens; a failure exits,
+so the container never becomes healthy and staging rolls back. Migrations are additive only.
+
+Tests run on PGlite (Postgres in WebAssembly, in-process) locally, and on a real Postgres 18 in
+CI's container test, which leaves a "database tests ran on real Postgres" annotation. To run
+them against your own Postgres: `TEST_DATABASE_URL=postgres://… pnpm test` (each test gets its
+own schema, dropped afterwards).
+
+## Logs
+
+One JSON line per event, with references, counts, timings and hash prefixes only: never names,
+emails, addresses, phone numbers or raw IPs. Errors are logged as type, code and stack frames,
+because library messages can quote input values. A test checks this across the order flow.
 
 ## Settings and secrets (SCRUM-18)
 
@@ -54,10 +157,14 @@ All settings come from environment variables; see `.env.example` for the full li
 ## CI
 
 Every PR runs type-check, unit tests, build and a gitleaks secret scan. CI also builds the
-Docker image and checks that it:
-- refuses to start without settings and names them;
-- refuses a live Stripe key on staging without printing it;
-- starts healthy as a non-root user with valid settings;
-- passes Trivy.
+Docker image and, beside a real Postgres 18, checks that it:
+- refuses to start without settings and names them (`DATABASE_URL` included);
+- refuses a live Stripe key on staging, and an invalid `DATABASE_URL`, without printing either;
+- never becomes healthy when the database can't be reached;
+- passes the whole test suite against real Postgres (annotated);
+- starts healthy as a non-root user, migrates and reports the database on `/api/status`;
+- takes a real order end to end and stores a metadata-free 2560 px photo;
+- refuses a 61 MB body with 413;
+- passes Trivy (sharp's native image library included).
 
 Merges to `main` publish `ghcr.io/thehunfromoz/picklemypaddle-integrations:staging` and `:<sha>`.
