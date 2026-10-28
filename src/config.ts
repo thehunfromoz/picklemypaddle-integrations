@@ -13,6 +13,10 @@
  * SCRUM-64/67: DATABASE_URL (the order of record, a secret because it carries the password),
  * the photo folder, and the abuse limits. Production limits can be tightened but never
  * relaxed above the defaults, so a test setting can't leak into production.
+ *
+ * SCRUM-69: order emails. Outside production, mail only ever reaches EMAIL_ALLOWLIST (Attila's
+ * own addresses), and the service won't start without one; production ignores it and needs
+ * RESEND_API_KEY, so customer emails can't silently pile up unsent.
  */
 import { z } from 'zod';
 import { IMAGE_ENGINES } from './orders/image-engine.js';
@@ -60,6 +64,19 @@ const isPostgresUrl = (value: string): boolean => {
   }
 };
 
+/** One email address (shape only; Resend does the real checking). */
+const EMAIL_RE = /^[^\s@,]+@[^\s@,]+\.[^\s@,]+$/;
+
+/** Comma-separated email addresses: the staging allow-list (SCRUM-69). */
+const emailList = z.preprocess(
+  (v) => {
+    if (typeof v !== 'string') return v;
+    const items = v.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+    return items.length ? items : undefined;
+  },
+  z.array(z.string().regex(EMAIL_RE, 'must be email addresses, comma-separated')).optional(),
+);
+
 /** A positive whole number, as text in the environment. */
 const count = (fallback: number) => z.coerce.number().int().min(1).max(100_000).default(fallback);
 
@@ -102,6 +119,16 @@ const schema = z
     /** Photo engine (SCRUM-66): vips (the image's libvips tools), sharp (development), or auto. */
     IMAGE_ENGINE: z.enum(IMAGE_ENGINES, { error: `must be one of: ${IMAGE_ENGINES.join(', ')}` }).default('auto'),
 
+    // ── Order emails (SCRUM-69) ───────────────────────────────────────────────
+    /** Resend API key (sending access, picklemypaddle.com only). Required in production. */
+    RESEND_API_KEY: optional(z.string().regex(/^re_[A-Za-z0-9_]+$/, 'must be a Resend API key (re_…)')),
+    /** Outside production: the only addresses mail may reach (plus-addressing allowed). */
+    EMAIL_ALLOWLIST: emailList,
+    /** Where status links in emails point (the site), e.g. https://www.picklemypaddle.com. Default: the first PUBLIC_SITE_ORIGIN. */
+    SITE_URL: optional(z.string().refine(isOrigin, { message: 'must be an origin like https://www.picklemypaddle.com (no path)' })),
+    /** The tailnet admin address for Attila's new-order alert (SCRUM-71). Until set, the alert says so. */
+    ADMIN_URL: optional(z.string().url('must be a URL like https://pmp-prod.tail8bc7ae.ts.net')),
+
     // ── Stripe (SCRUM-9). Optional until payments are built. ──────────────────
     STRIPE_SECRET_KEY: optional(
       z.string().regex(/^(sk|rk)_(test|live)_[A-Za-z0-9]+$/, 'must be a Stripe secret or restricted key'),
@@ -140,6 +167,16 @@ const schema = z
         message: 'is a test-mode key, but APP_ENV is production',
       });
     }
+    if (c.APP_ENV !== 'production' && !c.EMAIL_ALLOWLIST) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['EMAIL_ALLOWLIST'],
+        message: `is required outside production (APP_ENV is ${c.APP_ENV}): list the only addresses test emails may reach`,
+      });
+    }
+    if (c.APP_ENV === 'production' && !c.RESEND_API_KEY) {
+      ctx.addIssue({ code: 'custom', path: ['RESEND_API_KEY'], message: 'is required in production (customer emails)' });
+    }
     if (c.STRIPE_SECRET_KEY && !c.STRIPE_WEBHOOK_SECRET) {
       ctx.addIssue({
         code: 'custom',
@@ -152,7 +189,10 @@ const schema = z
 export type Config = z.infer<typeof schema>;
 
 /** Settings whose values must never be printed or logged. */
-export const SECRET_KEYS = ['DATABASE_URL', 'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'HUBSPOT_ACCESS_TOKEN'] as const;
+export const SECRET_KEYS = ['DATABASE_URL', 'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'HUBSPOT_ACCESS_TOKEN', 'RESEND_API_KEY'] as const;
+
+/** Settings that hold personal data: logged as a count only. */
+const PERSONAL_KEYS = ['EMAIL_ALLOWLIST'] as const;
 
 export class ConfigError extends Error {
   constructor(public readonly problems: string[]) {
@@ -185,6 +225,7 @@ export function describeConfig(config: Config): Record<string, string | number> 
   for (const [key, value] of Object.entries(config)) {
     if (value === undefined) continue;
     if ((SECRET_KEYS as readonly string[]).includes(key)) out[key] = '[set]';
+    else if ((PERSONAL_KEYS as readonly string[]).includes(key)) out[key] = `${(value as string[]).length} address(es)`;
     else out[key] = Array.isArray(value) ? value.join(', ') : value;
   }
   return out;

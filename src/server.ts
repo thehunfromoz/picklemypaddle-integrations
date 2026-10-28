@@ -3,6 +3,9 @@ import { ConfigError, describeConfig, loadConfig, type Config } from './config.j
 import { createApp } from './app.js';
 import { createPgDb } from './db/db.js';
 import { migrate } from './db/migrations.js';
+import { linksMailer, type OutboxDeps } from './email/outbox.js';
+import { resendSender } from './email/sender.js';
+import { placeholdersIn } from './email/templates.js';
 import { startJobs } from './jobs.js';
 import { log, logError } from './log.js';
 import { loadAbuseKeys, TrustedProxies } from './orders/abuse.js';
@@ -32,6 +35,15 @@ try {
   process.exit(78);
 }
 log('image_engine_ready', { engine: imageEngine });
+// SCRUM-69: production never sends an email that still has a [To confirm: …] in it.
+if (config.APP_ENV === 'production') {
+  const left = placeholdersIn();
+  if (left.length > 0) {
+    console.error(`picklemypaddle-integrations will not start.\n  - email templates still need wording: ${[...new Set(left.map((p) => p.template))].join(', ')}`);
+    process.exit(78);
+  }
+}
+
 const db = createPgDb(config.DATABASE_URL);
 
 // The schema must be current before we accept a single request (SCRUM-64). If it can't be
@@ -46,12 +58,24 @@ try {
 log('database_ready', { migration: version });
 
 const photos = fsPhotoStore(config.PHOTO_DIR);
+const outbox: OutboxDeps = {
+  db,
+  sender: config.RESEND_API_KEY ? resendSender(config.RESEND_API_KEY) : null,
+  settings: {
+    isProduction: config.APP_ENV === 'production',
+    allowList: config.EMAIL_ALLOWLIST ?? [],
+    siteUrl: config.SITE_URL ?? config.PUBLIC_SITE_ORIGIN[0]!,
+    adminUrl: config.ADMIN_URL?.replace(/\/$/, '') ?? null,
+  },
+  now: () => new Date(),
+};
 const app = createApp(config, {
   db,
   photos,
   keys: await loadAbuseKeys(db),
   trusted: new TrustedProxies(config.TRUSTED_PROXIES),
-  mailer: null, // order emails arrive with SCRUM-69
+  mailer: linksMailer(outbox),
+  emailProvider: outbox.sender?.name ?? null,
   imageEngine,
 });
 
@@ -63,7 +87,7 @@ const http = server as unknown as { requestTimeout: number; headersTimeout: numb
 http.requestTimeout = 120_000;
 http.headersTimeout = 30_000;
 
-const stopJobs = startJobs(db, photos);
+const stopJobs = startJobs(db, photos, outbox);
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => {

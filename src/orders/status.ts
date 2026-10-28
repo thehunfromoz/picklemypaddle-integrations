@@ -67,9 +67,13 @@ export async function lookupStatus(db: Db, token: unknown, now: Date): Promise<S
   };
 }
 
-/** Sends the "your links" email. Added by the order-emails story (SCRUM-69). */
+/**
+ * Sends the "your links" email (SCRUM-69). Resolves true once delivered to the provider, false
+ * if it was deliberately not sent (an address outside the staging allow-list, or no provider in
+ * development); throws if sending failed.
+ */
 export interface LinksMailer {
-  sendLinks(to: string, links: { reference: string; token: string }[], isTest: boolean): Promise<void>;
+  sendLinks(to: string, links: { reference: string; token: string }[], isTest: boolean): Promise<boolean>;
 }
 
 export type LinksOutcome = { orders: number; sent: boolean };
@@ -102,11 +106,17 @@ export async function requestLinks(db: Db, email: string, now: Date, mailer: Lin
     }
     return out;
   });
+  let delivered: boolean;
   try {
-    await mailer.sendLinks(email.trim(), fresh.map((f) => ({ reference: f.order.reference, token: f.token })), live.some((o) => o.is_test));
+    delivered = await mailer.sendLinks(email.trim(), fresh.map((f) => ({ reference: f.order.reference, token: f.token })), live.some((o) => o.is_test));
   } catch (err) {
     await db.query('DELETE FROM status_tokens WHERE id = ANY($1::bigint[])', [ids]);
     throw err;
+  }
+  if (!delivered) {
+    // Not sent on purpose: keep the customer's existing links working.
+    await db.query('DELETE FROM status_tokens WHERE id = ANY($1::bigint[])', [ids]);
+    return { orders: live.length, sent: false };
   }
   await db.query(
     'UPDATE status_tokens SET revoked_at = $2 WHERE order_id = ANY($1::uuid[]) AND revoked_at IS NULL AND NOT (id = ANY($3::bigint[]))',

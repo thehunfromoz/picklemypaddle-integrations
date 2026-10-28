@@ -38,7 +38,7 @@ grep -q "DATABASE_URL is required but not set" <<<"$out"
 echo "2. Refuses a live Stripe key on staging, without echoing it"
 key="sk_live_$(head -c 18 /dev/urandom | base64 | tr -dc 'A-Za-z0-9')"
 set +e
-out=$(docker run --rm -e APP_ENV=staging -e PUBLIC_SITE_ORIGIN=http://home-server:8088 -e DATABASE_URL="$DB_URL" \
+out=$(docker run --rm -e APP_ENV=staging -e PUBLIC_SITE_ORIGIN=http://home-server:8088 -e EMAIL_ALLOWLIST=ci@example.org -e DATABASE_URL="$DB_URL" \
       -e STRIPE_SECRET_KEY="$key" -e STRIPE_WEBHOOK_SECRET=whsec_x "$IMAGE" 2>&1); code=$?
 set -e
 echo "${out//$key/[REDACTED]}"
@@ -48,15 +48,21 @@ if grep -qF "$key" <<<"$out"; then echo "secret value leaked into output"; exit 
 
 echo "3. Refuses an invalid DATABASE_URL, names it, never prints it (SCRUM-64)"
 bad="mysql://pmp:${PG_PASSWORD}@pg/pmp"
-set +e; out=$(docker run --rm -e APP_ENV=staging -e PUBLIC_SITE_ORIGIN=http://home-server:8088 -e DATABASE_URL="$bad" "$IMAGE" 2>&1); code=$?; set -e
+set +e; out=$(docker run --rm -e APP_ENV=staging -e PUBLIC_SITE_ORIGIN=http://home-server:8088 -e EMAIL_ALLOWLIST=ci@example.org -e DATABASE_URL="$bad" "$IMAGE" 2>&1); code=$?; set -e
 echo "${out//$PG_PASSWORD/[REDACTED]}"
 [ "$code" = 78 ] || fail "invalid DATABASE_URL: exit $code, expected 78"
 grep -q "DATABASE_URL must be a postgres:// URL" <<<"$out"
 if grep -qF "$PG_PASSWORD" <<<"$out"; then fail "the database password leaked into output"; fi
 
+echo "3b. Refuses to start on staging without an email allow-list (SCRUM-69)"
+set +e; out=$(docker run --rm -e APP_ENV=staging -e PUBLIC_SITE_ORIGIN=http://home-server:8088 -e DATABASE_URL="$DB_URL" "$IMAGE" 2>&1); code=$?; set -e
+echo "${out//$PG_PASSWORD/[REDACTED]}"
+[ "$code" = 78 ] || fail "no allow-list: exit $code, expected 78"
+grep -q "EMAIL_ALLOWLIST is required outside production" <<<"$out" || fail "no allow-list: not named"
+
 echo "4. Never becomes healthy when the database can't be reached (so staging rolls back)"
 set +e
-timeout 60 docker run --name svc-bad --network "$NET" -e APP_ENV=staging -e PUBLIC_SITE_ORIGIN=http://home-server:8088 \
+timeout 60 docker run --name svc-bad --network "$NET" -e APP_ENV=staging -e PUBLIC_SITE_ORIGIN=http://home-server:8088 -e EMAIL_ALLOWLIST=ci@example.org \
   -e DATABASE_URL="postgres://pmp:${PG_PASSWORD}@no-such-db:5432/pmp" "$IMAGE" >/tmp/svc-bad.log 2>&1; code=$?
 set -e
 sed "s/$PG_PASSWORD/[REDACTED]/g" /tmp/svc-bad.log
@@ -82,7 +88,7 @@ docker run --rm --entrypoint sh "$IMAGE" -c 'vipsthumbnail --version && test "$I
 
 echo "6b. Starts healthy as non-root (read-only, like the stacks), migrates, and reports the database (SCRUM-64)"
 docker run -d --name svc --network "$NET" -p 8080:8080 --read-only --tmpfs /tmp -v pmp-ci-photos:/data/photos \
-  -e APP_ENV=staging -e PUBLIC_SITE_ORIGIN=http://home-server:8088 \
+  -e APP_ENV=staging -e PUBLIC_SITE_ORIGIN=http://home-server:8088 -e EMAIL_ALLOWLIST=ci@example.org \
   -e DATABASE_URL="$DB_URL" -e ORDER_MIN_FILL_SECONDS=0 "$IMAGE" >/dev/null
 for _ in $(seq 1 30); do
   [ "$(docker inspect -f '{{.State.Health.Status}}' svc)" = healthy ] && break; sleep 2
@@ -90,7 +96,9 @@ done
 docker inspect -f '{{.State.Health.Status}}' svc | grep -qx healthy || { docker logs svc; fail "not healthy"; }
 [ "$(docker inspect -f '{{.Config.User}}' svc)" = node ]
 status="$(curl -fsS http://127.0.0.1:8080/api/status)"; echo "$status"
-grep -q '"database":{"reachable":true,"migration":1,"latest":1}' <<<"$status" || fail "database not reported reachable at migration 1"
+# Reachable, and migrated to the newest version this image knows (whatever number that is).
+node -e 'const d = JSON.parse(process.argv[1]).database; process.exit(d.reachable && d.migration === d.latest && d.latest >= 1 ? 0 : 1)' "$status" \
+  || fail "database not reported reachable at the latest migration: $status"
 grep -q '"imageEngine":"vips"' <<<"$status" || fail "the service isn't using the libvips tools"
 if docker logs svc 2>&1 | grep -qF "$PG_PASSWORD"; then fail "the database password leaked into the service log"; fi
 
@@ -145,7 +153,7 @@ ldd "$QEMU" 2>&1 | grep -qE 'not a dynamic executable|statically linked' ||
   fail "$QEMU is dynamically linked; it can't run inside the image"
 docker run -d --name svc-oldcpu --network "$NET" -p 8081:8080 --read-only --tmpfs /tmp -v pmp-ci-photos-oldcpu:/data/photos \
   -v "$QEMU:/usr/local/bin/qemu-x86_64-static:ro" --entrypoint /usr/local/bin/qemu-x86_64-static \
-  -e APP_ENV=staging -e PUBLIC_SITE_ORIGIN=http://home-server:8088 -e DATABASE_URL="$DB_URL" -e ORDER_MIN_FILL_SECONDS=0 \
+  -e APP_ENV=staging -e PUBLIC_SITE_ORIGIN=http://home-server:8088 -e EMAIL_ALLOWLIST=ci@example.org -e DATABASE_URL="$DB_URL" -e ORDER_MIN_FILL_SECONDS=0 \
   "$IMAGE" -cpu Penryn /usr/local/bin/node dist/server.js >/dev/null
 for _ in $(seq 1 45); do
   [ "$(docker inspect -f '{{.State.Health.Status}}' svc-oldcpu)" = healthy ] && break

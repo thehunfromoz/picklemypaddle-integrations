@@ -117,7 +117,7 @@ describe(`"email me my links" (${DB_BACKEND})`, () => {
 
   const fakeMailer = () => {
     const sent: { to: string; links: { reference: string; token: string }[] }[] = [];
-    const mailer: LinksMailer = { async sendLinks(to, links) { sent.push({ to, links }); } };
+    const mailer: LinksMailer = { async sendLinks(to, links) { sent.push({ to, links }); return true; } };
     return { sent, mailer };
   };
 

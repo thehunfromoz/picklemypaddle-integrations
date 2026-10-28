@@ -2,6 +2,7 @@
  * Order intake (SCRUM-65): turn the form's multipart fields into an order and store it as the
  * order of record, all or nothing.
  */
+import { enqueueOrderEmail } from '../email/outbox.js';
 import type { Db, Queryable } from '../db/db.js';
 import { isUniqueViolation } from '../db/db.js';
 import { hashToken, newReference, newStatusToken, normaliseEmail } from './model.js';
@@ -193,7 +194,7 @@ export async function createOrder(
             t(input.street), t(input.suburb), input.state, t(input.postcode), idempotencyKey],
         );
         const orderId = rows[0]!.id;
-        await q.query('INSERT INTO status_history (order_id, status, at) VALUES ($1, $2, $3)', [orderId, 'submitted', now]);
+        await q.query('INSERT INTO status_history (order_id, status, at, actor) VALUES ($1, $2, $3, $4)', [orderId, 'submitted', now, 'customer']);
         for (const [position, p] of input.paddles.entries()) {
           const { rows: pr } = await q.query<{ id: string }>(
             'INSERT INTO paddles (order_id, position, brand, model) VALUES ($1, $2, $3, $4) RETURNING id',
@@ -213,6 +214,12 @@ export async function createOrder(
         await q.query('INSERT INTO status_tokens (order_id, token_hash, created_at) VALUES ($1, $2, $3)', [
           orderId, hashToken(statusToken), now,
         ]);
+        // SCRUM-69: the customer's confirmation and Attila's alert, queued with the order so they
+        // go out exactly when it exists. Smoke-test orders send nothing.
+        if (!isSmoke) {
+          await enqueueOrderEmail(q, orderId, 'customer_submitted', now);
+          await enqueueOrderEmail(q, orderId, 'alert_submitted', now);
+        }
         return { reference, statusToken, replay: false, isTest };
       });
     } catch (err) {

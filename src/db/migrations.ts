@@ -109,6 +109,51 @@ export const MIGRATIONS: readonly Migration[] = [
       );
     `,
   },
+  {
+    version: 2,
+    name: 'outbox for emails and CRM jobs; who changed a status; paddle arrival date',
+    sql: `
+      -- SCRUM-69/74: work that talks to the outside world (Resend, HubSpot) is queued here in the
+      -- same transaction as the change that causes it, then sent by a background worker with
+      -- retries. An outage at either provider never fails an order or a status change.
+      --
+      -- payload holds only what the template can't read from the order (an amount, a reason
+      -- typed by Attila). Never a status-link token: emails are rendered when sent, and each
+      -- send mints its own token, so only token hashes are ever stored (SCRUM-70).
+      CREATE TABLE outbox (
+        id              bigserial PRIMARY KEY,
+        kind            text NOT NULL CHECK (kind IN ('email', 'crm')),
+        order_id        uuid REFERENCES orders (id) ON DELETE CASCADE,
+        template        text NOT NULL,
+        -- Email only. Personal data: goes when the order is deleted (cascade).
+        recipient       text,
+        payload         jsonb NOT NULL DEFAULT '{}'::jsonb,
+        -- pending → sending (leased to a worker) → sent | failed | suppressed
+        state           text NOT NULL DEFAULT 'pending'
+                        CHECK (state IN ('pending', 'sending', 'sent', 'failed', 'suppressed')),
+        attempts        integer NOT NULL DEFAULT 0,
+        next_attempt_at timestamptz NOT NULL DEFAULT now(),
+        -- An error type/code or a short reason (e.g. 'not_allow_listed'), never a message body.
+        last_error      text,
+        provider_id     text,
+        created_at      timestamptz NOT NULL DEFAULT now(),
+        updated_at      timestamptz NOT NULL DEFAULT now(),
+        done_at         timestamptz
+      );
+      CREATE INDEX outbox_due_idx ON outbox (next_attempt_at) WHERE state IN ('pending', 'sending');
+      CREATE INDEX outbox_order_idx ON outbox (order_id, created_at);
+      -- At most one waiting CRM job per order: a sync pushes the order's current state anyway.
+      CREATE UNIQUE INDEX outbox_crm_pending_key ON outbox (order_id) WHERE kind = 'crm' AND state = 'pending';
+
+      -- SCRUM-72: who made each change: 'customer' (intake), 'admin', 'system' (automatic jobs)
+      -- or 'stripe'. Older rows were all made at intake.
+      ALTER TABLE status_history ADD COLUMN actor text;
+      UPDATE status_history SET actor = 'customer' WHERE actor IS NULL;
+
+      -- SCRUM-72/73: the day the paddles arrived (set on In queue); "back in the post by" counts from it.
+      ALTER TABLE orders ADD COLUMN arrived_on date;
+    `,
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

@@ -14,7 +14,8 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "preview:emails": "tsx scripts/preview-emails.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.7",

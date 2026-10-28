@@ -18,6 +18,8 @@ export interface AppDeps {
   mailer?: LinksMailer | null;
   now?: () => Date;
   peer?: (c: Context) => string;
+  /** Which email provider sends (SCRUM-69), for /api/status; null = none (nothing leaves). */
+  emailProvider?: string | null;
   /** Which photo engine runs (SCRUM-66), for /api/status. */
   imageEngine?: string;
 }
@@ -49,7 +51,7 @@ export function createApp(config: Config, deps: AppDeps) {
       adapters: {
         stripe: config.STRIPE_SECRET_KEY ? 'configured' : 'not configured',
         hubspot: config.HUBSPOT_ACCESS_TOKEN ? 'configured' : 'not configured',
-        email: deps.mailer ? 'configured' : 'not configured',
+        email: deps.emailProvider ? 'configured' : 'not configured',
       },
       ...(deps.imageEngine ? { imageEngine: deps.imageEngine } : {}),
     });
