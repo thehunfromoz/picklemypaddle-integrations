@@ -8,6 +8,7 @@ const testKey = 'sk_test_' + 'a'.repeat(24);
 const liveKey = 'sk_live_' + 'b'.repeat(24);
 const whsec = 'whsec_' + 'c'.repeat(24);
 const hubspotKey = 'pat-ap1-' + 'a'.repeat(36);
+const hubspot = { HUBSPOT_ACCESS_TOKEN: hubspotKey, HUBSPOT_PORTAL_ID: '111', HUBSPOT_TEST_PORTAL_ID: '111' };
 
 function problems(env: Record<string, string>): string[] {
   try {
@@ -94,8 +95,31 @@ describe('loadConfig', () => {
     expect(problems({ ...base, APP_ENV: 'prod' })[0]).toMatch(/^APP_ENV must be one of/);
   });
 
-  it('accepts a HubSpot service key', () => {
-    expect(loadConfig({ ...base, HUBSPOT_ACCESS_TOKEN: hubspotKey }).HUBSPOT_ACCESS_TOKEN).toBe(hubspotKey);
+  it('accepts a HubSpot service key (pat-<region>-<uuid>)', () => {
+    const key = ['pat', 'ap1', '1a2b3c4d', '5e6f', '7a8b', '9c0d', '1e2f3a4b5c6d'].join('-');
+    expect(loadConfig({ ...base, ...hubspot, HUBSPOT_ACCESS_TOKEN: key }).HUBSPOT_ACCESS_TOKEN).toBe(key);
+    expect(problems({ ...base, ...hubspot, HUBSPOT_ACCESS_TOKEN: 'abc' })[0]).toMatch(/^HUBSPOT_ACCESS_TOKEN must be a HubSpot service key/);
+  });
+
+  describe('HubSpot portals (SCRUM-74)', () => {
+    it('needs the portal ID with a key', () => {
+      expect(problems({ ...base, HUBSPOT_ACCESS_TOKEN: hubspotKey, HUBSPOT_TEST_PORTAL_ID: '111' })).toEqual([
+        'HUBSPOT_PORTAL_ID is required when HUBSPOT_ACCESS_TOKEN is set',
+      ]);
+    });
+    it('refuses to start outside production unless the portal is the test portal', () => {
+      expect(problems({ ...base, HUBSPOT_ACCESS_TOKEN: hubspotKey, HUBSPOT_PORTAL_ID: '111' })[0])
+        .toMatch(/^HUBSPOT_TEST_PORTAL_ID is required outside production/);
+      expect(problems({ ...base, ...hubspot, HUBSPOT_PORTAL_ID: '222' })).toEqual([
+        "HUBSPOT_PORTAL_ID isn't the test portal; outside production only HUBSPOT_TEST_PORTAL_ID may be used",
+      ]);
+      expect(loadConfig({ ...base, ...hubspot }).HUBSPOT_PORTAL_ID).toBe('111');
+    });
+    it('refuses the test portal in production', () => {
+      const prod = { ...base, APP_ENV: 'production', RESEND_API_KEY: resendKey };
+      expect(problems({ ...prod, ...hubspot })).toEqual(['HUBSPOT_PORTAL_ID is the test portal, but APP_ENV is production']);
+      expect(loadConfig({ ...prod, ...hubspot, HUBSPOT_PORTAL_ID: '222' }).HUBSPOT_PORTAL_ID).toBe('222');
+    });
   });
 
   it('treats empty values as unset', () => {

@@ -72,7 +72,7 @@ describe(`transitionOrder (${DB_BACKEND})`, () => {
   const emails = async (ref: string) =>
     (await t.db.query<{ template: string; payload: Record<string, unknown> }>(
       `SELECT x.template, x.payload FROM outbox x JOIN orders o ON o.id = x.order_id
-        WHERE o.reference = $1 AND x.template NOT IN ('customer_submitted', 'alert_submitted') ORDER BY x.id`,
+        WHERE o.reference = $1 AND x.kind = 'email' AND x.template NOT IN ('customer_submitted', 'alert_submitted') ORDER BY x.id`,
       [ref],
     )).rows;
 

@@ -158,6 +158,30 @@ Attila's new-order alert goes to sales@ and holds only the reference, paddle cou
   `.email-previews/`; snapshot tests catch any unreviewed change. Facts not yet known are
   `[To confirm: …]`, and **production refuses to start while any remain**.
 
+## HubSpot mirror (SCRUM-74)
+
+A one-way copy of orders in HubSpot, so Attila gets a pipeline view and customer records; the
+database stays the master and edits made in HubSpot are overwritten. Behind a `CrmAdapter`
+interface (`src/crm/crm.ts`), with the HubSpot implementation in `src/crm/hubspot.ts`.
+
+- **What goes across:** a contact (by email: first and last name, email, phone, suburb, state,
+  postcode) and one deal per order (name = reference, `[TEST] ` prefixed outside production;
+  amount = paddles × A$60; properties `pmp_reference`, `pmp_paddle_count`, `pmp_is_test`), whose
+  stage mirrors the order status 1:1 in the default pipeline. **Never** the street address,
+  photos, paddle details or a status-link token; a test checks every request.
+- **Sync:** every order and status change queues a `crm` job in the outbox (one waiting job per
+  order at most), which the service runs every 30 s with the email backoff. HubSpot being down
+  never blocks an order. Record IDs are kept on the order; a deal deleted in HubSpot is found
+  again by reference or recreated.
+- **Test portal only outside production:** `HUBSPOT_PORTAL_ID` must equal `HUBSPOT_TEST_PORTAL_ID`
+  or the service won't start, and before its first write the worker checks the key really
+  belongs to that portal (`portal_mismatch` otherwise, and nothing is written).
+- **Setup as code:** `node dist/cli/hubspot-setup.js --dry-run` shows what it would change (the
+  property group, three deal properties and the 11 stages); without `--dry-run` it applies them,
+  idempotently. Stages that aren't ours are listed and left alone.
+- **Resync:** `node dist/cli/crm-resync.js` queues every order (after an outage, or when
+  production moves to its own portal).
+
 ## Database (SCRUM-64)
 
 PostgreSQL 18, one server per app, never shared. `DATABASE_URL` is required and secret. Versioned
