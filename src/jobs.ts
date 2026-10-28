@@ -2,10 +2,11 @@
  * Housekeeping that runs inside the service:
  *  - smoke-test orders (SCRUM-68) are deleted 24 hours after they were placed, photos included;
  *  - rate-limit history older than two days is deleted (SCRUM-67).
- *  - the email outbox (SCRUM-69) is worked every 10 seconds.
+ *  - the email outbox (SCRUM-69) is worked every 10 seconds, the CRM sync (SCRUM-74) every 30.
  * Order retention for real orders is SCRUM-75, not here.
  */
 import type { Db } from './db/db.js';
+import { processCrm, type CrmDeps } from './crm/sync.js';
 import { processOutbox, type OutboxDeps } from './email/outbox.js';
 import { pruneRateLimitEvents } from './orders/abuse.js';
 import type { PhotoStore } from './orders/photos.js';
@@ -28,7 +29,26 @@ export async function deleteOldSmokeOrders(db: Db, photos: PhotoStore, now: Date
   return paths.orders;
 }
 
-export function startJobs(db: Db, photos: PhotoStore, outbox: OutboxDeps | null, now: () => Date = () => new Date()): () => void {
+export function startJobs(
+  db: Db,
+  photos: PhotoStore,
+  outbox: OutboxDeps | null,
+  crm: CrmDeps | null = null,
+  now: () => Date = () => new Date(),
+): () => void {
+  let syncing = false;
+  const syncCrm = async () => {
+    if (!crm || syncing) return;
+    syncing = true;
+    try {
+      const run = await processCrm(crm);
+      if (run.synced + run.retrying + run.failed + run.skipped > 0) log('crm_run', { ...run });
+    } catch (err) {
+      logError('job_failed', err, { job: 'crm' });
+    } finally {
+      syncing = false;
+    }
+  };
   let sending = false;
   const sendEmails = async () => {
     if (!outbox || sending) return;
@@ -60,7 +80,13 @@ export function startJobs(db: Db, photos: PhotoStore, outbox: OutboxDeps | null,
   void hourly();
   void daily();
   void sendEmails();
-  const timers = [setInterval(hourly, 60 * 60 * 1000), setInterval(daily, 24 * 60 * 60 * 1000), setInterval(sendEmails, 10_000)];
+  void syncCrm();
+  const timers = [
+    setInterval(hourly, 60 * 60 * 1000),
+    setInterval(daily, 24 * 60 * 60 * 1000),
+    setInterval(sendEmails, 10_000),
+    setInterval(syncCrm, 30_000),
+  ];
   for (const t of timers) t.unref();
   return () => timers.forEach(clearInterval);
 }

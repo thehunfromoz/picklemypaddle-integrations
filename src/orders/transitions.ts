@@ -4,12 +4,14 @@
  *
  * Only the transitions below are allowed, and only by the right actor; anything else is refused
  * (409). Each change is one transaction: the order's status, its history row (who, when, from,
- * to) and the work it causes (the customer's key-moment email, SCRUM-69) are written together,
+ * to) and the work it causes (the customer's key-moment email, SCRUM-69, and the CRM sync,
+ * SCRUM-74) are written together,
  * so a change is never recorded without its email being queued, or the other way round.
  *
  * Statuses (decided 26 Oct 2026): Submitted → Questions → Accepted → Paid → In queue →
  * Re-gritted → Posted back → Completed, plus the end states Rejected, Withdrawn and Lapsed.
  */
+import { enqueueCrmSync } from '../crm/sync.js';
 import type { Db } from '../db/db.js';
 import { enqueueOrderEmail, type EmailPayload } from '../email/outbox.js';
 import type { TemplateName } from '../email/templates.js';
@@ -134,6 +136,8 @@ export async function transitionOrder(deps: TransitionDeps, req: TransitionReque
       const { rows: smoke } = await q.query<{ is_smoke: boolean }>('SELECT is_smoke FROM orders WHERE id = $1', [order.id]);
       if (!smoke[0]?.is_smoke) await enqueueOrderEmail(q, order.id, template, deps.now, payload);
     }
+    // SCRUM-74: the deal's stage follows the status.
+    await enqueueCrmSync(q, order.id, deps.now);
     return { reference: req.reference, from: order.status, to: req.to };
   });
 }

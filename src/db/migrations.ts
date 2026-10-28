@@ -154,6 +154,16 @@ export const MIGRATIONS: readonly Migration[] = [
       ALTER TABLE orders ADD COLUMN arrived_on date;
     `,
   },
+  {
+    version: 3,
+    name: 'HubSpot record IDs on each order',
+    sql: `
+      -- SCRUM-74: the CRM records mirroring this order, once synced. The database stays the
+      -- master; these only let a sync update the same records instead of creating new ones.
+      ALTER TABLE orders ADD COLUMN crm_contact_id text;
+      ALTER TABLE orders ADD COLUMN crm_deal_id text;
+    `,
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

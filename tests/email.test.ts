@@ -45,7 +45,7 @@ function outbox(t: TestApp, sender: EmailSender | null, over: Partial<MailSettin
 
 const rowsOf = (t: TestApp) =>
   t.db.query<{ id: string; template: string; recipient: string | null; state: string; attempts: number; last_error: string | null; next_attempt_at: Date }>(
-    'SELECT id, template, recipient, state, attempts, last_error, next_attempt_at FROM outbox ORDER BY id',
+    `SELECT id, template, recipient, state, attempts, last_error, next_attempt_at FROM outbox WHERE kind = 'email' ORDER BY id`,
   ).then((r) => r.rows);
 
 const tokenFrom = (text: string) => /\/order\/status#([A-Za-z0-9_-]{43})/.exec(text)?.[1];
@@ -190,7 +190,7 @@ describe(`order emails through the outbox (${DB_BACKEND})`, () => {
     const token = tokenFrom(customer!.text);
     expect(token).toBeDefined();
     expect((await lookupStatus(t.db, token, t.clock.now))?.status).toBe('submitted');
-    const stored = JSON.stringify((await t.db.query('SELECT * FROM outbox')).rows);
+    const stored = JSON.stringify((await t.db.query('SELECT * FROM outbox')).rows); // emails and CRM jobs alike
     expect(stored).not.toContain(token);
 
     expect(alert!.to).toBe(ALERT_TO);
@@ -260,7 +260,7 @@ describe(`order emails through the outbox (${DB_BACKEND})`, () => {
     // A provider that stays down: one try plus every backoff step, then failed.
     sender.failures.push(...Array.from({ length: MAX_ATTEMPTS }, () => new SendError('http:500', false)));
     await post(t, await orderForm(t, { email: 'player+2@test.picklemypaddle.com' }));
-    await t.db.query(`DELETE FROM outbox WHERE template = 'alert_submitted'`);
+    await t.db.query(`DELETE FROM outbox WHERE template = 'alert_submitted' OR kind = 'crm'`);
     for (let i = 0; i < MAX_ATTEMPTS; i++) {
       await processOutbox(outbox(t, sender));
       t.clock.now = new Date(t.clock.now.getTime() + 13 * 60 * 60_000);

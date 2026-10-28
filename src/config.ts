@@ -135,10 +135,18 @@ const schema = z
     ),
     STRIPE_WEBHOOK_SECRET: optional(z.string().regex(/^whsec_[A-Za-z0-9]+$/, 'must start with whsec_')),
 
-    // ── HubSpot (SCRUM-8). Optional until the CRM adapter is built. ───────────
-    HUBSPOT_ACCESS_TOKEN: optional(z.string().regex(/^pat-[a-z0-9]+-[A-Za-z0-9-]+$/, 'must be a HubSpot service key (pat-…)')),
-    /** Public: also built into the site's forms. */
+    // ── HubSpot (SCRUM-74): a one-way mirror of orders. Optional: without it, nothing syncs. ──
+    /**
+     * A HubSpot service key (Settings → Integrations → Service Keys), e.g. pat-ap1-… for the
+     * Asia-Pacific data region. New accounts have no legacy private apps.
+     */
+    HUBSPOT_ACCESS_TOKEN: optional(z.string().regex(/^pat-[a-z0-9]+-[A-Za-z0-9_-]+$/, 'must be a HubSpot service key (pat-…)')),
+    /** The portal (account) ID the key belongs to. Public: also built into the site's forms. */
     HUBSPOT_PORTAL_ID: optional(z.string().regex(/^\d+$/, 'must be the numeric HubSpot portal (account) ID')),
+    /** The test portal "PickleMyPaddle test". Outside production, HUBSPOT_PORTAL_ID must equal it. */
+    HUBSPOT_TEST_PORTAL_ID: optional(z.string().regex(/^\d+$/, 'must be the numeric HubSpot portal (account) ID')),
+    /** HubSpot's API address. Only change it if HubSpot says your data region needs another. */
+    HUBSPOT_API_BASE: z.string().url().default('https://api.hubapi.com'),
   })
   .superRefine((c, ctx) => {
     if (c.APP_ENV === 'production') {
@@ -166,6 +174,20 @@ const schema = z
         path: ['STRIPE_SECRET_KEY'],
         message: 'is a test-mode key, but APP_ENV is production',
       });
+    }
+    // SCRUM-74 AC8: staging can never write to the real HubSpot account.
+    if (c.HUBSPOT_ACCESS_TOKEN && !c.HUBSPOT_PORTAL_ID) {
+      ctx.addIssue({ code: 'custom', path: ['HUBSPOT_PORTAL_ID'], message: 'is required when HUBSPOT_ACCESS_TOKEN is set' });
+    }
+    if (c.APP_ENV !== 'production' && c.HUBSPOT_ACCESS_TOKEN) {
+      if (!c.HUBSPOT_TEST_PORTAL_ID) {
+        ctx.addIssue({ code: 'custom', path: ['HUBSPOT_TEST_PORTAL_ID'], message: `is required outside production (APP_ENV is ${c.APP_ENV}) when HubSpot is configured` });
+      } else if (c.HUBSPOT_PORTAL_ID && c.HUBSPOT_PORTAL_ID !== c.HUBSPOT_TEST_PORTAL_ID) {
+        ctx.addIssue({ code: 'custom', path: ['HUBSPOT_PORTAL_ID'], message: `isn't the test portal; outside production only HUBSPOT_TEST_PORTAL_ID may be used` });
+      }
+    }
+    if (c.APP_ENV === 'production' && c.HUBSPOT_PORTAL_ID && c.HUBSPOT_PORTAL_ID === c.HUBSPOT_TEST_PORTAL_ID) {
+      ctx.addIssue({ code: 'custom', path: ['HUBSPOT_PORTAL_ID'], message: 'is the test portal, but APP_ENV is production' });
     }
     if (c.APP_ENV !== 'production' && !c.EMAIL_ALLOWLIST) {
       ctx.addIssue({

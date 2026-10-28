@@ -2,6 +2,7 @@
  * Order intake (SCRUM-65): turn the form's multipart fields into an order and store it as the
  * order of record, all or nothing.
  */
+import { enqueueCrmSync } from '../crm/sync.js';
 import { enqueueOrderEmail } from '../email/outbox.js';
 import type { Db, Queryable } from '../db/db.js';
 import { isUniqueViolation } from '../db/db.js';
@@ -220,6 +221,8 @@ export async function createOrder(
           await enqueueOrderEmail(q, orderId, 'customer_submitted', now);
           await enqueueOrderEmail(q, orderId, 'alert_submitted', now);
         }
+        // SCRUM-74: mirror it to the CRM (smoke-test orders are skipped there).
+        await enqueueCrmSync(q, orderId, now);
         return { reference, statusToken, replay: false, isTest };
       });
     } catch (err) {

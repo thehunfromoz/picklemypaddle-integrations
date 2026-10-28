@@ -3,6 +3,8 @@ import { ConfigError, describeConfig, loadConfig, type Config } from './config.j
 import { createApp } from './app.js';
 import { createPgDb } from './db/db.js';
 import { migrate } from './db/migrations.js';
+import { hubspotAdapter, hubspotClient, portalIdOf } from './crm/hubspot.js';
+import type { CrmDeps } from './crm/sync.js';
 import { linksMailer, type OutboxDeps } from './email/outbox.js';
 import { resendSender } from './email/sender.js';
 import { placeholdersIn } from './email/templates.js';
@@ -87,7 +89,19 @@ const http = server as unknown as { requestTimeout: number; headersTimeout: numb
 http.requestTimeout = 120_000;
 http.headersTimeout = 30_000;
 
-const stopJobs = startJobs(db, photos, outbox);
+// SCRUM-74: the HubSpot mirror, only when a key is set. Outside production it may only ever
+// write to the test portal: the settings check that at startup, and the worker checks the key
+// really belongs to it before the first write.
+const hubspot = config.HUBSPOT_ACCESS_TOKEN ? hubspotClient(config.HUBSPOT_ACCESS_TOKEN, config.HUBSPOT_API_BASE) : null;
+const crm: CrmDeps = {
+  db,
+  adapter: hubspot ? hubspotAdapter(hubspot) : null,
+  portalId: hubspot ? () => portalIdOf(hubspot) : null,
+  expectedPortalId: config.HUBSPOT_PORTAL_ID ?? null,
+  now: () => new Date(),
+};
+
+const stopJobs = startJobs(db, photos, outbox, crm);
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => {
