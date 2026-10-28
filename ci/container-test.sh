@@ -96,7 +96,9 @@ done
 docker inspect -f '{{.State.Health.Status}}' svc | grep -qx healthy || { docker logs svc; fail "not healthy"; }
 [ "$(docker inspect -f '{{.Config.User}}' svc)" = node ]
 status="$(curl -fsS http://127.0.0.1:8080/api/status)"; echo "$status"
-grep -q '"database":{"reachable":true,"migration":1,"latest":1}' <<<"$status" || fail "database not reported reachable at migration 1"
+# Reachable, and migrated to the newest version this image knows (whatever number that is).
+node -e 'const d = JSON.parse(process.argv[1]).database; process.exit(d.reachable && d.migration === d.latest && d.latest >= 1 ? 0 : 1)' "$status" \
+  || fail "database not reported reachable at the latest migration: $status"
 grep -q '"imageEngine":"vips"' <<<"$status" || fail "the service isn't using the libvips tools"
 if docker logs svc 2>&1 | grep -qF "$PG_PASSWORD"; then fail "the database password leaked into the service log"; fi
 
