@@ -28,6 +28,11 @@ export interface StatusView {
   queuePosition: number | null;
   /** A TEST order (taken outside production). */
   test: boolean;
+  /**
+   * The review form (SCRUM-33): 'open' once the paddles are on their way back, 'received' once
+   * a review has been left, null before then.
+   */
+  review: 'open' | 'received' | null;
 }
 
 /** Every bad link (unknown, malformed, revoked, expired) gets exactly this, by design. */
@@ -36,19 +41,37 @@ export const INVALID_LINK = { error: 'invalid_link', message: 'This link isn’t
 /** Never valid; hashed for malformed tokens so they cost the same as real lookups. */
 const DUMMY_TOKEN = 'x'.repeat(43);
 
-export async function lookupStatus(db: Db, token: unknown, now: Date): Promise<StatusView | null> {
+export interface TokenOrder {
+  id: string;
+  reference: string;
+  status: OrderStatus;
+  status_changed_at: Date;
+  is_test: boolean;
+  tracking_number: string | null;
+  has_review: boolean;
+}
+
+/** The order a live status link opens, or null for any bad link (all treated alike). */
+export async function orderForToken(db: Db, token: unknown, now: Date): Promise<TokenOrder | null> {
   const wellFormed = typeof token === 'string' && TOKEN_RE.test(token);
-  const { rows } = await db.query<{
-    id: string; reference: string; status: OrderStatus; status_changed_at: Date; is_test: boolean;
-    tracking_number: string | null;
-  }>(
-    `SELECT o.id, o.reference, o.status, o.status_changed_at, o.is_test, o.tracking_number
+  const { rows } = await db.query<TokenOrder>(
+    `SELECT o.id, o.reference, o.status, o.status_changed_at, o.is_test, o.tracking_number,
+            EXISTS (SELECT 1 FROM reviews r WHERE r.order_id = o.id) AS has_review
        FROM status_tokens t JOIN orders o ON o.id = t.order_id
       WHERE t.token_hash = $1 AND t.revoked_at IS NULL`,
     [hashToken(wellFormed ? token : DUMMY_TOKEN)],
   );
   const order = wellFormed ? rows[0] : undefined;
   if (!order || !linkIsLive(order.status, new Date(order.status_changed_at), now)) return null;
+  return order;
+}
+
+/** Statuses at which a customer may leave a review (SCRUM-33). */
+export const REVIEW_STATUSES: ReadonlySet<OrderStatus> = new Set(['posted_back', 'completed']);
+
+export async function lookupStatus(db: Db, token: unknown, now: Date): Promise<StatusView | null> {
+  const order = await orderForToken(db, token, now);
+  if (!order) return null;
 
   const [history, paddles] = await Promise.all([
     db.query<{ status: OrderStatus; at: Date }>('SELECT status, at FROM status_history WHERE order_id = $1 ORDER BY at, id', [order.id]),
@@ -64,6 +87,7 @@ export async function lookupStatus(db: Db, token: unknown, now: Date): Promise<S
     backInPostBy: null,
     queuePosition: null,
     test: order.is_test,
+    review: order.has_review ? 'received' : REVIEW_STATUSES.has(order.status) ? 'open' : null,
   };
 }
 

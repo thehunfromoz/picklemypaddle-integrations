@@ -6,6 +6,7 @@
  *   POST /api/orders         submit an order (multipart)  → 201 { reference, statusToken, test? }
  *   POST /api/orders/status  { token }                    → the minimal status view, or 404
  *   POST /api/orders/links   { email }                    → 202, always the same answer
+ *   POST /api/orders/review  { token, quote, firstName, suburb, permission } → 201 (SCRUM-33)
  */
 import { Hono, type Context } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
@@ -26,6 +27,7 @@ import { BadFormError, createOrder, fakeOrder, findReplayOrder, parseOrderForm, 
 import { normaliseEmail } from './model.js';
 import type { PhotoStore } from './photos.js';
 import { MAX_REQUEST_BYTES } from './rules.js';
+import { submitReview } from './reviews.js';
 import { INVALID_LINK, lookupStatus, requestLinks, type LinksMailer } from './status.js';
 
 export interface OrderRouteDeps {
@@ -64,6 +66,7 @@ export function orderRoutes(deps: OrderRouteDeps) {
     orderEmail: { bucket: 'order-email', max: L.orderPerEmailDay, windowMs: DAY },
     linksIp: { bucket: 'links-ip', max: L.linksPerIpHour, windowMs: HOUR },
     linksEmail: { bucket: 'links-email', max: L.linksPerEmailDay, windowMs: DAY },
+    reviewIp: { bucket: 'review-ip', max: L.linksPerIpHour, windowMs: HOUR },
   } satisfies Record<string, Limit>;
   const app = new Hono();
 
@@ -193,6 +196,35 @@ export function orderRoutes(deps: OrderRouteDeps) {
     }
     return c.json({ message: 'If we have orders for that address, we’ve emailed the links.' }, 202);
   });
+
+  // SCRUM-33: a review from the private status page. Needs the order's live link, and the
+  // paddles on their way back; one per order.
+  app.post(
+    '/review',
+    bodyLimit({ maxSize: 8 * 1024, onError: (c) => c.json({ error: 'too_large', message: 'That review is too long.' }, 413) }),
+    async (c) => {
+      const at = now();
+      const ipKey = await ipHash(c);
+      const r = await checkLimit(deps.db, limits.reviewIp, ipKey, at);
+      if (!r.ok) return limited(c, r.retryAfterSeconds, limits.reviewIp.bucket, ipKey);
+      await recordEvent(deps.db, limits.reviewIp.bucket, ipKey, at);
+
+      const body = ((await c.req.json().catch(() => null)) ?? {}) as Record<string, unknown>;
+      const outcome = await submitReview(deps.db, {
+        token: body.token, quote: body.quote, firstName: body.firstName, suburb: body.suburb, permission: body.permission,
+      }, at);
+      if (outcome.ok) {
+        log('review_received', { reference: outcome.reference, permission: outcome.permission });
+        return c.json({ message: 'Thanks! We’ve got your review.' }, 201);
+      }
+      if (outcome.reason === 'invalid_link') return c.json(INVALID_LINK, 404);
+      if (outcome.reason === 'invalid') return c.json({ errors: outcome.errors }, 400);
+      if (outcome.reason === 'not_yet') {
+        return c.json({ error: 'not_yet', message: 'You can leave a review once your paddle is on its way back to you.' }, 409);
+      }
+      return c.json({ error: 'already_received', message: 'We’ve already got a review for this order. Thank you!' }, 409);
+    },
+  );
 
   return app;
 }

@@ -20,6 +20,7 @@ export const TEMPLATES = [
   'posted_back',
   'rejected',
   'links',
+  'alert_review',
 ] as const;
 export type TemplateName = (typeof TEMPLATES)[number];
 
@@ -55,6 +56,10 @@ export interface TemplateContext {
   reason?: string;
   /** Links: one per order. */
   links?: { reference: string; url: string }[];
+  /** Posted back: the status page's review form (SCRUM-33). */
+  reviewUrl?: string;
+  /** Review alert: the review, shown only when the customer gave permission to quote it. */
+  review?: { quote: string; firstName: string; suburb: string; permission: boolean };
 }
 
 export interface RenderedEmail {
@@ -276,6 +281,10 @@ function build(name: TemplateName, ctx: TemplateContext): { subject: string; blo
           { kv: [['Tracking number', need(ctx, 'trackingNumber', name)]] },
           { p: `Enjoy the fresh grit. ${tournament(n)}` },
           ...statusBlocks(need(ctx, 'statusUrl', name)),
+          // SCRUM-33: the testimonial request.
+          { h: 'How did we do?' },
+          { p: `Once you’ve had a hit with your ${paddleWord(n)}, we’d love a short review. It takes a minute, and you choose whether we may quote it on our website (with just your first name and suburb).` },
+          { button: { label: 'Leave a short review', url: need(ctx, 'reviewUrl', name) } },
           { p: 'Thanks,\nPickleMyPaddle' },
         ],
       };
@@ -294,6 +303,27 @@ function build(name: TemplateName, ctx: TemplateContext): { subject: string; blo
           { p: 'You haven’t been charged anything. If you have questions, or think we’ve got it wrong, just reply to this email.' },
           { p: 'Thanks,\nPickleMyPaddle' },
         ],
+      };
+    }
+
+    case 'alert_review': {
+      // Like the order alert: the review itself only when the customer said it may be published.
+      const ref = need(ctx, 'reference', name);
+      const r = need(ctx, 'review', name);
+      return {
+        customer: false,
+        subject: `Review for ${ref} (${r.permission ? 'may quote' : 'not for quoting'})`,
+        blocks: r.permission
+          ? [
+              { p: `A review for ${ref}, with permission to quote it as first name and suburb:` },
+              { quote: r.quote },
+              { p: `${r.firstName}, ${r.suburb}` },
+              { p: 'To publish it, add it to src/data/testimonials.json in picklemypaddle-site by pull request (the section shows from 3).' },
+            ]
+          : [
+              { p: `A review for ${ref}. The customer did not give permission to quote it, so it stays private.` },
+              ctx.adminUrl ? { button: { label: 'Read it in admin', url: ctx.adminUrl } } : { p: 'Read it in the order database (the admin page comes with SCRUM-72).' },
+            ],
       };
     }
 
@@ -342,6 +372,8 @@ export function sampleContext(name: TemplateName, test: boolean): TemplateContex
       { reference: 'PMP-7K3QX', url: `${site}/order/status#${'T'.repeat(43)}` },
       { reference: 'PMP-9ABCD', url: `${site}/order/status#${'U'.repeat(43)}` },
     ],
+    reviewUrl: `${site}/order/status?review=1#${'T'.repeat(43)}`,
+    review: { quote: 'Feels brand new: the spin is back. Quick turnaround too.', firstName: 'Sam', suburb: 'Newtown', permission: true },
     ...(name === 'links' ? { reference: undefined } : {}),
   };
 }

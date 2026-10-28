@@ -46,6 +46,8 @@ export interface EmailPayload {
   paymentUrl?: string;
   backInPostBy?: string;
   reason?: string;
+  /** Review alert: whether the customer allowed quoting (SCRUM-33). */
+  permission?: boolean;
 }
 
 // ── Allow-list ────────────────────────────────────────────────────────────────
@@ -80,7 +82,7 @@ export async function enqueueOrderEmail(
   // Every parameter is typed: Postgres can't infer types in a SELECT list.
   await q.query(
     `INSERT INTO outbox (kind, order_id, template, recipient, payload, next_attempt_at, created_at, updated_at)
-     SELECT 'email', o.id, $2::text, CASE WHEN $2::text = 'alert_submitted' THEN $4::text ELSE o.email END,
+     SELECT 'email', o.id, $2::text, CASE WHEN $2::text IN ('alert_submitted', 'alert_review') THEN $4::text ELSE o.email END,
             $3::jsonb, $5::timestamptz, $5::timestamptz, $5::timestamptz
        FROM orders o WHERE o.id = $1::uuid`,
     [orderId, template, JSON.stringify(payload), ALERT_TO, now],
@@ -185,9 +187,12 @@ async function sendOne(deps: OutboxDeps, row: OutboxRow, now: Date): Promise<key
     [order.id],
   );
   const payload: EmailPayload = typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload;
+  // `permission` is bookkeeping for the review alert; the template reads it from the review itself.
+  const { permission: _permission, ...extras } = payload;
 
   let tokenId: string | null = null;
   let statusUrl: string | undefined;
+  let reviewUrl: string | undefined;
   if (NEEDS_STATUS_LINK.has(row.template)) {
     const token = newStatusToken();
     const { rows: t } = await db.query<{ id: string }>(
@@ -196,6 +201,15 @@ async function sendOne(deps: OutboxDeps, row: OutboxRow, now: Date): Promise<key
     );
     tokenId = String(t[0]!.id);
     statusUrl = `${settings.siteUrl}/order/status#${token}`;
+    reviewUrl = `${settings.siteUrl}/order/status?review=1#${token}`;
+  }
+  let review: TemplateContext['review'];
+  if (row.template === 'alert_review') {
+    const { rows: rv } = await db.query<{ quote: string; first_name: string; suburb: string; permission: boolean }>(
+      'SELECT quote, first_name, suburb, permission FROM reviews WHERE order_id = $1',
+      [order.id],
+    );
+    if (rv[0]) review = { quote: rv[0].quote, firstName: rv[0].first_name, suburb: rv[0].suburb, permission: rv[0].permission };
   }
 
   const ctx: TemplateContext = {
@@ -205,10 +219,12 @@ async function sendOne(deps: OutboxDeps, row: OutboxRow, now: Date): Promise<key
     firstName: firstName(order.name),
     paddles,
     statusUrl,
+    reviewUrl,
+    review,
     adminUrl: settings.adminUrl ? `${settings.adminUrl}/admin/orders/${order.reference}` : null,
     trackingNumber: order.tracking_number ?? undefined,
     arrivedOn: order.arrived_on ?? undefined,
-    ...payload,
+    ...extras,
   };
 
   try {
