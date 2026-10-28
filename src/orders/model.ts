@@ -89,3 +89,6 @@ export function linkIsLive(status: OrderStatus, statusChangedAt: Date, now: Date
 export function normaliseEmail(email: string): string {
   return email.trim().toLowerCase();
 }
+
+/** A$60 per paddle, both faces (decided 6 Oct 2026). Return postage is added by SCRUM-9. */
+export const PRICE_PER_PADDLE_CENTS = 6000;

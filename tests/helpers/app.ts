@@ -36,6 +36,7 @@ export async function makeApp(
     PUBLIC_SITE_ORIGIN: SITE,
     DATABASE_URL: 'postgres://u:p@localhost:5432/test',
     PHOTO_DIR: photoDir,
+    EMAIL_ALLOWLIST: 'attila@test.picklemypaddle.com',
     ...opts.env,
   });
   const keys = await loadAbuseKeys(db);

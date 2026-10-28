@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { ConfigError, describeConfig, loadConfig } from '../src/config.js';
 
 const dbUrl = 'postgres://pmp:' + 's3cretPassw0rd' + '@postgres:5432/pmp';
-const base = { APP_ENV: 'staging', PUBLIC_SITE_ORIGIN: 'http://home-server:8088', DATABASE_URL: dbUrl };
+const base = { APP_ENV: 'staging', PUBLIC_SITE_ORIGIN: 'http://home-server:8088', DATABASE_URL: dbUrl, EMAIL_ALLOWLIST: 'sales@picklemypaddle.com' };
+const resendKey = 're_' + 'd'.repeat(30);
 const testKey = 'sk_test_' + 'a'.repeat(24);
 const liveKey = 'sk_live_' + 'b'.repeat(24);
 const whsec = 'whsec_' + 'c'.repeat(24);
@@ -63,7 +64,7 @@ describe('loadConfig', () => {
     });
 
     it('never lets production relax a limit, only tighten it', () => {
-      const prod = { ...base, APP_ENV: 'production' };
+      const prod = { ...base, APP_ENV: 'production', RESEND_API_KEY: resendKey };
       expect(problems({ ...prod, ORDER_LIMIT_PER_IP_HOUR: '6' })[0]).toMatch(/^ORDER_LIMIT_PER_IP_HOUR can't be relaxed in production/);
       expect(problems({ ...prod, ORDER_MIN_FILL_SECONDS: '1' })[0]).toMatch(/^ORDER_MIN_FILL_SECONDS can't be relaxed in production/);
       expect(loadConfig({ ...prod, ORDER_LIMIT_PER_IP_HOUR: '2', ORDER_MIN_FILL_SECONDS: '5' }).ORDER_LIMIT_PER_IP_HOUR).toBe(2);
@@ -110,7 +111,7 @@ describe('loadConfig', () => {
   });
 
   it('refuses a test Stripe key in production', () => {
-    expect(problems({ ...base, APP_ENV: 'production', STRIPE_SECRET_KEY: testKey, STRIPE_WEBHOOK_SECRET: whsec }))
+    expect(problems({ ...base, APP_ENV: 'production', RESEND_API_KEY: resendKey, STRIPE_SECRET_KEY: testKey, STRIPE_WEBHOOK_SECRET: whsec }))
       .toEqual(['STRIPE_SECRET_KEY is a test-mode key, but APP_ENV is production']);
   });
 
@@ -126,6 +127,39 @@ describe('loadConfig', () => {
     expect(msgs).toContain('STRIPE_SECRET_KEY');
     expect(msgs).toContain('HUBSPOT_ACCESS_TOKEN');
     expect(msgs).not.toContain(bad);
+  });
+});
+
+describe('email settings (SCRUM-69)', () => {
+  it('refuses to start outside production without an allow-list', () => {
+    const { EMAIL_ALLOWLIST: _, ...noList } = base;
+    for (const APP_ENV of ['development', 'staging']) {
+      expect(problems({ ...noList, APP_ENV })[0]).toMatch(/^EMAIL_ALLOWLIST is required outside production/);
+    }
+  });
+
+  it('reads the allow-list lower-cased and refuses anything that is not an address', () => {
+    expect(loadConfig({ ...base, EMAIL_ALLOWLIST: ' Sales@PickleMyPaddle.com , me+x@example.org ' }).EMAIL_ALLOWLIST)
+      .toEqual(['sales@picklemypaddle.com', 'me+x@example.org']);
+    expect(problems({ ...base, EMAIL_ALLOWLIST: 'sales@picklemypaddle.com, nobody' })[0]).toMatch(/^EMAIL_ALLOWLIST must be email addresses/);
+  });
+
+  it('needs a Resend key in production but no allow-list', () => {
+    const { EMAIL_ALLOWLIST: _, ...noList } = base;
+    expect(problems({ ...noList, APP_ENV: 'production' })).toEqual(['RESEND_API_KEY is required in production (customer emails)']);
+    expect(loadConfig({ ...noList, APP_ENV: 'production', RESEND_API_KEY: resendKey }).APP_ENV).toBe('production');
+  });
+
+  it('never shows the Resend key, and shows the allow-list only as a count', () => {
+    const shown = describeConfig(loadConfig({ ...base, RESEND_API_KEY: resendKey }));
+    expect(shown.RESEND_API_KEY).toBe('[set]');
+    expect(shown.EMAIL_ALLOWLIST).toBe('1 address(es)');
+    expect(JSON.stringify(shown)).not.toContain('sales@');
+  });
+
+  it('checks the link bases', () => {
+    expect(problems({ ...base, SITE_URL: 'https://www.picklemypaddle.com/' })[0]).toMatch(/^SITE_URL must be an origin/);
+    expect(loadConfig({ ...base, ADMIN_URL: 'https://home-server.tail8bc7ae.ts.net:8445' }).ADMIN_URL).toBeDefined();
   });
 });
 

@@ -127,6 +127,37 @@ per-IP limit for its smoke traffic; **production refuses to start with any limit
 Outside production, orders from `@example.com` addresses are smoke tests (SCRUM-68): stored like
 any other, and deleted with their photos after 24 hours.
 
+## Order statuses (SCRUM-72, decided 26 Oct 2026)
+
+Submitted → Questions → Accepted → Paid → In queue → Re-gritted → Posted back → Completed, plus the
+end states Rejected, Withdrawn and Lapsed. `src/orders/transitions.ts` holds the only allowed moves
+and who may make each (admin, Stripe, or the automatic jobs); anything else is refused with 409.
+Rejected needs a reason (sent to the customer) and Posted back a tracking number (400 without).
+Outside production, admin may also mark an Accepted order paid ("Mark paid (test)"). Every change
+writes a history row with who made it, and queues its email in the same transaction. The admin
+pages that call this come with SCRUM-72.
+
+## Order emails (SCRUM-69)
+
+Sent through Resend behind an `EmailSender` interface (`src/email/sender.ts`), From
+`sales@picklemypaddle.com`, Reply-To `info@`. Customers get an email at the key moments only:
+Submitted, Accepted, In queue, Posted back and Rejected (Questions are written by hand from info@).
+Attila's new-order alert goes to sales@ and holds only the reference, paddle count and admin link.
+
+- **Outbox:** emails are queued in the database in the same transaction as the order or status
+  change, and a worker in the service sends them every 10 seconds, retrying after 1, 5 and 15 min,
+  1, 3, 6 and 12 h. Then the email is `failed` (shown on the admin page, with a retry). A Resend
+  outage never fails an order. A rejected request (bad key, invalid address) fails at once.
+- **No tokens at rest:** emails are rendered when sent, and each email with a status link mints
+  its own token for that send; only hashes are stored.
+- **Outside production** mail reaches only `EMAIL_ALLOWLIST` (plus-addressing allowed); everything
+  else is recorded as `suppressed`. Subjects start `[TEST]` and a banner says it's a test order.
+  Smoke-test orders send nothing. Without `RESEND_API_KEY` (your Mac) nothing leaves at all.
+- **Templates** (`src/email/templates.ts`) are written once and rendered as plain text and simple
+  HTML (no remote images or tracking). `pnpm preview:emails` writes every template to
+  `.email-previews/`; snapshot tests catch any unreviewed change. Facts not yet known are
+  `[To confirm: …]`, and **production refuses to start while any remain**.
+
 ## Database (SCRUM-64)
 
 PostgreSQL 18, one server per app, never shared. `DATABASE_URL` is required and secret. Versioned
@@ -160,6 +191,8 @@ All settings come from environment variables; see `.env.example` for the full li
   staging stops the service, so staging can never charge a real card. A test key in production
   stops it too.
 - **HubSpot** uses a separate test portal outside production.
+- **Email:** outside production the service won't start without `EMAIL_ALLOWLIST`; in production
+  it needs `RESEND_API_KEY` and ignores any allow-list. The allow-list is logged only as a count.
 - Secret values are never logged. Startup logs show them only as `[set]`.
 - The website only ever gets public values, such as the HubSpot portal ID. Private tokens stay
   in this service.

@@ -157,7 +157,7 @@ describe(`POST /api/orders (${DB_BACKEND})`, () => {
     expect(((await (await post(t, await orderForm(t))).json()) as Created).test).toBe(true);
     await t.close();
 
-    t = await makeApp({ env: { APP_ENV: 'production' } });
+    t = await makeApp({ env: { APP_ENV: 'production', RESEND_API_KEY: 're_testkey' } });
     const res = await post(t, await orderForm(t));
     expect(res.status).toBe(201);
     expect(((await res.json()) as Created).test).toBeUndefined();

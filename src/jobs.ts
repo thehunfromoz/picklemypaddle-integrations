@@ -2,9 +2,11 @@
  * Housekeeping that runs inside the service:
  *  - smoke-test orders (SCRUM-68) are deleted 24 hours after they were placed, photos included;
  *  - rate-limit history older than two days is deleted (SCRUM-67).
+ *  - the email outbox (SCRUM-69) is worked every 10 seconds.
  * Order retention for real orders is SCRUM-75, not here.
  */
 import type { Db } from './db/db.js';
+import { processOutbox, type OutboxDeps } from './email/outbox.js';
 import { pruneRateLimitEvents } from './orders/abuse.js';
 import type { PhotoStore } from './orders/photos.js';
 import { log, logError } from './log.js';
@@ -26,7 +28,20 @@ export async function deleteOldSmokeOrders(db: Db, photos: PhotoStore, now: Date
   return paths.orders;
 }
 
-export function startJobs(db: Db, photos: PhotoStore, now: () => Date = () => new Date()): () => void {
+export function startJobs(db: Db, photos: PhotoStore, outbox: OutboxDeps | null, now: () => Date = () => new Date()): () => void {
+  let sending = false;
+  const sendEmails = async () => {
+    if (!outbox || sending) return;
+    sending = true;
+    try {
+      const run = await processOutbox(outbox);
+      if (run.sent + run.retrying + run.failed + run.suppressed > 0) log('outbox_run', { ...run });
+    } catch (err) {
+      logError('job_failed', err, { job: 'outbox' });
+    } finally {
+      sending = false;
+    }
+  };
   const hourly = async () => {
     try {
       const n = await deleteOldSmokeOrders(db, photos, now());
@@ -44,7 +59,8 @@ export function startJobs(db: Db, photos: PhotoStore, now: () => Date = () => ne
   };
   void hourly();
   void daily();
-  const timers = [setInterval(hourly, 60 * 60 * 1000), setInterval(daily, 24 * 60 * 60 * 1000)];
+  void sendEmails();
+  const timers = [setInterval(hourly, 60 * 60 * 1000), setInterval(daily, 24 * 60 * 60 * 1000), setInterval(sendEmails, 10_000)];
   for (const t of timers) t.unref();
   return () => timers.forEach(clearInterval);
 }

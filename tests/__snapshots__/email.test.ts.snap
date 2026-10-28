@@ -1,0 +1,650 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`email templates > accepted (production) renders the same text and HTML as approved 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="en-AU"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><title>PMP-7K3QX accepted: how to pay and post your paddles</title></head>
+<body style="margin:0;padding:0;background:#FBFAF6;font-family:'Work Sans',Arial,Helvetica,sans-serif">
+<table role="presentation" width="100%" style="background:#FBFAF6;border-collapse:collapse"><tr><td style="padding:24px 12px">
+<table role="presentation" width="100%" style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;border-collapse:separate">
+<tr><td style="padding:20px 24px;border-bottom:4px solid #78A472"><span style="font-family:Sora,Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#4565A6">Pickle<span style="color:#3F6B3E">My</span>Paddle</span></td></tr>
+<tr><td style="padding:24px">
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Hi Sam,</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Good news: we’ve checked your photos and we can re-grit your paddles.</p>
+<table role="presentation" style="margin:0 0 16px;border-collapse:collapse"><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Re-grit</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">2 × A$60 (both faces)</td></tr><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Total</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">A$120 plus return postage</td></tr></table>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">[To confirm: payment link and how return postage is shown, added by SCRUM-9]</p>
+<h2 style="margin:24px 0 8px;font-size:17px;color:#1E2E52">Then post your paddles</h2>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">[To confirm: postal address and packing tips]</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">We’ll email you when they arrive, and they’ll be back in the post within 10 business days of arriving.</p>
+<p style="margin:8px 0 24px"><a href="https://www.picklemypaddle.com/order/status#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT" style="display:inline-block;background:#4565A6;color:#ffffff;text-decoration:none;font-weight:600;font-size:16px;padding:12px 20px;border-radius:8px">See your order’s progress</a></p>
+<p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">This link is private to you: anyone who has it can see your order’s progress, but not your name or address. If you lose it, use “Email me my links” on the status page.</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Thanks,<br>PickleMyPaddle</p>
+<p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.<br>https://www.picklemypaddle.com<br>Questions? Just reply to this email.<br>You’re getting this because an order was placed with this email address.</p>
+</td></tr></table>
+</td></tr></table>
+</body></html>
+",
+  "subject": "PMP-7K3QX accepted: how to pay and post your paddles",
+  "text": "Hi Sam,
+
+Good news: we’ve checked your photos and we can re-grit your paddles.
+
+  Re-grit: 2 × A$60 (both faces)
+  Total: A$120 plus return postage
+
+[To confirm: payment link and how return postage is shown, added by SCRUM-9]
+
+THEN POST YOUR PADDLES
+
+[To confirm: postal address and packing tips]
+
+We’ll email you when they arrive, and they’ll be back in the post within 10 business days of arriving.
+
+See your order’s progress:
+https://www.picklemypaddle.com/order/status#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT
+
+This link is private to you: anyone who has it can see your order’s progress, but not your name or address. If you lose it, use “Email me my links” on the status page.
+
+Thanks,
+PickleMyPaddle
+
+PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.
+https://www.picklemypaddle.com
+Questions? Just reply to this email.
+You’re getting this because an order was placed with this email address.
+",
+}
+`;
+
+exports[`email templates > accepted (staging) renders the same text and HTML as approved 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="en-AU"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><title>[TEST] PMP-7K3QX accepted: how to pay and post your paddles</title></head>
+<body style="margin:0;padding:0;background:#FBFAF6;font-family:'Work Sans',Arial,Helvetica,sans-serif">
+<table role="presentation" width="100%" style="background:#FBFAF6;border-collapse:collapse"><tr><td style="padding:24px 12px">
+<table role="presentation" width="100%" style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;border-collapse:separate">
+<tr><td style="padding:20px 24px;border-bottom:4px solid #78A472"><span style="font-family:Sora,Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#4565A6">Pickle<span style="color:#3F6B3E">My</span>Paddle</span></td></tr>
+<tr><td style="padding:24px">
+<blockquote style="margin:0 0 16px;padding:8px 16px;border-left:4px solid #78A472;color:#1E2E52;font-size:16px;line-height:1.5">TEST ORDER: this email comes from the PickleMyPaddle staging site. Nothing is charged or posted.</blockquote>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Hi Sam,</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Good news: we’ve checked your photos and we can re-grit your paddles.</p>
+<table role="presentation" style="margin:0 0 16px;border-collapse:collapse"><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Re-grit</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">2 × A$60 (both faces)</td></tr><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Total</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">A$120 plus return postage</td></tr></table>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">[To confirm: payment link and how return postage is shown, added by SCRUM-9]</p>
+<h2 style="margin:24px 0 8px;font-size:17px;color:#1E2E52">Then post your paddles</h2>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">[To confirm: postal address and packing tips]</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">We’ll email you when they arrive, and they’ll be back in the post within 10 business days of arriving.</p>
+<p style="margin:8px 0 24px"><a href="http://home-server:8088/order/status#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT" style="display:inline-block;background:#4565A6;color:#ffffff;text-decoration:none;font-weight:600;font-size:16px;padding:12px 20px;border-radius:8px">See your order’s progress</a></p>
+<p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">This link is private to you: anyone who has it can see your order’s progress, but not your name or address. If you lose it, use “Email me my links” on the status page.</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Thanks,<br>PickleMyPaddle</p>
+<p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.<br>http://home-server:8088<br>Questions? Just reply to this email.<br>You’re getting this because an order was placed with this email address.</p>
+</td></tr></table>
+</td></tr></table>
+</body></html>
+",
+  "subject": "[TEST] PMP-7K3QX accepted: how to pay and post your paddles",
+  "text": "  > TEST ORDER: this email comes from the PickleMyPaddle staging site. Nothing is charged or posted.
+
+Hi Sam,
+
+Good news: we’ve checked your photos and we can re-grit your paddles.
+
+  Re-grit: 2 × A$60 (both faces)
+  Total: A$120 plus return postage
+
+[To confirm: payment link and how return postage is shown, added by SCRUM-9]
+
+THEN POST YOUR PADDLES
+
+[To confirm: postal address and packing tips]
+
+We’ll email you when they arrive, and they’ll be back in the post within 10 business days of arriving.
+
+See your order’s progress:
+http://home-server:8088/order/status#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT
+
+This link is private to you: anyone who has it can see your order’s progress, but not your name or address. If you lose it, use “Email me my links” on the status page.
+
+Thanks,
+PickleMyPaddle
+
+PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.
+http://home-server:8088
+Questions? Just reply to this email.
+You’re getting this because an order was placed with this email address.
+",
+}
+`;
+
+exports[`email templates > alert_submitted (production) renders the same text and HTML as approved 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="en-AU"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><title>New order PMP-7K3QX (2 paddles)</title></head>
+<body style="margin:0;padding:0;background:#FBFAF6;font-family:'Work Sans',Arial,Helvetica,sans-serif">
+<table role="presentation" width="100%" style="background:#FBFAF6;border-collapse:collapse"><tr><td style="padding:24px 12px">
+<table role="presentation" width="100%" style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;border-collapse:separate">
+<tr><td style="padding:20px 24px;border-bottom:4px solid #78A472"><span style="font-family:Sora,Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#4565A6">Pickle<span style="color:#3F6B3E">My</span>Paddle</span></td></tr>
+<tr><td style="padding:24px">
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">New order PMP-7K3QX: 2 paddles to review. Promise: a reply within 1 business day.</p>
+<p style="margin:8px 0 24px"><a href="https://pmp-prod.tail8bc7ae.ts.net/admin/orders/PMP-7K3QX" style="display:inline-block;background:#4565A6;color:#ffffff;text-decoration:none;font-weight:600;font-size:16px;padding:12px 20px;border-radius:8px">Open it in admin</a></p>
+<p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.<br>https://www.picklemypaddle.com</p>
+</td></tr></table>
+</td></tr></table>
+</body></html>
+",
+  "subject": "New order PMP-7K3QX (2 paddles)",
+  "text": "New order PMP-7K3QX: 2 paddles to review. Promise: a reply within 1 business day.
+
+Open it in admin:
+https://pmp-prod.tail8bc7ae.ts.net/admin/orders/PMP-7K3QX
+
+PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.
+https://www.picklemypaddle.com
+",
+}
+`;
+
+exports[`email templates > alert_submitted (staging) renders the same text and HTML as approved 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="en-AU"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><title>[TEST] New order PMP-7K3QX (2 paddles)</title></head>
+<body style="margin:0;padding:0;background:#FBFAF6;font-family:'Work Sans',Arial,Helvetica,sans-serif">
+<table role="presentation" width="100%" style="background:#FBFAF6;border-collapse:collapse"><tr><td style="padding:24px 12px">
+<table role="presentation" width="100%" style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;border-collapse:separate">
+<tr><td style="padding:20px 24px;border-bottom:4px solid #78A472"><span style="font-family:Sora,Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#4565A6">Pickle<span style="color:#3F6B3E">My</span>Paddle</span></td></tr>
+<tr><td style="padding:24px">
+<blockquote style="margin:0 0 16px;padding:8px 16px;border-left:4px solid #78A472;color:#1E2E52;font-size:16px;line-height:1.5">TEST ORDER: this email comes from the PickleMyPaddle staging site. Nothing is charged or posted.</blockquote>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">New order PMP-7K3QX: 2 paddles to review. Promise: a reply within 1 business day.</p>
+<p style="margin:8px 0 24px"><a href="https://pmp-prod.tail8bc7ae.ts.net/admin/orders/PMP-7K3QX" style="display:inline-block;background:#4565A6;color:#ffffff;text-decoration:none;font-weight:600;font-size:16px;padding:12px 20px;border-radius:8px">Open it in admin</a></p>
+<p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.<br>http://home-server:8088</p>
+</td></tr></table>
+</td></tr></table>
+</body></html>
+",
+  "subject": "[TEST] New order PMP-7K3QX (2 paddles)",
+  "text": "  > TEST ORDER: this email comes from the PickleMyPaddle staging site. Nothing is charged or posted.
+
+New order PMP-7K3QX: 2 paddles to review. Promise: a reply within 1 business day.
+
+Open it in admin:
+https://pmp-prod.tail8bc7ae.ts.net/admin/orders/PMP-7K3QX
+
+PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.
+http://home-server:8088
+",
+}
+`;
+
+exports[`email templates > customer_submitted (production) renders the same text and HTML as approved 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="en-AU"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><title>We’ve got your order PMP-7K3QX</title></head>
+<body style="margin:0;padding:0;background:#FBFAF6;font-family:'Work Sans',Arial,Helvetica,sans-serif">
+<table role="presentation" width="100%" style="background:#FBFAF6;border-collapse:collapse"><tr><td style="padding:24px 12px">
+<table role="presentation" width="100%" style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;border-collapse:separate">
+<tr><td style="padding:20px 24px;border-bottom:4px solid #78A472"><span style="font-family:Sora,Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#4565A6">Pickle<span style="color:#3F6B3E">My</span>Paddle</span></td></tr>
+<tr><td style="padding:24px">
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Hi Sam,</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Thanks for your order. Your reference is PMP-7K3QX.</p>
+<h2 style="margin:24px 0 8px;font-size:17px;color:#1E2E52">Your paddles</h2>
+<ul style="margin:0 0 16px;padding-left:20px;color:#1E2E52"><li style="margin:0 0 4px;font-size:16px;line-height:1.5">Selkirk Vanguard Power Air</li><li style="margin:0 0 4px;font-size:16px;line-height:1.5">JOOLA</li></ul>
+<h2 style="margin:24px 0 8px;font-size:17px;color:#1E2E52">What happens next</h2>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">We’ll look at your photos and reply within 1 business day, either to confirm we can re-grit your paddles or with a question. There’s nothing to pay yet.</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Once we’ve accepted your order, we’ll email the price, how to pay and where to post your paddles.</p>
+<p style="margin:8px 0 24px"><a href="https://www.picklemypaddle.com/order/status#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT" style="display:inline-block;background:#4565A6;color:#ffffff;text-decoration:none;font-weight:600;font-size:16px;padding:12px 20px;border-radius:8px">See your order’s progress</a></p>
+<p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">This link is private to you: anyone who has it can see your order’s progress, but not your name or address. If you lose it, use “Email me my links” on the status page.</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">A reminder: re-gritted paddles aren’t allowed in sanctioned tournaments, so keep these for social and club play.</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Thanks,<br>PickleMyPaddle</p>
+<p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.<br>https://www.picklemypaddle.com<br>Questions? Just reply to this email.<br>You’re getting this because an order was placed with this email address.</p>
+</td></tr></table>
+</td></tr></table>
+</body></html>
+",
+  "subject": "We’ve got your order PMP-7K3QX",
+  "text": "Hi Sam,
+
+Thanks for your order. Your reference is PMP-7K3QX.
+
+YOUR PADDLES
+
+  - Selkirk Vanguard Power Air
+  - JOOLA
+
+WHAT HAPPENS NEXT
+
+We’ll look at your photos and reply within 1 business day, either to confirm we can re-grit your paddles or with a question. There’s nothing to pay yet.
+
+Once we’ve accepted your order, we’ll email the price, how to pay and where to post your paddles.
+
+See your order’s progress:
+https://www.picklemypaddle.com/order/status#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT
+
+This link is private to you: anyone who has it can see your order’s progress, but not your name or address. If you lose it, use “Email me my links” on the status page.
+
+A reminder: re-gritted paddles aren’t allowed in sanctioned tournaments, so keep these for social and club play.
+
+Thanks,
+PickleMyPaddle
+
+PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.
+https://www.picklemypaddle.com
+Questions? Just reply to this email.
+You’re getting this because an order was placed with this email address.
+",
+}
+`;
+
+exports[`email templates > customer_submitted (staging) renders the same text and HTML as approved 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="en-AU"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><title>[TEST] We’ve got your order PMP-7K3QX</title></head>
+<body style="margin:0;padding:0;background:#FBFAF6;font-family:'Work Sans',Arial,Helvetica,sans-serif">
+<table role="presentation" width="100%" style="background:#FBFAF6;border-collapse:collapse"><tr><td style="padding:24px 12px">
+<table role="presentation" width="100%" style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;border-collapse:separate">
+<tr><td style="padding:20px 24px;border-bottom:4px solid #78A472"><span style="font-family:Sora,Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#4565A6">Pickle<span style="color:#3F6B3E">My</span>Paddle</span></td></tr>
+<tr><td style="padding:24px">
+<blockquote style="margin:0 0 16px;padding:8px 16px;border-left:4px solid #78A472;color:#1E2E52;font-size:16px;line-height:1.5">TEST ORDER: this email comes from the PickleMyPaddle staging site. Nothing is charged or posted.</blockquote>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Hi Sam,</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Thanks for your order. Your reference is PMP-7K3QX.</p>
+<h2 style="margin:24px 0 8px;font-size:17px;color:#1E2E52">Your paddles</h2>
+<ul style="margin:0 0 16px;padding-left:20px;color:#1E2E52"><li style="margin:0 0 4px;font-size:16px;line-height:1.5">Selkirk Vanguard Power Air</li><li style="margin:0 0 4px;font-size:16px;line-height:1.5">JOOLA</li></ul>
+<h2 style="margin:24px 0 8px;font-size:17px;color:#1E2E52">What happens next</h2>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">We’ll look at your photos and reply within 1 business day, either to confirm we can re-grit your paddles or with a question. There’s nothing to pay yet.</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Once we’ve accepted your order, we’ll email the price, how to pay and where to post your paddles.</p>
+<p style="margin:8px 0 24px"><a href="http://home-server:8088/order/status#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT" style="display:inline-block;background:#4565A6;color:#ffffff;text-decoration:none;font-weight:600;font-size:16px;padding:12px 20px;border-radius:8px">See your order’s progress</a></p>
+<p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">This link is private to you: anyone who has it can see your order’s progress, but not your name or address. If you lose it, use “Email me my links” on the status page.</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">A reminder: re-gritted paddles aren’t allowed in sanctioned tournaments, so keep these for social and club play.</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Thanks,<br>PickleMyPaddle</p>
+<p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.<br>http://home-server:8088<br>Questions? Just reply to this email.<br>You’re getting this because an order was placed with this email address.</p>
+</td></tr></table>
+</td></tr></table>
+</body></html>
+",
+  "subject": "[TEST] We’ve got your order PMP-7K3QX",
+  "text": "  > TEST ORDER: this email comes from the PickleMyPaddle staging site. Nothing is charged or posted.
+
+Hi Sam,
+
+Thanks for your order. Your reference is PMP-7K3QX.
+
+YOUR PADDLES
+
+  - Selkirk Vanguard Power Air
+  - JOOLA
+
+WHAT HAPPENS NEXT
+
+We’ll look at your photos and reply within 1 business day, either to confirm we can re-grit your paddles or with a question. There’s nothing to pay yet.
+
+Once we’ve accepted your order, we’ll email the price, how to pay and where to post your paddles.
+
+See your order’s progress:
+http://home-server:8088/order/status#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT
+
+This link is private to you: anyone who has it can see your order’s progress, but not your name or address. If you lose it, use “Email me my links” on the status page.
+
+A reminder: re-gritted paddles aren’t allowed in sanctioned tournaments, so keep these for social and club play.
+
+Thanks,
+PickleMyPaddle
+
+PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.
+http://home-server:8088
+Questions? Just reply to this email.
+You’re getting this because an order was placed with this email address.
+",
+}
+`;
+
+exports[`email templates > in_queue (production) renders the same text and HTML as approved 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="en-AU"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><title>Your paddles arrived (PMP-7K3QX)</title></head>
+<body style="margin:0;padding:0;background:#FBFAF6;font-family:'Work Sans',Arial,Helvetica,sans-serif">
+<table role="presentation" width="100%" style="background:#FBFAF6;border-collapse:collapse"><tr><td style="padding:24px 12px">
+<table role="presentation" width="100%" style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;border-collapse:separate">
+<tr><td style="padding:20px 24px;border-bottom:4px solid #78A472"><span style="font-family:Sora,Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#4565A6">Pickle<span style="color:#3F6B3E">My</span>Paddle</span></td></tr>
+<tr><td style="padding:24px">
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Hi Sam,</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Your paddles arrived on Monday 2 November 2026 and are now in the re-grit queue.</p>
+<table role="presentation" style="margin:0 0 16px;border-collapse:collapse"><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Back in the post by</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">Monday 16 November 2026</td></tr></table>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Your status page shows where you are in the queue, and we’ll email you again with a tracking number when we post them back.</p>
+<p style="margin:8px 0 24px"><a href="https://www.picklemypaddle.com/order/status#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT" style="display:inline-block;background:#4565A6;color:#ffffff;text-decoration:none;font-weight:600;font-size:16px;padding:12px 20px;border-radius:8px">See your order’s progress</a></p>
+<p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">This link is private to you: anyone who has it can see your order’s progress, but not your name or address. If you lose it, use “Email me my links” on the status page.</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Thanks,<br>PickleMyPaddle</p>
+<p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.<br>https://www.picklemypaddle.com<br>Questions? Just reply to this email.<br>You’re getting this because an order was placed with this email address.</p>
+</td></tr></table>
+</td></tr></table>
+</body></html>
+",
+  "subject": "Your paddles arrived (PMP-7K3QX)",
+  "text": "Hi Sam,
+
+Your paddles arrived on Monday 2 November 2026 and are now in the re-grit queue.
+
+  Back in the post by: Monday 16 November 2026
+
+Your status page shows where you are in the queue, and we’ll email you again with a tracking number when we post them back.
+
+See your order’s progress:
+https://www.picklemypaddle.com/order/status#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT
+
+This link is private to you: anyone who has it can see your order’s progress, but not your name or address. If you lose it, use “Email me my links” on the status page.
+
+Thanks,
+PickleMyPaddle
+
+PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.
+https://www.picklemypaddle.com
+Questions? Just reply to this email.
+You’re getting this because an order was placed with this email address.
+",
+}
+`;
+
+exports[`email templates > in_queue (staging) renders the same text and HTML as approved 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="en-AU"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><title>[TEST] Your paddles arrived (PMP-7K3QX)</title></head>
+<body style="margin:0;padding:0;background:#FBFAF6;font-family:'Work Sans',Arial,Helvetica,sans-serif">
+<table role="presentation" width="100%" style="background:#FBFAF6;border-collapse:collapse"><tr><td style="padding:24px 12px">
+<table role="presentation" width="100%" style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;border-collapse:separate">
+<tr><td style="padding:20px 24px;border-bottom:4px solid #78A472"><span style="font-family:Sora,Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#4565A6">Pickle<span style="color:#3F6B3E">My</span>Paddle</span></td></tr>
+<tr><td style="padding:24px">
+<blockquote style="margin:0 0 16px;padding:8px 16px;border-left:4px solid #78A472;color:#1E2E52;font-size:16px;line-height:1.5">TEST ORDER: this email comes from the PickleMyPaddle staging site. Nothing is charged or posted.</blockquote>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Hi Sam,</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Your paddles arrived on Monday 2 November 2026 and are now in the re-grit queue.</p>
+<table role="presentation" style="margin:0 0 16px;border-collapse:collapse"><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Back in the post by</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">Monday 16 November 2026</td></tr></table>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Your status page shows where you are in the queue, and we’ll email you again with a tracking number when we post them back.</p>
+<p style="margin:8px 0 24px"><a href="http://home-server:8088/order/status#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT" style="display:inline-block;background:#4565A6;color:#ffffff;text-decoration:none;font-weight:600;font-size:16px;padding:12px 20px;border-radius:8px">See your order’s progress</a></p>
+<p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">This link is private to you: anyone who has it can see your order’s progress, but not your name or address. If you lose it, use “Email me my links” on the status page.</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Thanks,<br>PickleMyPaddle</p>
+<p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.<br>http://home-server:8088<br>Questions? Just reply to this email.<br>You’re getting this because an order was placed with this email address.</p>
+</td></tr></table>
+</td></tr></table>
+</body></html>
+",
+  "subject": "[TEST] Your paddles arrived (PMP-7K3QX)",
+  "text": "  > TEST ORDER: this email comes from the PickleMyPaddle staging site. Nothing is charged or posted.
+
+Hi Sam,
+
+Your paddles arrived on Monday 2 November 2026 and are now in the re-grit queue.
+
+  Back in the post by: Monday 16 November 2026
+
+Your status page shows where you are in the queue, and we’ll email you again with a tracking number when we post them back.
+
+See your order’s progress:
+http://home-server:8088/order/status#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT
+
+This link is private to you: anyone who has it can see your order’s progress, but not your name or address. If you lose it, use “Email me my links” on the status page.
+
+Thanks,
+PickleMyPaddle
+
+PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.
+http://home-server:8088
+Questions? Just reply to this email.
+You’re getting this because an order was placed with this email address.
+",
+}
+`;
+
+exports[`email templates > links (production) renders the same text and HTML as approved 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="en-AU"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><title>Your PickleMyPaddle order links</title></head>
+<body style="margin:0;padding:0;background:#FBFAF6;font-family:'Work Sans',Arial,Helvetica,sans-serif">
+<table role="presentation" width="100%" style="background:#FBFAF6;border-collapse:collapse"><tr><td style="padding:24px 12px">
+<table role="presentation" width="100%" style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;border-collapse:separate">
+<tr><td style="padding:20px 24px;border-bottom:4px solid #78A472"><span style="font-family:Sora,Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#4565A6">Pickle<span style="color:#3F6B3E">My</span>Paddle</span></td></tr>
+<tr><td style="padding:24px">
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Hi,</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">You (or someone using your email address) asked for links to your orders. Here they are:</p>
+<p style="margin:8px 0 24px"><a href="https://www.picklemypaddle.com/order/status#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT" style="display:inline-block;background:#4565A6;color:#ffffff;text-decoration:none;font-weight:600;font-size:16px;padding:12px 20px;border-radius:8px">Order PMP-7K3QX</a></p>
+<p style="margin:8px 0 24px"><a href="https://www.picklemypaddle.com/order/status#UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU" style="display:inline-block;background:#4565A6;color:#ffffff;text-decoration:none;font-weight:600;font-size:16px;padding:12px 20px;border-radius:8px">Order PMP-9ABCD</a></p>
+<p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">Older links for these orders no longer work. If you didn’t ask for this, you can ignore this email.</p>
+<p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.<br>https://www.picklemypaddle.com<br>Questions? Just reply to this email.<br>You’re getting this because an order was placed with this email address.</p>
+</td></tr></table>
+</td></tr></table>
+</body></html>
+",
+  "subject": "Your PickleMyPaddle order links",
+  "text": "Hi,
+
+You (or someone using your email address) asked for links to your orders. Here they are:
+
+Order PMP-7K3QX:
+https://www.picklemypaddle.com/order/status#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT
+
+Order PMP-9ABCD:
+https://www.picklemypaddle.com/order/status#UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU
+
+Older links for these orders no longer work. If you didn’t ask for this, you can ignore this email.
+
+PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.
+https://www.picklemypaddle.com
+Questions? Just reply to this email.
+You’re getting this because an order was placed with this email address.
+",
+}
+`;
+
+exports[`email templates > links (staging) renders the same text and HTML as approved 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="en-AU"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><title>[TEST] Your PickleMyPaddle order links</title></head>
+<body style="margin:0;padding:0;background:#FBFAF6;font-family:'Work Sans',Arial,Helvetica,sans-serif">
+<table role="presentation" width="100%" style="background:#FBFAF6;border-collapse:collapse"><tr><td style="padding:24px 12px">
+<table role="presentation" width="100%" style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;border-collapse:separate">
+<tr><td style="padding:20px 24px;border-bottom:4px solid #78A472"><span style="font-family:Sora,Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#4565A6">Pickle<span style="color:#3F6B3E">My</span>Paddle</span></td></tr>
+<tr><td style="padding:24px">
+<blockquote style="margin:0 0 16px;padding:8px 16px;border-left:4px solid #78A472;color:#1E2E52;font-size:16px;line-height:1.5">TEST ORDER: this email comes from the PickleMyPaddle staging site. Nothing is charged or posted.</blockquote>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Hi,</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">You (or someone using your email address) asked for links to your orders. Here they are:</p>
+<p style="margin:8px 0 24px"><a href="http://home-server:8088/order/status#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT" style="display:inline-block;background:#4565A6;color:#ffffff;text-decoration:none;font-weight:600;font-size:16px;padding:12px 20px;border-radius:8px">Order PMP-7K3QX</a></p>
+<p style="margin:8px 0 24px"><a href="http://home-server:8088/order/status#UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU" style="display:inline-block;background:#4565A6;color:#ffffff;text-decoration:none;font-weight:600;font-size:16px;padding:12px 20px;border-radius:8px">Order PMP-9ABCD</a></p>
+<p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">Older links for these orders no longer work. If you didn’t ask for this, you can ignore this email.</p>
+<p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.<br>http://home-server:8088<br>Questions? Just reply to this email.<br>You’re getting this because an order was placed with this email address.</p>
+</td></tr></table>
+</td></tr></table>
+</body></html>
+",
+  "subject": "[TEST] Your PickleMyPaddle order links",
+  "text": "  > TEST ORDER: this email comes from the PickleMyPaddle staging site. Nothing is charged or posted.
+
+Hi,
+
+You (or someone using your email address) asked for links to your orders. Here they are:
+
+Order PMP-7K3QX:
+http://home-server:8088/order/status#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT
+
+Order PMP-9ABCD:
+http://home-server:8088/order/status#UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU
+
+Older links for these orders no longer work. If you didn’t ask for this, you can ignore this email.
+
+PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.
+http://home-server:8088
+Questions? Just reply to this email.
+You’re getting this because an order was placed with this email address.
+",
+}
+`;
+
+exports[`email templates > posted_back (production) renders the same text and HTML as approved 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="en-AU"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><title>Your paddles are on the way back (PMP-7K3QX)</title></head>
+<body style="margin:0;padding:0;background:#FBFAF6;font-family:'Work Sans',Arial,Helvetica,sans-serif">
+<table role="presentation" width="100%" style="background:#FBFAF6;border-collapse:collapse"><tr><td style="padding:24px 12px">
+<table role="presentation" width="100%" style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;border-collapse:separate">
+<tr><td style="padding:20px 24px;border-bottom:4px solid #78A472"><span style="font-family:Sora,Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#4565A6">Pickle<span style="color:#3F6B3E">My</span>Paddle</span></td></tr>
+<tr><td style="padding:24px">
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Hi Sam,</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Your paddles have been re-gritted and posted back to you.</p>
+<table role="presentation" style="margin:0 0 16px;border-collapse:collapse"><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Tracking number</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">33XYZ0123456789</td></tr></table>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Enjoy the fresh grit. A reminder: re-gritted paddles aren’t allowed in sanctioned tournaments, so keep these for social and club play.</p>
+<p style="margin:8px 0 24px"><a href="https://www.picklemypaddle.com/order/status#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT" style="display:inline-block;background:#4565A6;color:#ffffff;text-decoration:none;font-weight:600;font-size:16px;padding:12px 20px;border-radius:8px">See your order’s progress</a></p>
+<p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">This link is private to you: anyone who has it can see your order’s progress, but not your name or address. If you lose it, use “Email me my links” on the status page.</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Thanks,<br>PickleMyPaddle</p>
+<p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.<br>https://www.picklemypaddle.com<br>Questions? Just reply to this email.<br>You’re getting this because an order was placed with this email address.</p>
+</td></tr></table>
+</td></tr></table>
+</body></html>
+",
+  "subject": "Your paddles are on the way back (PMP-7K3QX)",
+  "text": "Hi Sam,
+
+Your paddles have been re-gritted and posted back to you.
+
+  Tracking number: 33XYZ0123456789
+
+Enjoy the fresh grit. A reminder: re-gritted paddles aren’t allowed in sanctioned tournaments, so keep these for social and club play.
+
+See your order’s progress:
+https://www.picklemypaddle.com/order/status#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT
+
+This link is private to you: anyone who has it can see your order’s progress, but not your name or address. If you lose it, use “Email me my links” on the status page.
+
+Thanks,
+PickleMyPaddle
+
+PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.
+https://www.picklemypaddle.com
+Questions? Just reply to this email.
+You’re getting this because an order was placed with this email address.
+",
+}
+`;
+
+exports[`email templates > posted_back (staging) renders the same text and HTML as approved 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="en-AU"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><title>[TEST] Your paddles are on the way back (PMP-7K3QX)</title></head>
+<body style="margin:0;padding:0;background:#FBFAF6;font-family:'Work Sans',Arial,Helvetica,sans-serif">
+<table role="presentation" width="100%" style="background:#FBFAF6;border-collapse:collapse"><tr><td style="padding:24px 12px">
+<table role="presentation" width="100%" style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;border-collapse:separate">
+<tr><td style="padding:20px 24px;border-bottom:4px solid #78A472"><span style="font-family:Sora,Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#4565A6">Pickle<span style="color:#3F6B3E">My</span>Paddle</span></td></tr>
+<tr><td style="padding:24px">
+<blockquote style="margin:0 0 16px;padding:8px 16px;border-left:4px solid #78A472;color:#1E2E52;font-size:16px;line-height:1.5">TEST ORDER: this email comes from the PickleMyPaddle staging site. Nothing is charged or posted.</blockquote>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Hi Sam,</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Your paddles have been re-gritted and posted back to you.</p>
+<table role="presentation" style="margin:0 0 16px;border-collapse:collapse"><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Tracking number</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">33XYZ0123456789</td></tr></table>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Enjoy the fresh grit. A reminder: re-gritted paddles aren’t allowed in sanctioned tournaments, so keep these for social and club play.</p>
+<p style="margin:8px 0 24px"><a href="http://home-server:8088/order/status#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT" style="display:inline-block;background:#4565A6;color:#ffffff;text-decoration:none;font-weight:600;font-size:16px;padding:12px 20px;border-radius:8px">See your order’s progress</a></p>
+<p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">This link is private to you: anyone who has it can see your order’s progress, but not your name or address. If you lose it, use “Email me my links” on the status page.</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Thanks,<br>PickleMyPaddle</p>
+<p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.<br>http://home-server:8088<br>Questions? Just reply to this email.<br>You’re getting this because an order was placed with this email address.</p>
+</td></tr></table>
+</td></tr></table>
+</body></html>
+",
+  "subject": "[TEST] Your paddles are on the way back (PMP-7K3QX)",
+  "text": "  > TEST ORDER: this email comes from the PickleMyPaddle staging site. Nothing is charged or posted.
+
+Hi Sam,
+
+Your paddles have been re-gritted and posted back to you.
+
+  Tracking number: 33XYZ0123456789
+
+Enjoy the fresh grit. A reminder: re-gritted paddles aren’t allowed in sanctioned tournaments, so keep these for social and club play.
+
+See your order’s progress:
+http://home-server:8088/order/status#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT
+
+This link is private to you: anyone who has it can see your order’s progress, but not your name or address. If you lose it, use “Email me my links” on the status page.
+
+Thanks,
+PickleMyPaddle
+
+PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.
+http://home-server:8088
+Questions? Just reply to this email.
+You’re getting this because an order was placed with this email address.
+",
+}
+`;
+
+exports[`email templates > rejected (production) renders the same text and HTML as approved 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="en-AU"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><title>About your order PMP-7K3QX</title></head>
+<body style="margin:0;padding:0;background:#FBFAF6;font-family:'Work Sans',Arial,Helvetica,sans-serif">
+<table role="presentation" width="100%" style="background:#FBFAF6;border-collapse:collapse"><tr><td style="padding:24px 12px">
+<table role="presentation" width="100%" style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;border-collapse:separate">
+<tr><td style="padding:20px 24px;border-bottom:4px solid #78A472"><span style="font-family:Sora,Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#4565A6">Pickle<span style="color:#3F6B3E">My</span>Paddle</span></td></tr>
+<tr><td style="padding:24px">
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Hi Sam,</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Thanks for sending photos of your paddles. Unfortunately we can’t re-grit them:</p>
+<blockquote style="margin:0 0 16px;padding:8px 16px;border-left:4px solid #78A472;color:#1E2E52;font-size:16px;line-height:1.5">The face has a crack near the edge guard, and re-gritting would make it worse.</blockquote>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">You haven’t been charged anything. If you have questions, or think we’ve got it wrong, just reply to this email.</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Thanks,<br>PickleMyPaddle</p>
+<p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.<br>https://www.picklemypaddle.com<br>Questions? Just reply to this email.<br>You’re getting this because an order was placed with this email address.</p>
+</td></tr></table>
+</td></tr></table>
+</body></html>
+",
+  "subject": "About your order PMP-7K3QX",
+  "text": "Hi Sam,
+
+Thanks for sending photos of your paddles. Unfortunately we can’t re-grit them:
+
+  > The face has a crack near the edge guard, and re-gritting would make it worse.
+
+You haven’t been charged anything. If you have questions, or think we’ve got it wrong, just reply to this email.
+
+Thanks,
+PickleMyPaddle
+
+PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.
+https://www.picklemypaddle.com
+Questions? Just reply to this email.
+You’re getting this because an order was placed with this email address.
+",
+}
+`;
+
+exports[`email templates > rejected (staging) renders the same text and HTML as approved 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="en-AU"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><title>[TEST] About your order PMP-7K3QX</title></head>
+<body style="margin:0;padding:0;background:#FBFAF6;font-family:'Work Sans',Arial,Helvetica,sans-serif">
+<table role="presentation" width="100%" style="background:#FBFAF6;border-collapse:collapse"><tr><td style="padding:24px 12px">
+<table role="presentation" width="100%" style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;border-collapse:separate">
+<tr><td style="padding:20px 24px;border-bottom:4px solid #78A472"><span style="font-family:Sora,Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#4565A6">Pickle<span style="color:#3F6B3E">My</span>Paddle</span></td></tr>
+<tr><td style="padding:24px">
+<blockquote style="margin:0 0 16px;padding:8px 16px;border-left:4px solid #78A472;color:#1E2E52;font-size:16px;line-height:1.5">TEST ORDER: this email comes from the PickleMyPaddle staging site. Nothing is charged or posted.</blockquote>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Hi Sam,</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Thanks for sending photos of your paddles. Unfortunately we can’t re-grit them:</p>
+<blockquote style="margin:0 0 16px;padding:8px 16px;border-left:4px solid #78A472;color:#1E2E52;font-size:16px;line-height:1.5">The face has a crack near the edge guard, and re-gritting would make it worse.</blockquote>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">You haven’t been charged anything. If you have questions, or think we’ve got it wrong, just reply to this email.</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Thanks,<br>PickleMyPaddle</p>
+<p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.<br>http://home-server:8088<br>Questions? Just reply to this email.<br>You’re getting this because an order was placed with this email address.</p>
+</td></tr></table>
+</td></tr></table>
+</body></html>
+",
+  "subject": "[TEST] About your order PMP-7K3QX",
+  "text": "  > TEST ORDER: this email comes from the PickleMyPaddle staging site. Nothing is charged or posted.
+
+Hi Sam,
+
+Thanks for sending photos of your paddles. Unfortunately we can’t re-grit them:
+
+  > The face has a crack near the edge guard, and re-gritting would make it worse.
+
+You haven’t been charged anything. If you have questions, or think we’ve got it wrong, just reply to this email.
+
+Thanks,
+PickleMyPaddle
+
+PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.
+http://home-server:8088
+Questions? Just reply to this email.
+You’re getting this because an order was placed with this email address.
+",
+}
+`;
