@@ -164,6 +164,26 @@ export const MIGRATIONS: readonly Migration[] = [
       ALTER TABLE orders ADD COLUMN crm_deal_id text;
     `,
   },
+  {
+    version: 4,
+    name: 'customer reviews (testimonial requests)',
+    sql: `
+      -- SCRUM-33: one review per order, left on the private status page once the paddles are on
+      -- their way back. Quoted on the website only with permission (as first name and suburb),
+      -- and only after Attila adds it to the site's testimonials file. Goes with the order.
+      CREATE TABLE reviews (
+        id            bigserial PRIMARY KEY,
+        order_id      uuid NOT NULL UNIQUE REFERENCES orders (id) ON DELETE CASCADE,
+        quote         text NOT NULL,
+        first_name    text NOT NULL,
+        suburb        text NOT NULL,
+        permission    boolean NOT NULL,
+        permission_at timestamptz,
+        created_at    timestamptz NOT NULL DEFAULT now(),
+        CHECK (permission = (permission_at IS NOT NULL))
+      );
+    `,
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

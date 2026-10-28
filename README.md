@@ -127,6 +127,17 @@ per-IP limit for its smoke traffic; **production refuses to start with any limit
 Outside production, orders from `@example.com` addresses are smoke tests (SCRUM-68): stored like
 any other, and deleted with their photos after 24 hours.
 
+## Reviews (SCRUM-33, decided 28 Oct 2026)
+
+The Posted back email asks for a short review and links to a form on the private status page
+(`?review=1`). `POST /api/orders/review { token, quote, firstName, suburb, permission }` takes one
+review per order, only with a live link and once the order is Posted back or Completed (the status
+view's `review` field says `open` or `received`). `permission` must be an explicit true or false,
+and is stored with its time; reviews without it stay private. First name and suburb are typed by
+the customer, not pre-filled, because the status page never shows a name or address. Attila's
+alert includes the review only when it may be quoted. Publishing is by hand: approved ones go into
+the site's `src/data/testimonials.json` by pull request. Rate-limited per IP like the links form.
+
 ## Order statuses (SCRUM-72, decided 26 Oct 2026)
 
 Submitted → Questions → Accepted → Paid → In queue → Re-gritted → Posted back → Completed, plus the

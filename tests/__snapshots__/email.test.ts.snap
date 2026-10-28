@@ -115,6 +115,75 @@ You’re getting this because an order was placed with this email address.
 }
 `;
 
+exports[`email templates > alert_review (production) renders the same text and HTML as approved 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="en-AU"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><title>Review for PMP-7K3QX (may quote)</title></head>
+<body style="margin:0;padding:0;background:#FBFAF6;font-family:'Work Sans',Arial,Helvetica,sans-serif">
+<table role="presentation" width="100%" style="background:#FBFAF6;border-collapse:collapse"><tr><td style="padding:24px 12px">
+<table role="presentation" width="100%" style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;border-collapse:separate">
+<tr><td style="padding:20px 24px;border-bottom:4px solid #78A472"><span style="font-family:Sora,Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#4565A6">Pickle<span style="color:#3F6B3E">My</span>Paddle</span></td></tr>
+<tr><td style="padding:24px">
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">A review for PMP-7K3QX, with permission to quote it as first name and suburb:</p>
+<blockquote style="margin:0 0 16px;padding:8px 16px;border-left:4px solid #78A472;color:#1E2E52;font-size:16px;line-height:1.5">Feels brand new: the spin is back. Quick turnaround too.</blockquote>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Sam, Newtown</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">To publish it, add it to src/data/testimonials.json in picklemypaddle-site by pull request (the section shows from 3).</p>
+<p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.<br>https://www.picklemypaddle.com</p>
+</td></tr></table>
+</td></tr></table>
+</body></html>
+",
+  "subject": "Review for PMP-7K3QX (may quote)",
+  "text": "A review for PMP-7K3QX, with permission to quote it as first name and suburb:
+
+  > Feels brand new: the spin is back. Quick turnaround too.
+
+Sam, Newtown
+
+To publish it, add it to src/data/testimonials.json in picklemypaddle-site by pull request (the section shows from 3).
+
+PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.
+https://www.picklemypaddle.com
+",
+}
+`;
+
+exports[`email templates > alert_review (staging) renders the same text and HTML as approved 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="en-AU"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><title>[TEST] Review for PMP-7K3QX (may quote)</title></head>
+<body style="margin:0;padding:0;background:#FBFAF6;font-family:'Work Sans',Arial,Helvetica,sans-serif">
+<table role="presentation" width="100%" style="background:#FBFAF6;border-collapse:collapse"><tr><td style="padding:24px 12px">
+<table role="presentation" width="100%" style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;border-collapse:separate">
+<tr><td style="padding:20px 24px;border-bottom:4px solid #78A472"><span style="font-family:Sora,Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#4565A6">Pickle<span style="color:#3F6B3E">My</span>Paddle</span></td></tr>
+<tr><td style="padding:24px">
+<blockquote style="margin:0 0 16px;padding:8px 16px;border-left:4px solid #78A472;color:#1E2E52;font-size:16px;line-height:1.5">TEST ORDER: this email comes from the PickleMyPaddle staging site. Nothing is charged or posted.</blockquote>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">A review for PMP-7K3QX, with permission to quote it as first name and suburb:</p>
+<blockquote style="margin:0 0 16px;padding:8px 16px;border-left:4px solid #78A472;color:#1E2E52;font-size:16px;line-height:1.5">Feels brand new: the spin is back. Quick turnaround too.</blockquote>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Sam, Newtown</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">To publish it, add it to src/data/testimonials.json in picklemypaddle-site by pull request (the section shows from 3).</p>
+<p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.<br>http://home-server:8088</p>
+</td></tr></table>
+</td></tr></table>
+</body></html>
+",
+  "subject": "[TEST] Review for PMP-7K3QX (may quote)",
+  "text": "  > TEST ORDER: this email comes from the PickleMyPaddle staging site. Nothing is charged or posted.
+
+A review for PMP-7K3QX, with permission to quote it as first name and suburb:
+
+  > Feels brand new: the spin is back. Quick turnaround too.
+
+Sam, Newtown
+
+To publish it, add it to src/data/testimonials.json in picklemypaddle-site by pull request (the section shows from 3).
+
+PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.
+http://home-server:8088
+",
+}
+`;
+
 exports[`email templates > alert_submitted (production) renders the same text and HTML as approved 1`] = `
 {
   "html": "<!doctype html>
@@ -488,6 +557,9 @@ exports[`email templates > posted_back (production) renders the same text and HT
 <p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Enjoy the fresh grit. A reminder: re-gritted paddles aren’t allowed in sanctioned tournaments, so keep these for social and club play.</p>
 <p style="margin:8px 0 24px"><a href="https://www.picklemypaddle.com/order/status#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT" style="display:inline-block;background:#4565A6;color:#ffffff;text-decoration:none;font-weight:600;font-size:16px;padding:12px 20px;border-radius:8px">See your order’s progress</a></p>
 <p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">This link is private to you: anyone who has it can see your order’s progress, but not your name or address. If you lose it, use “Email me my links” on the status page.</p>
+<h2 style="margin:24px 0 8px;font-size:17px;color:#1E2E52">How did we do?</h2>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Once you’ve had a hit with your paddles, we’d love a short review. It takes a minute, and you choose whether we may quote it on our website (with just your first name and suburb).</p>
+<p style="margin:8px 0 24px"><a href="https://www.picklemypaddle.com/order/status?review=1#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT" style="display:inline-block;background:#4565A6;color:#ffffff;text-decoration:none;font-weight:600;font-size:16px;padding:12px 20px;border-radius:8px">Leave a short review</a></p>
 <p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Thanks,<br>PickleMyPaddle</p>
 <p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.<br>https://www.picklemypaddle.com<br>Questions? Just reply to this email.<br>You’re getting this because an order was placed with this email address.</p>
 </td></tr></table>
@@ -507,6 +579,13 @@ See your order’s progress:
 https://www.picklemypaddle.com/order/status#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT
 
 This link is private to you: anyone who has it can see your order’s progress, but not your name or address. If you lose it, use “Email me my links” on the status page.
+
+HOW DID WE DO?
+
+Once you’ve had a hit with your paddles, we’d love a short review. It takes a minute, and you choose whether we may quote it on our website (with just your first name and suburb).
+
+Leave a short review:
+https://www.picklemypaddle.com/order/status?review=1#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT
 
 Thanks,
 PickleMyPaddle
@@ -535,6 +614,9 @@ exports[`email templates > posted_back (staging) renders the same text and HTML 
 <p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Enjoy the fresh grit. A reminder: re-gritted paddles aren’t allowed in sanctioned tournaments, so keep these for social and club play.</p>
 <p style="margin:8px 0 24px"><a href="http://home-server:8088/order/status#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT" style="display:inline-block;background:#4565A6;color:#ffffff;text-decoration:none;font-weight:600;font-size:16px;padding:12px 20px;border-radius:8px">See your order’s progress</a></p>
 <p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">This link is private to you: anyone who has it can see your order’s progress, but not your name or address. If you lose it, use “Email me my links” on the status page.</p>
+<h2 style="margin:24px 0 8px;font-size:17px;color:#1E2E52">How did we do?</h2>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Once you’ve had a hit with your paddles, we’d love a short review. It takes a minute, and you choose whether we may quote it on our website (with just your first name and suburb).</p>
+<p style="margin:8px 0 24px"><a href="http://home-server:8088/order/status?review=1#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT" style="display:inline-block;background:#4565A6;color:#ffffff;text-decoration:none;font-weight:600;font-size:16px;padding:12px 20px;border-radius:8px">Leave a short review</a></p>
 <p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Thanks,<br>PickleMyPaddle</p>
 <p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.<br>http://home-server:8088<br>Questions? Just reply to this email.<br>You’re getting this because an order was placed with this email address.</p>
 </td></tr></table>
@@ -556,6 +638,13 @@ See your order’s progress:
 http://home-server:8088/order/status#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT
 
 This link is private to you: anyone who has it can see your order’s progress, but not your name or address. If you lose it, use “Email me my links” on the status page.
+
+HOW DID WE DO?
+
+Once you’ve had a hit with your paddles, we’d love a short review. It takes a minute, and you choose whether we may quote it on our website (with just your first name and suburb).
+
+Leave a short review:
+http://home-server:8088/order/status?review=1#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT
 
 Thanks,
 PickleMyPaddle
