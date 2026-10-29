@@ -268,9 +268,14 @@ export async function planSetup(client: HubSpotClient): Promise<SetupPlan> {
 
   const pipeline = await client.request<Pipeline>('GET', `/crm/v3/pipelines/deals/${PIPELINE_ID}`);
   const ours = new Set(STAGE_ORDER.map((s) => norm(STAGES[s].label)));
+  // Position is checked as order, not as exact numbers: HubSpot numbers stages across the whole
+  // pipeline (its own default stages included), so ours land at 1..11 rather than 0..10.
+  const found = STAGE_ORDER.map((status) => pipeline.stages.find((s) => norm(s.label) === norm(STAGES[status].label)));
+  const present = found.filter((s): s is Stage => s !== undefined);
+  const inOrder = present.every((s, i) => i === 0 || present[i - 1]!.displayOrder < s.displayOrder);
   STAGE_ORDER.forEach((status, displayOrder) => {
     const want = STAGES[status];
-    const have = pipeline.stages.find((s) => norm(s.label) === norm(want.label));
+    const have = found[displayOrder];
     if (!have) {
       changes.push({ kind: 'create_stage', status, label: want.label, displayOrder, probability: want.probability });
       return;
@@ -278,7 +283,7 @@ export async function planSetup(client: HubSpotClient): Promise<SetupPlan> {
     const prob = Number(have.metadata?.probability ?? NaN);
     const differences = [
       have.label !== want.label ? `label "${have.label}" → "${want.label}"` : null,
-      have.displayOrder !== displayOrder ? `position ${have.displayOrder} → ${displayOrder}` : null,
+      !inOrder && have.displayOrder !== displayOrder ? `position ${have.displayOrder} → ${displayOrder}` : null,
       prob !== want.probability ? `probability ${have.metadata?.probability ?? 'unset'} → ${want.probability}` : null,
     ].filter((d): d is string => d !== null);
     if (differences.length) {
