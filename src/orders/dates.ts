@@ -2,10 +2,11 @@
  * Calendar dates for the turnaround promise: back in the post within 10 business days of the
  * paddles arriving (decided 6 Oct 2026).
  *
- * Business days here skip weekends and the dates in `holidays`. NSW public holidays arrive
- * with SCRUM-73 (queue position and "back in the post by"); until then none are skipped, so a
- * date that spans one is a day early. Dates are plain YYYY-MM-DD calendar dates in Sydney.
+ * Business days skip weekends and NSW public holidays (SCRUM-73, ./holidays.ts). Dates are plain
+ * YYYY-MM-DD calendar dates in Sydney, counted with UTC arithmetic so daylight-saving changes
+ * can never shift a day; only "today" depends on the moment, and sydneyDate reads it in Sydney.
  */
+import { NSW_HOLIDAY_DATES } from './holidays.js';
 
 export const TURNAROUND_BUSINESS_DAYS = 10;
 
@@ -17,7 +18,7 @@ export function sydneyDate(at: Date): string {
 export const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** The calendar date `days` business days after `start` (YYYY-MM-DD in, YYYY-MM-DD out). */
-export function addBusinessDays(start: string, days: number, holidays: ReadonlySet<string> = new Set()): string {
+export function addBusinessDays(start: string, days: number, holidays: ReadonlySet<string> = NSW_HOLIDAY_DATES): string {
   const [y, m, d] = start.split('-').map(Number) as [number, number, number];
   const date = new Date(Date.UTC(y, m - 1, d));
   let left = days;
@@ -31,3 +32,20 @@ export function addBusinessDays(start: string, days: number, holidays: ReadonlyS
 }
 
 export const backInPostBy = (arrivedOn: string) => addBusinessDays(arrivedOn, TURNAROUND_BUSINESS_DAYS);
+
+/** Is this calendar date a business day (not a weekend, not an NSW public holiday)? */
+export function isBusinessDay(iso: string, holidays: ReadonlySet<string> = NSW_HOLIDAY_DATES): boolean {
+  const [y, m, d] = iso.split('-').map(Number) as [number, number, number];
+  const weekday = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  return weekday !== 0 && weekday !== 6 && !holidays.has(iso);
+}
+
+/**
+ * How a promise date stands today (SCRUM-73 AC5): 'late' once it has passed, 'soon' when it is
+ * at most 2 business days away, otherwise 'ok'.
+ */
+export function promiseState(promiseOn: string, now: Date): 'ok' | 'soon' | 'late' {
+  const today = sydneyDate(now);
+  if (today > promiseOn) return 'late';
+  return addBusinessDays(today, 2) >= promiseOn ? 'soon' : 'ok';
+}

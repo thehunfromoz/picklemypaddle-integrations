@@ -14,6 +14,7 @@ import {
   TOKEN_RE,
   type OrderStatus,
 } from './model.js';
+import { paddlesAhead, promiseOf } from './queue.js';
 
 export interface StatusView {
   reference: string;
@@ -23,9 +24,12 @@ export interface StatusView {
   paddles: { brand: string; model: string | null }[];
   /** Once Posted back. */
   trackingNumber: string | null;
-  /** Filled in by the queue story (SCRUM-73); null until then. */
+  /** SCRUM-73: the promise date (YYYY-MM-DD, Sydney), while In queue or Re-gritted. */
   backInPostBy: string | null;
-  queuePosition: number | null;
+  /** SCRUM-73: paddles in orders ahead of this one, while In queue. */
+  paddlesAhead: number | null;
+  /** Reserved before SCRUM-73 and never filled; always null (older site builds read it). */
+  queuePosition: null;
   /** A TEST order (taken outside production). */
   test: boolean;
   /**
@@ -49,6 +53,9 @@ export interface TokenOrder {
   is_test: boolean;
   tracking_number: string | null;
   has_review: boolean;
+  /** YYYY-MM-DD, read as text so no driver turns a calendar date into a moment in time. */
+  arrived_on: string | null;
+  promise_on: string | null;
 }
 
 /** The order a live status link opens, or null for any bad link (all treated alike). */
@@ -56,6 +63,7 @@ export async function orderForToken(db: Db, token: unknown, now: Date): Promise<
   const wellFormed = typeof token === 'string' && TOKEN_RE.test(token);
   const { rows } = await db.query<TokenOrder>(
     `SELECT o.id, o.reference, o.status, o.status_changed_at, o.is_test, o.tracking_number,
+            o.arrived_on::text AS arrived_on, o.promise_on::text AS promise_on,
             EXISTS (SELECT 1 FROM reviews r WHERE r.order_id = o.id) AS has_review
        FROM status_tokens t JOIN orders o ON o.id = t.order_id
       WHERE t.token_hash = $1 AND t.revoked_at IS NULL`,
@@ -84,7 +92,11 @@ export async function lookupStatus(db: Db, token: unknown, now: Date): Promise<S
     history: history.rows.map((h) => ({ status: h.status, label: STATUS_LABELS[h.status], at: new Date(h.at).toISOString() })),
     paddles: paddles.rows.map((p) => ({ brand: p.brand, model: p.model })),
     trackingNumber: order.status === 'posted_back' || order.status === 'completed' ? order.tracking_number : null,
-    backInPostBy: null,
+    backInPostBy: order.status === 'in_queue' || order.status === 'regritted' ? promiseOf(order) : null,
+    paddlesAhead:
+      order.status === 'in_queue' && order.arrived_on
+        ? await paddlesAhead(db, { id: order.id, reference: order.reference, arrived_on: order.arrived_on, is_test: order.is_test })
+        : null,
     queuePosition: null,
     test: order.is_test,
     review: order.has_review ? 'received' : REVIEW_STATUSES.has(order.status) ? 'open' : null,

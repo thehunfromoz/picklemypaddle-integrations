@@ -14,8 +14,8 @@ Planned responsibilities:
 - HubSpot properties/pipelines and Stripe products kept as configuration-as-code.
 
 **Status:** order intake (SCRUM-8 part 1), order emails (SCRUM-69), the HubSpot mirror
-(SCRUM-74), reviews (SCRUM-33) and the order admin over Tailscale (SCRUM-71/72). Queue position
-and NSW holidays (SCRUM-73) and retention (SCRUM-75) come next.
+(SCRUM-74), reviews (SCRUM-33), the order admin over Tailscale (SCRUM-71/72) and the queue with
+NSW holidays (SCRUM-73). Retention (SCRUM-75) comes next.
 
 ## Stack
 
@@ -77,8 +77,9 @@ written in one transaction; photo files written before a failure are deleted aga
 ### `POST /api/orders/status`
 
 JSON `{ token }`. `200` with the minimal view (reference, status in plain words, dated history,
-paddles by brand and model, tracking number once posted back, `test`), never name, address,
-phone, email or photos. Unknown, malformed, revoked and expired links all get the same `404`.
+paddles by brand and model, tracking number once posted back, `backInPostBy` (YYYY-MM-DD, In
+queue and Re-gritted) and `paddlesAhead` (In queue), `test`), never name, address, phone, email or
+photos. `queuePosition` is always null (reserved before SCRUM-73; kept for older site builds). Unknown, malformed, revoked and expired links all get the same `404`.
 Links stop 90 days after **Completed**, 30 days after **Rejected** or **Lapsed**, and at once when
 **Withdrawn** or deleted.
 
@@ -157,7 +158,16 @@ writes a history row with who made it, and queues its email in the same transact
 | Re-gritted | Posted back (admin, tracking number required) | Posted back (tracking, review link) |
 | Posted back | Completed (admin, or automatic after 10 days) | |
 
-Questions sends nothing: Attila writes to the customer himself from info@. The automatic moves
+Questions sends nothing: Attila writes to the customer himself from info@.
+
+**Queue and promise (SCRUM-73).** When an order enters In queue, its promise date is stored:
+arrival + 10 business days, skipping weekends and NSW public holidays (`src/orders/holidays.ts`,
+from nsw.gov.au; the August Bank Holiday is a working day). The In queue email, the status page
+("back in the post by", In queue and Re-gritted) and the admin all show that same date; the admin
+flags it within 2 business days and once past. The status page also shows the paddles ahead in
+the queue (In queue only): orders that arrived earlier, ties by reference, TEST orders counted
+only among TEST orders. **Each year, add the next year's holidays** once NSW publishes them:
+`tests/holidays.test.ts` fails from the day the list no longer covers the next 12 months. The automatic moves
 (`src/orders/auto.ts`) run once a day, are idempotent, and are recorded as "system".
 
 ## Order admin (SCRUM-71/72)
