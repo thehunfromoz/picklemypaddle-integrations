@@ -21,6 +21,7 @@ export const TEMPLATES = [
   'rejected',
   'links',
   'alert_review',
+  'review_reminder',
 ] as const;
 export type TemplateName = (typeof TEMPLATES)[number];
 
@@ -286,6 +287,24 @@ function build(name: TemplateName, ctx: TemplateContext): { subject: string; blo
           { h: 'How did we do?' },
           { p: `Once you’ve had a hit with your ${paddleWord(n)}, we’d love a short review. It takes a minute, and you choose whether we may quote it on our website (with just your first name and suburb).` },
           { button: { label: 'Leave a short review', url: need(ctx, 'reviewUrl', name) } },
+          { p: 'Thanks,\nPickleMyPaddle' },
+        ],
+      };
+    }
+
+    // SCRUM-80: the one reminder, 10 days after posting back, when no review has come in.
+    case 'review_reminder': {
+      const ref = need(ctx, 'reference', name);
+      const n = need(ctx, 'paddles', name).length;
+      return {
+        customer: true,
+        subject: `${plural(n, 'How’s the re-gritted paddle', 'How are the re-gritted paddles')}? (${ref})`,
+        blocks: [
+          { p: `Hi ${need(ctx, 'firstName', name)},` },
+          { p: `Your ${paddleWord(n)} should have been back with you for a little while now. If you’ve had a hit, we’d love to hear how ${plural(n, 'it plays', 'they play')}.` },
+          { p: 'A short review takes a minute, and you choose whether we may quote it on our website (with just your first name and suburb).' },
+          { button: { label: 'Leave a short review', url: need(ctx, 'reviewUrl', name) } },
+          { p: 'This is the only reminder we’ll send about it.' },
           { p: 'Thanks,\nPickleMyPaddle' },
         ],
       };

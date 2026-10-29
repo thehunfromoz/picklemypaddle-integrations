@@ -139,6 +139,15 @@ the customer, not pre-filled, because the status page never shows a name or addr
 alert includes the review only when it may be quoted. Publishing is by hand: approved ones go into
 the site's `src/data/testimonials.json` by pull request. Rate-limited per IP like the links form.
 
+**One reminder (SCRUM-80, decided 29 Oct 2026).** The Posted back email's ask arrives before the
+customer has played with the paddle, so the daily job sends **one** `review_reminder` email 10 days
+after Posted back if no review has come in: only for orders that were posted back (Posted back or
+Completed), never for smoke orders, and never twice (`orders.review_reminder_at` is set in the same
+transaction that queues it). It carries a fresh status link to the form and says it is the only
+reminder. On staging, the admin's **Send review reminder now (test)** sends it without waiting (no
+such button or route in production). The admin marks reviewed orders ("Reviewed", or "Reviewed
+(private)" without permission to quote), and HubSpot gets the same flag (below).
+
 ## Order statuses (SCRUM-72, decided 26 Oct 2026)
 
 Submitted → Questions → Accepted → Paid → In queue → Re-gritted → Posted back → Completed, plus the
@@ -237,8 +246,10 @@ interface (`src/crm/crm.ts`), with the HubSpot implementation in `src/crm/hubspo
 
 - **What goes across:** a contact (by email: first and last name, email, phone, suburb, state,
   postcode) and one deal per order (name = reference, `[TEST] ` prefixed outside production;
-  amount = paddles × A$60; properties `pmp_reference`, `pmp_paddle_count`, `pmp_is_test`), whose
-  stage mirrors the order status 1:1 in the default pipeline. **Never** the street address,
+  amount = paddles × A$60; properties `pmp_reference`, `pmp_paddle_count`, `pmp_is_test`,
+  `pmp_reviewed`), whose stage mirrors the order status 1:1 in the default pipeline. The contact
+  also gets `pmp_has_reviewed`: yes once any of that customer's orders has a review (SCRUM-80; a
+  later discount for reviewers can key on it). A review queues a sync, so both flags follow. **Never** the street address,
   photos, paddle details or a status-link token; a test checks every request.
 - **Sync:** every order and status change queues a `crm` job in the outbox (one waiting job per
   order at most), which the service runs every 30 s with the email backoff. HubSpot being down
@@ -248,8 +259,8 @@ interface (`src/crm/crm.ts`), with the HubSpot implementation in `src/crm/hubspo
   or the service won't start, and before its first write the worker checks the key really
   belongs to that portal (`portal_mismatch` otherwise, and nothing is written).
 - **Setup as code:** `node dist/cli/hubspot-setup.js --dry-run` shows what it would change (the
-  property group, three deal properties and the 11 stages); without `--dry-run` it applies them,
-  idempotently. Stages that aren't ours are listed and left alone.
+  property group and properties on deals and contacts, and the 11 stages); without `--dry-run` it
+  applies them, idempotently. Stages that aren't ours are listed and left alone.
 - **Resync:** `node dist/cli/crm-resync.js` queues every order (after an outage, or when
   production moves to its own portal).
 

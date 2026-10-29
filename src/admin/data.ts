@@ -6,6 +6,7 @@ import type { Db } from '../db/db.js';
 import { addBusinessDays, promiseState, sydneyDate } from '../orders/dates.js';
 import type { OrderStatus } from '../orders/model.js';
 import { promiseOf } from '../orders/queue.js';
+import { REVIEW_REMINDER_DAYS } from '../orders/review-reminder.js';
 
 /** Statuses that carry a "back in the post by" promise (SCRUM-73). */
 const PROMISED: ReadonlySet<OrderStatus> = new Set(['in_queue', 'regritted']);
@@ -42,6 +43,8 @@ export interface ListedOrder {
   overdue: boolean;
   /** SCRUM-73: In queue or Re-gritted: the promise date, and whether it is close or past. */
   promise: { on: string; state: 'ok' | 'soon' | 'late' } | null;
+  /** SCRUM-80: the customer left a review (and whether it may be quoted). */
+  reviewed: { mayQuote: boolean } | null;
 }
 
 function promiseFor(status: OrderStatus, order: { promise_on: string | null; arrived_on: string | null }, now: Date) {
@@ -64,9 +67,11 @@ export async function listOrders(db: Db, statuses: readonly OrderStatus[], now: 
     paddles: number | string;
     arrived_on: string | null;
     promise_on: string | null;
+    review_permission: boolean | null;
   }>(
     `SELECT o.reference, o.created_at, o.status, o.status_changed_at, o.is_test,
             o.arrived_on::text AS arrived_on, o.promise_on::text AS promise_on,
+            (SELECT r.permission FROM reviews r WHERE r.order_id = o.id) AS review_permission,
             (SELECT count(*) FROM paddles p WHERE p.order_id = o.id)::int AS paddles
        FROM orders o
       WHERE NOT o.is_smoke AND o.status = ANY($1::text[])
@@ -86,6 +91,7 @@ export async function listOrders(db: Db, statuses: readonly OrderStatus[], now: 
       daysInStatus: Math.max(0, Math.floor((now.getTime() - statusChangedAt.getTime()) / DAY)),
       overdue: replyOverdue(r.status, createdAt, now),
       promise: promiseFor(r.status, r, now),
+      reviewed: r.review_permission === null ? null : { mayQuote: r.review_permission },
     };
   });
 }
@@ -122,6 +128,10 @@ export interface OrderDetail {
     doneAt: Date | null;
   }[];
   review: { quote: string; firstName: string; suburb: string; permission: boolean; createdAt: Date } | null;
+  /** SCRUM-80: when the one review reminder was queued; null if not (yet). */
+  reviewReminderAt: Date | null;
+  /** SCRUM-80: when the daily job will send it (posted back + 10 days), while it still can. */
+  reviewReminderDue: Date | null;
 }
 
 export async function loadOrder(db: Db, reference: string, now: Date = new Date()): Promise<OrderDetail | null> {
@@ -144,10 +154,13 @@ export async function loadOrder(db: Db, reference: string, now: Date = new Date(
     arrived_on: string | null;
     promise_on: string | null;
     crm_deal_id: string | null;
+    review_reminder_at: Date | null;
+    posted_back_at: Date | null;
   }>(
     `SELECT id, reference, status, status_changed_at, created_at, is_test, is_smoke, name, email, phone,
             street, suburb, state, postcode, tracking_number, arrived_on::text AS arrived_on,
-            promise_on::text AS promise_on, crm_deal_id
+            promise_on::text AS promise_on, crm_deal_id, review_reminder_at,
+            (SELECT max(h.at) FROM status_history h WHERE h.order_id = orders.id AND h.status = 'posted_back') AS posted_back_at
        FROM orders WHERE reference = $1`,
     [reference],
   );
@@ -234,6 +247,11 @@ export async function loadOrder(db: Db, reference: string, now: Date = new Date(
           createdAt: new Date(reviews.rows[0].created_at),
         }
       : null,
+    reviewReminderAt: o.review_reminder_at ? new Date(o.review_reminder_at) : null,
+    reviewReminderDue:
+      !reviews.rows[0] && !o.review_reminder_at && o.posted_back_at && (o.status === 'posted_back' || o.status === 'completed')
+        ? new Date(new Date(o.posted_back_at).getTime() + REVIEW_REMINDER_DAYS * DAY)
+        : null,
   };
 }
 

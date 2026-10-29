@@ -67,6 +67,14 @@ export interface PropertyDef {
   options?: { label: string; value: string; displayOrder: number }[];
 }
 
+/** The HubSpot objects we keep properties on. */
+export type CrmObject = 'deals' | 'contacts';
+
+const yesNo = [
+  { label: 'Yes', value: 'true', displayOrder: 0 },
+  { label: 'No', value: 'false', displayOrder: 1 },
+];
+
 export const DEAL_PROPERTIES: readonly PropertyDef[] = [
   { name: 'pmp_reference', label: 'Order reference', type: 'string', fieldType: 'text', description: 'PickleMyPaddle order reference (PMP-…). Set by the integrations service.' },
   { name: 'pmp_paddle_count', label: 'Paddles', type: 'number', fieldType: 'number', description: 'Number of paddles in the order. Set by the integrations service.' },
@@ -76,12 +84,33 @@ export const DEAL_PROPERTIES: readonly PropertyDef[] = [
     type: 'bool',
     fieldType: 'booleancheckbox',
     description: 'A TEST order placed outside production. Set by the integrations service.',
-    options: [
-      { label: 'Yes', value: 'true', displayOrder: 0 },
-      { label: 'No', value: 'false', displayOrder: 1 },
-    ],
+    options: yesNo,
+  },
+  // SCRUM-80: whether the customer left a review for this order.
+  {
+    name: 'pmp_reviewed',
+    label: 'Reviewed',
+    type: 'bool',
+    fieldType: 'booleancheckbox',
+    description: 'The customer left a review for this order. Set by the integrations service.',
+    options: yesNo,
   },
 ];
+
+/** SCRUM-80: on the contact, so a later "discount for reviewers" can key on the customer. */
+export const CONTACT_PROPERTIES: readonly PropertyDef[] = [
+  {
+    name: 'pmp_has_reviewed',
+    label: 'Has reviewed',
+    type: 'bool',
+    fieldType: 'booleancheckbox',
+    description: 'This customer has left a review for at least one PickleMyPaddle order. Set by the integrations service.',
+    options: yesNo,
+  },
+];
+
+export const PROPERTIES: Readonly<Record<CrmObject, readonly PropertyDef[]>> = { deals: DEAL_PROPERTIES, contacts: CONTACT_PROPERTIES };
+const OBJECT_WORD: Record<CrmObject, string> = { deals: 'deal', contacts: 'contact' };
 
 /** HubSpot's own association type: deal → contact. */
 const DEAL_TO_CONTACT = 3;
@@ -127,6 +156,7 @@ export function hubspotAdapter(client: HubSpotClient): CrmAdapter & { stageIds()
     city: c.suburb,
     state: c.state,
     zip: c.postcode,
+    pmp_has_reviewed: String(c.hasReviewed),
   });
 
   const dealProperties = (d: CrmDeal, stageId: string) => ({
@@ -137,6 +167,7 @@ export function hubspotAdapter(client: HubSpotClient): CrmAdapter & { stageIds()
     pmp_reference: d.reference,
     pmp_paddle_count: String(d.paddleCount),
     pmp_is_test: String(d.isTest),
+    pmp_reviewed: String(d.reviewed),
   });
 
   async function upsertContact(c: CrmContact): Promise<string> {
@@ -220,9 +251,9 @@ export async function portalIdOf(client: HubSpotClient): Promise<string> {
 // ── Setup as code (AC5) ───────────────────────────────────────────────────────
 
 export type SetupChange =
-  | { kind: 'create_group' }
-  | { kind: 'create_property'; property: PropertyDef }
-  | { kind: 'update_property'; property: PropertyDef; differences: string[] }
+  | { kind: 'create_group'; object: CrmObject }
+  | { kind: 'create_property'; object: CrmObject; property: PropertyDef }
+  | { kind: 'update_property'; object: CrmObject; property: PropertyDef; differences: string[] }
   | { kind: 'create_stage'; status: OrderStatus; label: string; displayOrder: number; probability: number }
   | { kind: 'update_stage'; status: OrderStatus; id: string; label: string; displayOrder: number; probability: number; differences: string[] };
 
@@ -243,27 +274,29 @@ interface RemoteProperty {
 export async function planSetup(client: HubSpotClient): Promise<SetupPlan> {
   const changes: SetupChange[] = [];
 
-  const groups = await client.request<{ results: { name: string }[] }>('GET', '/crm/v3/properties/deals/groups');
-  if (!groups.results.some((g) => g.name === PROPERTY_GROUP.name)) changes.push({ kind: 'create_group' });
+  for (const object of Object.keys(PROPERTIES) as CrmObject[]) {
+    const groups = await client.request<{ results: { name: string }[] }>('GET', `/crm/v3/properties/${object}/groups`);
+    if (!groups.results.some((g) => g.name === PROPERTY_GROUP.name)) changes.push({ kind: 'create_group', object });
 
-  for (const p of DEAL_PROPERTIES) {
-    let remote: RemoteProperty | null = null;
-    try {
-      remote = await client.request<RemoteProperty>('GET', `/crm/v3/properties/deals/${p.name}`);
-    } catch (err) {
-      if (!(err instanceof HubSpotError && err.status === 404)) throw err;
+    for (const p of PROPERTIES[object]) {
+      let remote: RemoteProperty | null = null;
+      try {
+        remote = await client.request<RemoteProperty>('GET', `/crm/v3/properties/${object}/${p.name}`);
+      } catch (err) {
+        if (!(err instanceof HubSpotError && err.status === 404)) throw err;
+      }
+      if (!remote) {
+        changes.push({ kind: 'create_property', object, property: p });
+        continue;
+      }
+      const differences = [
+        remote.label !== p.label ? `label "${remote.label}" → "${p.label}"` : null,
+        remote.type !== p.type ? `type ${remote.type} → ${p.type} (HubSpot may refuse; delete the property first)` : null,
+        remote.fieldType !== p.fieldType ? `field type ${remote.fieldType} → ${p.fieldType}` : null,
+        remote.groupName !== PROPERTY_GROUP.name ? `group ${remote.groupName} → ${PROPERTY_GROUP.name}` : null,
+      ].filter((d): d is string => d !== null);
+      if (differences.length) changes.push({ kind: 'update_property', object, property: p, differences });
     }
-    if (!remote) {
-      changes.push({ kind: 'create_property', property: p });
-      continue;
-    }
-    const differences = [
-      remote.label !== p.label ? `label "${remote.label}" → "${p.label}"` : null,
-      remote.type !== p.type ? `type ${remote.type} → ${p.type} (HubSpot may refuse; delete the property first)` : null,
-      remote.fieldType !== p.fieldType ? `field type ${remote.fieldType} → ${p.fieldType}` : null,
-      remote.groupName !== PROPERTY_GROUP.name ? `group ${remote.groupName} → ${PROPERTY_GROUP.name}` : null,
-    ].filter((d): d is string => d !== null);
-    if (differences.length) changes.push({ kind: 'update_property', property: p, differences });
   }
 
   const pipeline = await client.request<Pipeline>('GET', `/crm/v3/pipelines/deals/${PIPELINE_ID}`);
@@ -298,14 +331,14 @@ export async function applySetup(client: HubSpotClient, plan: SetupPlan): Promis
   for (const c of plan.changes) {
     switch (c.kind) {
       case 'create_group':
-        await client.request('POST', '/crm/v3/properties/deals/groups', { ...PROPERTY_GROUP, displayOrder: -1 });
+        await client.request('POST', `/crm/v3/properties/${c.object}/groups`, { ...PROPERTY_GROUP, displayOrder: -1 });
         break;
       case 'create_property':
-        await client.request('POST', '/crm/v3/properties/deals', { ...c.property, groupName: PROPERTY_GROUP.name });
+        await client.request('POST', `/crm/v3/properties/${c.object}`, { ...c.property, groupName: PROPERTY_GROUP.name });
         break;
       case 'update_property': {
         const { name, ...rest } = c.property;
-        await client.request('PATCH', `/crm/v3/properties/deals/${name}`, { ...rest, groupName: PROPERTY_GROUP.name });
+        await client.request('PATCH', `/crm/v3/properties/${c.object}/${name}`, { ...rest, groupName: PROPERTY_GROUP.name });
         break;
       }
       case 'create_stage':
@@ -329,11 +362,11 @@ export async function applySetup(client: HubSpotClient, plan: SetupPlan): Promis
 export function describeChange(c: SetupChange): string {
   switch (c.kind) {
     case 'create_group':
-      return `create deal property group "${PROPERTY_GROUP.label}"`;
+      return `create ${OBJECT_WORD[c.object]} property group "${PROPERTY_GROUP.label}"`;
     case 'create_property':
-      return `create deal property ${c.property.name} ("${c.property.label}", ${c.property.type})`;
+      return `create ${OBJECT_WORD[c.object]} property ${c.property.name} ("${c.property.label}", ${c.property.type})`;
     case 'update_property':
-      return `update deal property ${c.property.name}: ${c.differences.join('; ')}`;
+      return `update ${OBJECT_WORD[c.object]} property ${c.property.name}: ${c.differences.join('; ')}`;
     case 'create_stage':
       return `create stage "${c.label}" at position ${c.displayOrder} (probability ${c.probability})`;
     case 'update_stage':

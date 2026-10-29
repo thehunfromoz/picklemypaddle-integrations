@@ -12,6 +12,7 @@
  */
 import type { Db } from '../db/db.js';
 import { isUniqueViolation } from '../db/db.js';
+import { enqueueCrmSync } from '../crm/sync.js';
 import { enqueueOrderEmail } from '../email/outbox.js';
 import { orderForToken, REVIEW_STATUSES } from './status.js';
 
@@ -64,6 +65,8 @@ export async function submitReview(db: Db, input: ReviewInput, now: Date): Promi
         [order.id, r.quote, r.firstName, r.suburb, r.permission, r.permission ? now : null, now],
       );
       await enqueueOrderEmail(q, order.id, 'alert_review', now, { permission: r.permission });
+      // SCRUM-80: the deal's and the contact's "reviewed" flags.
+      await enqueueCrmSync(q, order.id, now);
     });
   } catch (err) {
     if (isUniqueViolation(err)) return { ok: false, reason: 'already_received' };

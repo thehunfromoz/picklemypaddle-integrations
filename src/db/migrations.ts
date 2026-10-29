@@ -212,6 +212,15 @@ export const MIGRATIONS: readonly Migration[] = [
       ALTER TABLE orders ADD COLUMN promise_on date;
     `,
   },
+  {
+    version: 7,
+    name: 'review reminder sent (once per order)',
+    sql: `
+      -- SCRUM-80: when the one review reminder was queued. Set in the same transaction that queues
+      -- it, so an order can never get a second one.
+      ALTER TABLE orders ADD COLUMN review_reminder_at timestamptz;
+    `,
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;
