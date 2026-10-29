@@ -38,6 +38,16 @@ ${body}
 }
 
 const statusBadge = (s: OrderStatus) => html`<span class="badge">${ADMIN_LABELS[s]}</span>`;
+
+/** "Mon, 16 Nov" for a YYYY-MM-DD calendar date (no time-zone shift). */
+const shortDay = (iso: string) => {
+  const [y, m, d] = iso.split('-').map(Number) as [number, number, number];
+  return new Intl.DateTimeFormat('en-AU', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(Date.UTC(y, m - 1, d)));
+};
+
+/** SCRUM-73 AC5: the promise, flagged when 2 business days away or less, or past. */
+const promiseBadge = (p: { on: string; state: 'ok' | 'soon' | 'late' } | null) =>
+  !p || p.state === 'ok' ? '' : p.state === 'late' ? html` <span class="badge overdue">Past promise</span>` : html` <span class="badge due">Due soon</span>`;
 const testBadge = (isTest: boolean) => (isTest ? html` <span class="badge test">TEST</span>` : '');
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
@@ -58,6 +68,8 @@ export function listPage(ctx: PageContext, filter: ListFilter, orders: ListedOrd
     html`<li><a href="/admin/orders?status=${value}"${filter === value ? html` aria-current="page"` : ''}>${label}</a></li>`;
   const heading = filter === 'waiting' ? 'Waiting on you' : filter === 'all' ? 'All orders' : ADMIN_LABELS[filter];
   const overdue = orders.filter((o) => o.overdue).length;
+  const late = orders.filter((o) => o.promise?.state === 'late').length;
+  const soon = orders.filter((o) => o.promise?.state === 'soon').length;
   return layout(
     ctx,
     heading,
@@ -66,14 +78,18 @@ export function listPage(ctx: PageContext, filter: ListFilter, orders: ListedOrd
   ${chip('waiting', 'Waiting on you')}${STATUSES.map((s) => chip(s, ADMIN_LABELS[s]))}${chip('all', 'All')}
 </ul>
 ${overdue > 0 ? html`<p class="flash warn">${plural(overdue, 'order')} past the 1-business-day reply promise.</p>` : ''}
+${late > 0 ? html`<p class="flash error">${plural(late, 'order')} past the “back in the post by” date.</p>` : ''}
+${soon > 0 ? html`<p class="flash warn">${plural(soon, 'order')} due back in the post within 2 business days.</p>` : ''}
 ${
   orders.length === 0
     ? html`<p class="empty">Nothing here.</p>`
     : html`<ul class="orders">${orders.map(
         (o) => html`<li><a href="/admin/orders/${o.reference}">
-  <span><span class="ref">${o.reference}</span>${testBadge(o.isTest)}${o.overdue ? html` <span class="badge overdue">Reply overdue</span>` : ''}</span>
+  <span><span class="ref">${o.reference}</span>${testBadge(o.isTest)}${o.overdue ? html` <span class="badge overdue">Reply overdue</span>` : ''}${promiseBadge(o.promise)}</span>
   ${statusBadge(o.status)}
-  <span class="meta">${when(o.createdAt)} · ${plural(o.paddles, 'paddle')} · ${plural(o.daysInStatus, 'day')} in ${ADMIN_LABELS[o.status]}</span>
+  <span class="meta">${when(o.createdAt)} · ${plural(o.paddles, 'paddle')} · ${plural(o.daysInStatus, 'day')} in ${ADMIN_LABELS[o.status]}${
+    o.promise ? ` · back in the post by ${shortDay(o.promise.on)}` : ''
+  }</span>
 </a></li>`,
       )}</ul>`
 }`,
@@ -170,6 +186,7 @@ ${actions(ctx, o)}
 ${o.suburb} ${o.state} ${o.postcode}</dd>
   <dt>Standard price</dt><dd>${dollars(amountLine)} (${plural(o.paddles.length, 'paddle')}), plus return postage</dd>
   ${o.arrivedOn ? html`<dt>Arrived</dt><dd>${calendarDay(o.arrivedOn)}</dd>` : ''}
+  ${o.promise ? html`<dt>Back in the post by</dt><dd>${calendarDay(o.promise.on)}${promiseBadge(o.promise)}</dd>` : ''}
   ${o.trackingNumber ? html`<dt>Tracking</dt><dd>${o.trackingNumber}</dd>` : ''}
 </dl>
 

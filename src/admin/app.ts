@@ -103,7 +103,7 @@ export function createAdminApp(deps: AdminDeps) {
   });
 
   const showOrder = async (c: Context<Env>, reference: string, flash?: Flash, status: 200 | 400 | 404 | 409 = 200) => {
-    const order = REFERENCE_RE.test(reference) ? await loadOrder(deps.db, reference) : null;
+    const order = REFERENCE_RE.test(reference) ? await loadOrder(deps.db, reference, now()) : null;
     if (!order) return c.html(notFoundPage(ctx(c), `No order ${reference}.`), 404);
     return c.html(detailPage(ctx(c), order, flash), status);
   };

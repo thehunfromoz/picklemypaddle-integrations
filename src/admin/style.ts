@@ -28,6 +28,7 @@ ul.orders .meta { color: var(--muted); font-size: .9rem; grid-column: 1 / -1; }
 .badge { display: inline-block; font-size: .75rem; font-weight: 700; letter-spacing: .02em; padding: .05rem .45rem; border-radius: .3rem; background: #eef1f7; vertical-align: middle; }
 .badge.test { background: var(--test-bg); color: var(--test); }
 .badge.overdue { background: var(--bad-bg); color: var(--bad); }
+.badge.due { background: var(--warn-bg); color: var(--warn); }
 .badge.failed { background: var(--bad-bg); color: var(--bad); }
 .badge.sent { background: var(--ok-bg); color: var(--green); }
 .badge.pending, .badge.sending { background: var(--warn-bg); color: var(--warn); }

@@ -50,7 +50,7 @@ describe('business days', () => {
     expect(addBusinessDays('2026-11-02', 10)).toBe('2026-11-16'); // Monday → Monday two weeks on
     expect(addBusinessDays('2026-11-06', 10)).toBe('2026-11-20'); // Friday → Friday
     expect(addBusinessDays('2026-11-07', 10)).toBe('2026-11-20'); // Saturday arrival counts from Monday
-    expect(backInPostBy('2026-12-31')).toBe('2027-01-14');
+    expect(backInPostBy('2026-12-31')).toBe('2027-01-15'); // New Year's Day (an NSW holiday) is skipped
   });
   it('skips listed holidays', () => {
     expect(addBusinessDays('2026-12-24', 2, new Set(['2026-12-25', '2026-12-28']))).toBe('2026-12-30');

@@ -3,8 +3,12 @@
  * staging updater's, and are deleted within a day.
  */
 import type { Db } from '../db/db.js';
-import { addBusinessDays, sydneyDate } from '../orders/dates.js';
+import { addBusinessDays, promiseState, sydneyDate } from '../orders/dates.js';
 import type { OrderStatus } from '../orders/model.js';
+import { promiseOf } from '../orders/queue.js';
+
+/** Statuses that carry a "back in the post by" promise (SCRUM-73). */
+const PROMISED: ReadonlySet<OrderStatus> = new Set(['in_queue', 'regritted']);
 
 /** The default list: everything waiting on Attila (AC1). */
 export const WAITING: readonly OrderStatus[] = ['submitted', 'questions', 'paid', 'in_queue', 'regritted'];
@@ -36,6 +40,13 @@ export interface ListedOrder {
   daysInStatus: number;
   /** Past the 1-business-day reply promise (Submitted and not answered yet). */
   overdue: boolean;
+  /** SCRUM-73: In queue or Re-gritted: the promise date, and whether it is close or past. */
+  promise: { on: string; state: 'ok' | 'soon' | 'late' } | null;
+}
+
+function promiseFor(status: OrderStatus, order: { promise_on: string | null; arrived_on: string | null }, now: Date) {
+  const on = PROMISED.has(status) ? promiseOf(order) : null;
+  return on ? { on, state: promiseState(on, now) } : null;
 }
 
 /** The reply promise: answered by the end of the next business day in Sydney. */
@@ -51,8 +62,11 @@ export async function listOrders(db: Db, statuses: readonly OrderStatus[], now: 
     status_changed_at: Date;
     is_test: boolean;
     paddles: number | string;
+    arrived_on: string | null;
+    promise_on: string | null;
   }>(
     `SELECT o.reference, o.created_at, o.status, o.status_changed_at, o.is_test,
+            o.arrived_on::text AS arrived_on, o.promise_on::text AS promise_on,
             (SELECT count(*) FROM paddles p WHERE p.order_id = o.id)::int AS paddles
        FROM orders o
       WHERE NOT o.is_smoke AND o.status = ANY($1::text[])
@@ -71,6 +85,7 @@ export async function listOrders(db: Db, statuses: readonly OrderStatus[], now: 
       paddles: Number(r.paddles),
       daysInStatus: Math.max(0, Math.floor((now.getTime() - statusChangedAt.getTime()) / DAY)),
       overdue: replyOverdue(r.status, createdAt, now),
+      promise: promiseFor(r.status, r, now),
     };
   });
 }
@@ -91,6 +106,7 @@ export interface OrderDetail {
   postcode: string;
   trackingNumber: string | null;
   arrivedOn: string | null;
+  promise: { on: string; state: 'ok' | 'soon' | 'late' } | null;
   crmDealId: string | null;
   paddles: { position: number; brand: string; model: string | null; photos: { id: string; side: 'front' | 'back' }[] }[];
   history: { status: string; at: Date; actor: string | null; note: string | null }[];
@@ -108,7 +124,7 @@ export interface OrderDetail {
   review: { quote: string; firstName: string; suburb: string; permission: boolean; createdAt: Date } | null;
 }
 
-export async function loadOrder(db: Db, reference: string): Promise<OrderDetail | null> {
+export async function loadOrder(db: Db, reference: string, now: Date = new Date()): Promise<OrderDetail | null> {
   const { rows } = await db.query<{
     id: string;
     reference: string;
@@ -126,10 +142,12 @@ export async function loadOrder(db: Db, reference: string): Promise<OrderDetail 
     postcode: string;
     tracking_number: string | null;
     arrived_on: string | null;
+    promise_on: string | null;
     crm_deal_id: string | null;
   }>(
     `SELECT id, reference, status, status_changed_at, created_at, is_test, is_smoke, name, email, phone,
-            street, suburb, state, postcode, tracking_number, arrived_on::text AS arrived_on, crm_deal_id
+            street, suburb, state, postcode, tracking_number, arrived_on::text AS arrived_on,
+            promise_on::text AS promise_on, crm_deal_id
        FROM orders WHERE reference = $1`,
     [reference],
   );
@@ -187,6 +205,7 @@ export async function loadOrder(db: Db, reference: string): Promise<OrderDetail 
     postcode: o.postcode,
     trackingNumber: o.tracking_number,
     arrivedOn: o.arrived_on,
+    promise: promiseFor(o.status, o, now),
     crmDealId: o.crm_deal_id,
     paddles: paddles.rows.map((p) => ({
       position: p.position,

@@ -115,11 +115,14 @@ export async function transitionOrder(deps: TransitionDeps, req: TransitionReque
       throw new TransitionError(409, 'transition_not_allowed', `An order that is ${order.status} can’t be moved to ${req.to} by ${req.actor}.`);
     }
 
+    // SCRUM-73: the promise is fixed when the order enters the queue, and the email says the same.
+    const promiseOn = arrivedOn ? backInPostBy(arrivedOn) : undefined;
     await q.query(
       `UPDATE orders SET status = $2, status_changed_at = $3, updated_at = $3,
-              tracking_number = COALESCE($4, tracking_number), arrived_on = COALESCE($5::date, arrived_on)
+              tracking_number = COALESCE($4, tracking_number), arrived_on = COALESCE($5::date, arrived_on),
+              promise_on = COALESCE($6::date, promise_on)
         WHERE id = $1`,
-      [order.id, req.to, deps.now, tracking ?? null, arrivedOn ?? null],
+      [order.id, req.to, deps.now, tracking ?? null, arrivedOn ?? null, promiseOn ?? null],
     );
     const note = [req.note?.trim(), reason ? `Reason sent to the customer: ${reason}` : undefined].filter(Boolean).join('\n') || null;
     await q.query('INSERT INTO status_history (order_id, status, at, actor, note) VALUES ($1, $2, $3, $4, $5)', [
@@ -131,7 +134,7 @@ export async function transitionOrder(deps: TransitionDeps, req: TransitionReque
       const payload: EmailPayload = {};
       if (reason) payload.reason = reason;
       if (req.amountCents !== undefined) payload.amountCents = req.amountCents;
-      if (arrivedOn) payload.backInPostBy = backInPostBy(arrivedOn);
+      if (promiseOn) payload.backInPostBy = promiseOn;
       // Smoke-test orders (SCRUM-68) never send anything.
       const { rows: smoke } = await q.query<{ is_smoke: boolean }>('SELECT is_smoke FROM orders WHERE id = $1', [order.id]);
       if (!smoke[0]?.is_smoke) await enqueueOrderEmail(q, order.id, template, deps.now, payload);

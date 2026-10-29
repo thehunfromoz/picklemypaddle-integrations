@@ -202,6 +202,16 @@ export const MIGRATIONS: readonly Migration[] = [
       CREATE INDEX orders_status_idx ON orders (status, status_changed_at);
     `,
   },
+  {
+    version: 6,
+    name: 'promise date on queued orders',
+    sql: `
+      -- SCRUM-73: "back in the post by", fixed when the order enters In queue (arrival + 10 NSW
+      -- business days), so a later change to the holiday list never moves a promise already made.
+      -- Orders queued before this migration have none; the service works it out from arrived_on.
+      ALTER TABLE orders ADD COLUMN promise_on date;
+    `,
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;
