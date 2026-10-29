@@ -263,7 +263,7 @@ function build(name: TemplateName, ctx: TemplateContext): { subject: string; blo
           { p: `Hi ${need(ctx, 'firstName', name)},` },
           { p: `Your ${paddleWord(n)} arrived on ${longDate(need(ctx, 'arrivedOn', name))} and ${plural(n, 'is', 'are')} now in the re-grit queue.` },
           { kv: [['Back in the post by', longDate(need(ctx, 'backInPostBy', name))]] },
-          { p: `Your status page shows where you are in the queue, and we’ll email you again with a tracking number when we post ${plural(n, 'it', 'them')} back.` },
+          { p: `Your status page shows how many paddles are ahead of yours while ${plural(n, 'it waits', 'they wait')}, and we’ll email you again with a tracking number when we post ${plural(n, 'it', 'them')} back.` },
           ...statusBlocks(need(ctx, 'statusUrl', name)),
           { p: 'Thanks,\nPickleMyPaddle' },
         ],
