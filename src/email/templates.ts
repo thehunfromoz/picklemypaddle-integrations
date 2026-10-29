@@ -200,7 +200,8 @@ function build(name: TemplateName, ctx: TemplateContext): { subject: string; blo
           { list: paddles.map(paddleLine) },
           { h: 'What happens next' },
           { p: `We’ll look at your photos and reply within 1 business day, either to confirm we can re-grit your ${paddleWord(n)} or with a question. There’s nothing to pay yet.` },
-          { p: `Once we’ve accepted your order, we’ll email the price, how to pay and where to post your ${paddleWord(n)}.` },
+          // Same estimate the order form showed: the re-grit price is fixed, only return postage isn't.
+          { p: `Your estimate is ${money(n * PRICE_PER_PADDLE_CENTS)} for re-gritting${n > 1 ? ` (${money(PRICE_PER_PADDLE_CENTS)} a paddle)` : ''}, plus return postage. Once we’ve accepted your order, we’ll email the total with postage, how to pay and where to post your ${paddleWord(n)}.` },
           ...statusBlocks(need(ctx, 'statusUrl', name)),
           { p: tournament(n) },
           { p: 'Thanks,\nPickleMyPaddle' },
