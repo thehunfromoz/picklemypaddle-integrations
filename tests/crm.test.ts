@@ -205,6 +205,20 @@ describe('HubSpot setup as code', () => {
     expect(submitted.metadata.probability).toBe('0.1');
   });
 
+  it('accepts HubSpot numbering our stages after its own, as long as the order is right', async () => {
+    const hs = fakeHubSpot();
+    const c = client(hs);
+    await applySetup(c, await planSetup(c));
+    // What the real test portal did on 29 Oct: ours at 1..11 (a default stage kept position 0).
+    const ours = STATUSES.map((st) => hs.stages.find((s) => s.label === STAGES[st].label)!);
+    ours.forEach((s, i) => (s.displayOrder = i + 1));
+    expect((await planSetup(c)).changes).toEqual([]);
+
+    // Out of order is still corrected.
+    [ours[0]!.displayOrder, ours[1]!.displayOrder] = [ours[1]!.displayOrder, ours[0]!.displayOrder];
+    expect((await planSetup(c)).changes.map((x) => x.kind)).toContain('update_stage');
+  });
+
   it('corrects a stage someone edited by hand', async () => {
     const hs = fakeHubSpot();
     const c = client(hs);

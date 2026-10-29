@@ -22,8 +22,11 @@ fail() { echo "::error title=container test::$*"; exit 1; }
 docker network create "$NET" >/dev/null
 docker run -d --name pg --network "$NET" -p 127.0.0.1:5433:5432 \
   -e POSTGRES_USER=pmp -e POSTGRES_PASSWORD="$PG_PASSWORD" -e POSTGRES_DB=pmp "$PG_IMAGE" >/dev/null
-for _ in $(seq 1 30); do docker exec pg pg_isready -U pmp -d pmp >/dev/null 2>&1 && break; sleep 1; done
-docker exec pg pg_isready -U pmp -d pmp >/dev/null || fail "Postgres didn't start"
+# Ready means the real server on TCP: the image's first-run setup server listens on the socket
+# only, so a socket check can pass and then fail when it restarts. Cold runners can be slow.
+pg_ready() { docker exec pg pg_isready -h 127.0.0.1 -p 5432 -U pmp -d pmp >/dev/null 2>&1; }
+for _ in $(seq 1 120); do pg_ready && break; sleep 1; done
+if ! pg_ready; then docker logs --tail 40 pg 2>&1 | sed 's/^/pg: /'; fail "Postgres didn't start within 120 s"; fi
 # pg_isready can answer before the init scripts finish and Postgres restarts; wait for a real query.
 for _ in $(seq 1 30); do docker exec pg psql -U pmp -d pmp -tAc 'select 1' >/dev/null 2>&1 && break; sleep 1; done
 
