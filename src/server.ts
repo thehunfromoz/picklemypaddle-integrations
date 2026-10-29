@@ -10,7 +10,8 @@ import { resendSender } from './email/sender.js';
 import { placeholdersIn } from './email/templates.js';
 import { startJobs } from './jobs.js';
 import { log, logError } from './log.js';
-import { loadAbuseKeys, TrustedProxies } from './orders/abuse.js';
+import { createAdminApp } from './admin/app.js';
+import { loadAbuseKeys, serviceSecret, TrustedProxies } from './orders/abuse.js';
 import { fsPhotoStore, useImageEngine } from './orders/photos.js';
 
 function configOrExit(): Readonly<Config> {
@@ -89,6 +90,23 @@ const http = server as unknown as { requestTimeout: number; headersTimeout: numb
 http.requestTimeout = 120_000;
 http.headersTimeout = 30_000;
 
+// SCRUM-71/72: the order admin, on its own listener. The public gateway never routes here; in the
+// stacks only the gateway's loopback-only admin listener (Tailscale Serve's target) reaches it.
+const admin = createAdminApp({
+  db,
+  photos,
+  isProduction: config.APP_ENV === 'production',
+  logins: config.ADMIN_LOGINS,
+  trusted: new TrustedProxies(config.ADMIN_TRUSTED_PROXIES),
+  csrfKey: await serviceSecret(db, 'admin-csrf-key'),
+});
+const adminServer = serve({ fetch: admin.fetch, port: config.ADMIN_PORT }, (info) => {
+  log('admin_listening', { port: info.port, logins: config.ADMIN_LOGINS?.length ?? 0 });
+});
+const adminHttp = adminServer as unknown as { requestTimeout: number; headersTimeout: number };
+adminHttp.requestTimeout = 30_000;
+adminHttp.headersTimeout = 15_000;
+
 // SCRUM-74: the HubSpot mirror, only when a key is set. Outside production it may only ever
 // write to the test portal: the settings check that at startup, and the worker checks the key
 // really belongs to it before the first write.
@@ -101,11 +119,12 @@ const crm: CrmDeps = {
   now: () => new Date(),
 };
 
-const stopJobs = startJobs(db, photos, outbox, crm);
+const stopJobs = startJobs(db, photos, outbox, crm, () => new Date(), config.APP_ENV === 'production');
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => {
     stopJobs();
+    adminServer.close();
     server.close(() => void db.close().finally(() => process.exit(0)));
   });
 }

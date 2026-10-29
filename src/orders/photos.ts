@@ -10,7 +10,7 @@
  *     Uploads are held in memory only; the original never touches the disk.
  */
 import { randomBytes } from 'node:crypto';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { ImageRejected, selectImageEngine, type ImageEngine, type ImageEngineSetting } from './image-engine.js';
 import { MAX_PHOTO_BYTES, MAX_PHOTO_EDGE } from './rules.js';
@@ -98,6 +98,8 @@ export async function processPhoto(bytes: Uint8Array, label: string, using?: Ima
 export interface PhotoStore {
   save(data: Buffer): Promise<string>;
   remove(relativePath: string): Promise<void>;
+  /** The file's bytes, for the admin's authorised photo route (SCRUM-72); null if it's gone. */
+  read(relativePath: string): Promise<Buffer | null>;
 }
 
 /**
@@ -116,10 +118,22 @@ export function fsPhotoStore(root: string): PhotoStore {
       return rel;
     },
     async remove(rel) {
-      // Refuse anything that would leave the folder (paths come from our own rows, but be strict).
-      const full = path.resolve(root, rel);
-      if (!full.startsWith(path.resolve(root) + path.sep)) throw new Error('photo path outside the store');
-      await rm(full, { force: true });
+      await rm(inside(rel), { force: true });
+    },
+    async read(rel) {
+      try {
+        return await readFile(inside(rel));
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
+        throw err;
+      }
     },
   };
+
+  // Refuse anything that would leave the folder (paths come from our own rows, but be strict).
+  function inside(rel: string): string {
+    const full = path.resolve(root, rel);
+    if (!full.startsWith(path.resolve(root) + path.sep)) throw new Error('photo path outside the store');
+    return full;
+  }
 }

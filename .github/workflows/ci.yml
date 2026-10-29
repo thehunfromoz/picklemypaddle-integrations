@@ -20,7 +20,10 @@ jobs:
   checks:
     uses: thehunfromoz/picklemypaddle-infra/.github/workflows/node-checks.yml@main
     with:
-      scripts: typecheck test build
+      # SCRUM-72: test:e2e walks an order through the admin in Chromium (desktop and phone sizes).
+      scripts: typecheck test build test:e2e
+      playwright: true
+      report-path: playwright-report
 
   secrets:
     uses: thehunfromoz/picklemypaddle-infra/.github/workflows/secret-scan.yml@main
