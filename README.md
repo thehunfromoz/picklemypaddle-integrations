@@ -13,9 +13,9 @@ Planned responsibilities:
   - Scheduling: HubSpot Meetings
 - HubSpot properties/pipelines and Stripe products kept as configuration-as-code.
 
-**Status:** order intake (SCRUM-8 part 1): the order database, `POST /api/orders` with photo
-processing and abuse limits, and private status links. Emails (SCRUM-69), admin (SCRUM-71/72),
-HubSpot (SCRUM-74) and retention (SCRUM-75) come next.
+**Status:** order intake (SCRUM-8 part 1), order emails (SCRUM-69), the HubSpot mirror
+(SCRUM-74), reviews (SCRUM-33) and the order admin over Tailscale (SCRUM-71/72). Queue position
+and NSW holidays (SCRUM-73) and retention (SCRUM-75) come next.
 
 ## Stack
 
@@ -145,8 +145,58 @@ end states Rejected, Withdrawn and Lapsed. `src/orders/transitions.ts` holds the
 and who may make each (admin, Stripe, or the automatic jobs); anything else is refused with 409.
 Rejected needs a reason (sent to the customer) and Posted back a tracking number (400 without).
 Outside production, admin may also mark an Accepted order paid ("Mark paid (test)"). Every change
-writes a history row with who made it, and queues its email in the same transaction. The admin
-pages that call this come with SCRUM-72.
+writes a history row with who made it, and queues its email in the same transaction.
+
+| From | To (by) | Email to the customer |
+| --- | --- | --- |
+| Submitted | Questions, Accepted, Rejected, Withdrawn (admin) | Accepted (amount), Rejected (reason) |
+| Questions | Accepted, Rejected, Withdrawn (admin); Lapsed (automatic, 30 days) | as above |
+| Accepted | Paid (Stripe, SCRUM-9; "Mark paid (test)" outside production); Withdrawn (admin); Lapsed (SCRUM-9) | |
+| Paid | In queue (admin, records the arrival day); Withdrawn (admin) | In queue ("back in the post by") |
+| In queue | Re-gritted (admin) | |
+| Re-gritted | Posted back (admin, tracking number required) | Posted back (tracking, review link) |
+| Posted back | Completed (admin, or automatic after 10 days) | |
+
+Questions sends nothing: Attila writes to the customer himself from info@. The automatic moves
+(`src/orders/auto.ts`) run once a day, are idempotent, and are recorded as "system".
+
+## Order admin (SCRUM-71/72)
+
+Attila works orders here; HubSpot only mirrors it. The admin is **never on the public internet**:
+
+- It has **its own listener**, `ADMIN_PORT` (8081). The public app (`PORT`, 8080) has no admin
+  routes, so `/admin` through the public gateway is a 404 whatever headers it carries.
+- In the stacks, only the gateway's admin listener reaches it, over a private Docker network, and
+  that listener is published on the host's loopback only, for **Tailscale Serve** (never Funnel):
+  `tailnet device → Tailscale Serve (HTTPS) → 127.0.0.1 → gateway → integrations:8081`.
+- **Identity:** Tailscale Serve strips any `Tailscale-User-*` headers a client sends and adds the
+  signed-in user's. The admin believes them only from `ADMIN_TRUSTED_PROXIES` (the gateway's
+  `admin-gateway` alias; this machine by default) and lets in only the logins in `ADMIN_LOGINS`
+  (403 otherwise; 503 while the list is empty). Tagged devices have no login, so they can't get in.
+- **Forgery and caching:** every form carries a CSRF token (an HMAC of the login under a key kept
+  in the database), POSTs must be same-origin (`Sec-Fetch-Site`, or `Origin` matching `Host`), and
+  every response is `no-store`, `X-Frame-Options: DENY`, with a CSP that allows no scripts at all
+  and `frame-ancestors 'none'`.
+
+Pages (plain HTML forms, no JavaScript, made for a phone):
+
+| Path | What |
+| --- | --- |
+| `GET /admin/orders?status=…` | The list. Default: waiting on Attila (Submitted, Questions, Paid, In queue, Re-gritted). Reference, date, paddles, days in status, TEST orders marked, and a flag once a Submitted order is past the 1-business-day reply promise. |
+| `GET /admin/orders/:ref` | The order: customer, return address, front/back photos, the next allowed moves, notes, history, the emails and HubSpot syncs (with Retry for failed ones), and the review if one was left. |
+| `POST /admin/orders/:ref/status` | A move (`to`, plus `reason`, `trackingNumber`, `arrivedOn`, `amount`, `note`). 400 for a missing reason or tracking number, 409 for a move the table doesn't allow. |
+| `POST /admin/orders/:ref/mark-paid-test` | Outside production only (404 in production, and no button). |
+| `POST /admin/orders/:ref/notes` | An internal note: never shown to the customer, never sent to HubSpot. |
+| `POST /admin/outbox/:id/retry` | Queue a failed email or HubSpot sync again. |
+| `GET /admin/photos/:id` | A paddle photo, only through the admin, `no-store`. |
+
+Smoke-test orders never appear. Locally: set `ADMIN_LOGINS` in `.env`, run `pnpm dev`, and send
+the header yourself, e.g. `curl -H 'Tailscale-User-Login: you@example.com' localhost:8081/admin/orders`
+(a browser extension that adds the header works too).
+
+`pnpm test:e2e` walks an order from Submitted to Completed in Chromium, at desktop and phone sizes,
+against `tests/e2e/server.ts` (the admin over PGlite, with the identity headers added by
+Playwright). CI runs it; `pnpm exec playwright install chromium` first on your Mac.
 
 ## Order emails (SCRUM-69)
 
@@ -234,7 +284,8 @@ All settings come from environment variables; see `.env.example` for the full li
 
 ## CI
 
-Every PR runs type-check, unit tests, build and a gitleaks secret scan. CI also builds the
+Every PR runs type-check, unit tests, build, the admin walk-through in Chromium (`test:e2e`) and a
+gitleaks secret scan. CI also builds the
 Docker image and, beside a real Postgres 18, checks that it:
 - refuses to start without settings and names them (`DATABASE_URL` included);
 - refuses a live Stripe key on staging, and an invalid `DATABASE_URL`, without printing either;

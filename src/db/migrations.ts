@@ -184,6 +184,24 @@ export const MIGRATIONS: readonly Migration[] = [
       );
     `,
   },
+  {
+    version: 5,
+    name: 'internal notes on orders (admin)',
+    sql: `
+      -- SCRUM-72 AC7: Attila's own notes on an order. Never shown to the customer, never sent to
+      -- HubSpot. author is the Tailscale login that wrote it. Goes with the order.
+      CREATE TABLE order_notes (
+        id       bigserial PRIMARY KEY,
+        order_id uuid NOT NULL REFERENCES orders (id) ON DELETE CASCADE,
+        at       timestamptz NOT NULL DEFAULT now(),
+        author   text NOT NULL,
+        note     text NOT NULL
+      );
+      CREATE INDEX order_notes_order_idx ON order_notes (order_id, at);
+      -- The automatic jobs (auto-complete, auto-lapse) look orders up by status and age.
+      CREATE INDEX orders_status_idx ON orders (status, status_changed_at);
+    `,
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

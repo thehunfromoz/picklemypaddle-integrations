@@ -3,9 +3,11 @@
  *  - smoke-test orders (SCRUM-68) are deleted 24 hours after they were placed, photos included;
  *  - rate-limit history older than two days is deleted (SCRUM-67).
  *  - the email outbox (SCRUM-69) is worked every 10 seconds, the CRM sync (SCRUM-74) every 30.
+ *  - daily: Posted back → Completed after 10 days, Questions → Lapsed after 30 (SCRUM-72).
  * Order retention for real orders is SCRUM-75, not here.
  */
 import type { Db } from './db/db.js';
+import { runAutoTransitions } from './orders/auto.js';
 import { processCrm, type CrmDeps } from './crm/sync.js';
 import { processOutbox, type OutboxDeps } from './email/outbox.js';
 import { pruneRateLimitEvents } from './orders/abuse.js';
@@ -35,6 +37,7 @@ export function startJobs(
   outbox: OutboxDeps | null,
   crm: CrmDeps | null = null,
   now: () => Date = () => new Date(),
+  isProduction = outbox?.settings.isProduction ?? false,
 ): () => void {
   let syncing = false;
   const syncCrm = async () => {
@@ -75,6 +78,12 @@ export function startJobs(
       log('rate_limit_pruned', { rows: await pruneRateLimitEvents(db, now()) });
     } catch (err) {
       logError('job_failed', err, { job: 'rate_limit_prune' });
+    }
+    try {
+      const run = await runAutoTransitions(db, now(), isProduction);
+      log('auto_transitions', { ...run });
+    } catch (err) {
+      logError('job_failed', err, { job: 'auto_transitions' });
     }
   };
   void hourly();

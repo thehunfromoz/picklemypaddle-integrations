@@ -77,6 +77,19 @@ const emailList = z.preprocess(
   z.array(z.string().regex(EMAIL_RE, 'must be email addresses, comma-separated')).optional(),
 );
 
+/**
+ * Comma-separated Tailscale logins (SCRUM-71). Looser than an email address: GitHub-backed
+ * tailnets use logins like `someone@github`, which have no dot after the @.
+ */
+const loginList = z.preprocess(
+  (v) => {
+    if (typeof v !== 'string') return v;
+    const items = v.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+    return items.length ? items : undefined;
+  },
+  z.array(z.string().regex(/^[^\s@,]+@[^\s@,]+$/, 'must be Tailscale logins (name@domain), comma-separated')).optional(),
+);
+
 /** A positive whole number, as text in the environment. */
 const count = (fallback: number) => z.coerce.number().int().min(1).max(100_000).default(fallback);
 
@@ -128,6 +141,22 @@ const schema = z
     SITE_URL: optional(z.string().refine(isOrigin, { message: 'must be an origin like https://www.picklemypaddle.com (no path)' })),
     /** The tailnet admin address for Attila's new-order alert (SCRUM-71). Until set, the alert says so. */
     ADMIN_URL: optional(z.string().url('must be a URL like https://pmp-prod.tail8bc7ae.ts.net')),
+
+    // ── Order admin (SCRUM-71/72): its own listener, reached only through Tailscale Serve ──
+    /** The admin listener's port. The public gateway never routes to it. */
+    ADMIN_PORT: z.coerce.number().int().min(1).max(65535).default(8081),
+    /**
+     * Tailscale logins allowed into the admin (Tailscale Serve's Tailscale-User-Login header),
+     * comma-separated, e.g. someone@example.com or someone@github. Unset = the admin answers 503.
+     */
+    ADMIN_LOGINS: loginList,
+    /**
+     * Who may connect to the admin listener and vouch for the Tailscale identity headers: the
+     * gateway's admin network alias in the stacks (admin-gateway). Default: this machine only.
+     */
+    ADMIN_TRUSTED_PROXIES: z
+      .preprocess((v) => (typeof v === 'string' && v.trim() ? v : '127.0.0.1,::1'), z.string())
+      .transform((v) => v.split(',').map((s) => s.trim()).filter(Boolean)),
 
     // ── Stripe (SCRUM-9). Optional until payments are built. ──────────────────
     STRIPE_SECRET_KEY: optional(
@@ -199,6 +228,9 @@ const schema = z
     if (c.APP_ENV === 'production' && !c.RESEND_API_KEY) {
       ctx.addIssue({ code: 'custom', path: ['RESEND_API_KEY'], message: 'is required in production (customer emails)' });
     }
+    if (c.ADMIN_PORT === c.PORT) {
+      ctx.addIssue({ code: 'custom', path: ['ADMIN_PORT'], message: 'must differ from PORT: the admin has its own listener, which the public gateway never routes' });
+    }
     if (c.STRIPE_SECRET_KEY && !c.STRIPE_WEBHOOK_SECRET) {
       ctx.addIssue({
         code: 'custom',
@@ -214,7 +246,7 @@ export type Config = z.infer<typeof schema>;
 export const SECRET_KEYS = ['DATABASE_URL', 'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'HUBSPOT_ACCESS_TOKEN', 'RESEND_API_KEY'] as const;
 
 /** Settings that hold personal data: logged as a count only. */
-const PERSONAL_KEYS = ['EMAIL_ALLOWLIST'] as const;
+const PERSONAL_KEYS = ['EMAIL_ALLOWLIST', 'ADMIN_LOGINS'] as const;
 
 export class ConfigError extends Error {
   constructor(public readonly problems: string[]) {

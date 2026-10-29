@@ -90,9 +90,9 @@ if docker run --rm --entrypoint sh "$IMAGE" -c 'ls /app/node_modules/.pnpm | gre
 docker run --rm --entrypoint sh "$IMAGE" -c 'vipsthumbnail --version && test "$IMAGE_ENGINE" = vips' || fail "libvips tools missing or IMAGE_ENGINE isn't vips"
 
 echo "6b. Starts healthy as non-root (read-only, like the stacks), migrates, and reports the database (SCRUM-64)"
-docker run -d --name svc --network "$NET" -p 8080:8080 --read-only --tmpfs /tmp -v pmp-ci-photos:/data/photos \
+docker run -d --name svc --network "$NET" -p 8080:8080 -p 127.0.0.1:8091:8081 --read-only --tmpfs /tmp -v pmp-ci-photos:/data/photos \
   -e APP_ENV=staging -e PUBLIC_SITE_ORIGIN=http://home-server:8088 -e EMAIL_ALLOWLIST=ci@example.org \
-  -e DATABASE_URL="$DB_URL" -e ORDER_MIN_FILL_SECONDS=0 "$IMAGE" >/dev/null
+  -e ADMIN_LOGINS=ci-admin@example.org -e DATABASE_URL="$DB_URL" -e ORDER_MIN_FILL_SECONDS=0 "$IMAGE" >/dev/null
 for _ in $(seq 1 30); do
   [ "$(docker inspect -f '{{.State.Health.Status}}' svc)" = healthy ] && break; sleep 2
 done
@@ -104,6 +104,21 @@ node -e 'const d = JSON.parse(process.argv[1]).database; process.exit(d.reachabl
   || fail "database not reported reachable at the latest migration: $status"
 grep -q '"imageEngine":"vips"' <<<"$status" || fail "the service isn't using the libvips tools"
 if docker logs svc 2>&1 | grep -qF "$PG_PASSWORD"; then fail "the database password leaked into the service log"; fi
+
+echo "6c. The order admin listens on its own port and believes identity headers only from its trusted proxy (SCRUM-71)"
+admin_hdr='Tailscale-User-Login: ci-admin@example.org'
+# The public port has no admin at all, whatever headers arrive.
+code="$(curl -s -o /dev/null -w '%{http_code}' -H "$admin_hdr" http://127.0.0.1:8080/admin/orders)"
+[ "$code" = 404 ] || fail "the public port answered /admin/orders with $code (expected 404)"
+# Through Docker's port mapping the peer is the bridge, not a trusted proxy: refused even with the right login.
+code="$(curl -s -o /dev/null -w '%{http_code}' -H "$admin_hdr" http://127.0.0.1:8091/admin/orders)"
+[ "$code" = 403 ] || fail "the admin port let an untrusted peer in (got $code, expected 403)"
+# From inside the container (loopback, the default trusted proxy) with an allowed login: the list.
+docker exec svc wget -qO- --header "$admin_hdr" http://127.0.0.1:8081/admin/orders | grep -q 'Waiting on you' ||
+  fail "the admin didn't answer its own loopback with the order list"
+# ... and without the login header: refused.
+if docker exec svc wget -qO- http://127.0.0.1:8081/admin/orders >/dev/null 2>&1; then fail "the admin answered without a Tailscale login"; fi
+echo "::notice title=order admin (SCRUM-71)::public port 404, untrusted peer 403, loopback with an allowed login 200, no login refused"
 
 echo "7. A real order through the running image (SCRUM-65)"
 node --input-type=module -e "
