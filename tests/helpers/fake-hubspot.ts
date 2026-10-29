@@ -41,7 +41,7 @@ export function fakeHubSpot(opts: { portalId?: string } = {}): FakeHubSpot {
     contacts: new Map(),
     deals: new Map(),
     stages: DEFAULT_STAGES.map((label, i) => ({ id: `default-${i}`, label, displayOrder: i, metadata: { probability: '0.5' } })),
-    groups: new Set(['dealinformation']),
+    groups: new Set(['deals:dealinformation', 'contacts:contactinformation']),
     properties: new Map(),
     failNext: [],
   };
@@ -116,17 +116,21 @@ export function fakeHubSpot(opts: { portalId?: string } = {}): FakeHubSpot {
       return json(200, s);
     }
 
-    if (path === '/crm/v3/properties/deals/groups') {
-      if (method === 'GET') return json(200, { results: [...hs.groups].map((name) => ({ name })) });
-      hs.groups.add(body.name);
+    // Properties and their groups, per object (deals, contacts): kept as "<object>:<name>".
+    if ((m = path.match(/^\/crm\/v3\/properties\/(deals|contacts)\/groups$/))) {
+      const object = m[1]!;
+      if (method === 'GET') {
+        return json(200, { results: [...hs.groups].filter((g) => g.startsWith(`${object}:`)).map((g) => ({ name: g.slice(object.length + 1) })) });
+      }
+      hs.groups.add(`${object}:${body.name}`);
       return json(201, body);
     }
-    if (path === '/crm/v3/properties/deals' && method === 'POST') {
-      hs.properties.set(body.name, body);
+    if ((m = path.match(/^\/crm\/v3\/properties\/(deals|contacts)$/)) && method === 'POST') {
+      hs.properties.set(`${m[1]}:${body.name}`, body);
       return json(201, body);
     }
-    if ((m = path.match(/^\/crm\/v3\/properties\/deals\/(\w+)$/))) {
-      const p = hs.properties.get(m[1]!);
+    if ((m = path.match(/^\/crm\/v3\/properties\/(deals|contacts)\/(\w+)$/))) {
+      const p = hs.properties.get(`${m[1]}:${m[2]}`);
       if (!p) return json(404);
       if (method === 'PATCH') Object.assign(p, body);
       return json(200, p);

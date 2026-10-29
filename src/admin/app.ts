@@ -8,6 +8,7 @@
  *   GET  /admin/orders/:ref                  one order
  *   POST /admin/orders/:ref/status           move it (to, reason, trackingNumber, arrivedOn, amount, note)
  *   POST /admin/orders/:ref/mark-paid-test   staging only: Accepted → Paid without Stripe (404 in production)
+ *   POST /admin/orders/:ref/review-reminder-test  staging only: the one review reminder now (404 in production)
  *   POST /admin/orders/:ref/notes            an internal note
  *   POST /admin/outbox/:id/retry             put a failed email or HubSpot sync back in the queue
  *   GET  /admin/photos/:id                   a paddle photo (authorised, never cached)
@@ -22,6 +23,7 @@ import { log, logError } from '../log.js';
 import type { TrustedProxies } from '../orders/abuse.js';
 import { REFERENCE_RE, STATUSES, type OrderStatus } from '../orders/model.js';
 import type { PhotoStore } from '../orders/photos.js';
+import { queueReviewReminder } from '../orders/review-reminder.js';
 import { TransitionError, transitionOrder, type TransitionRequest } from '../orders/transitions.js';
 import { addNote, listOrders, loadOrder, MAX_NOTE, outboxRow, photoPath } from './data.js';
 import { adminGuard, type AdminIdentity } from './guard.js';
@@ -57,6 +59,7 @@ const DONE: Record<string, string> = {
   moved: 'Done. The order has moved on.',
   note: 'Note saved.',
   retry: 'Queued again; it will be sent within a minute.',
+  reminder: 'Review reminder queued; it goes out within a minute.',
 };
 
 /** "60", "60.5", "60.50" → cents. Anything else → undefined (bad input). */
@@ -166,6 +169,20 @@ export function createAdminApp(deps: AdminDeps) {
       const reference = c.req.param('ref');
       if (!REFERENCE_RE.test(reference)) return showOrder(c, reference);
       return move(c, { reference, to: 'paid', actor: 'admin', note: 'Marked paid by hand (test shortcut, not a real payment).' });
+    });
+
+    // SCRUM-80: send the one review reminder now rather than 10 days after posting back.
+    app.post('/admin/orders/:ref/review-reminder-test', async (c) => {
+      const reference = c.req.param('ref');
+      if (!REFERENCE_RE.test(reference)) return showOrder(c, reference);
+      const { rows } = await deps.db.query<{ id: string }>('SELECT id FROM orders WHERE reference = $1 AND NOT is_smoke', [reference]);
+      if (!rows[0]) return showOrder(c, reference);
+      const queued = await deps.db.tx((q) => queueReviewReminder(q, rows[0]!.id, now()));
+      if (!queued) {
+        return showOrder(c, reference, { kind: 'error', text: 'Only an order that has been posted back, with no review and no reminder yet, can get one.' }, 409);
+      }
+      log('admin_review_reminder_test', { reference });
+      return back(c, reference, 'reminder');
     });
   }
 

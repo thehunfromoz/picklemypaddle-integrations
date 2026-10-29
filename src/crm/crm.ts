@@ -16,6 +16,8 @@ export interface CrmContact {
   suburb: string;
   state: string;
   postcode: string;
+  /** SCRUM-80: has left a review for any of their orders. */
+  hasReviewed: boolean;
 }
 
 export interface CrmDeal {
@@ -27,6 +29,8 @@ export interface CrmDeal {
   paddleCount: number;
   isTest: boolean;
   status: OrderStatus;
+  /** SCRUM-80: this order has a review. */
+  reviewed: boolean;
 }
 
 /** Order data as the sync reads it from the database. */
@@ -41,6 +45,9 @@ export interface OrderForCrm {
   state: string;
   postcode: string;
   paddle_count: number;
+  /** SCRUM-80: this order has a review; any order with this email has one. */
+  has_review: boolean;
+  contact_has_review: boolean;
   crm_contact_id: string | null;
   crm_deal_id: string | null;
 }
@@ -76,6 +83,7 @@ export function mapOrder(o: OrderForCrm): { contact: CrmContact; deal: CrmDeal }
       suburb: o.suburb,
       state: o.state,
       postcode: o.postcode,
+      hasReviewed: o.contact_has_review,
     },
     deal: {
       reference: o.reference,
@@ -85,6 +93,7 @@ export function mapOrder(o: OrderForCrm): { contact: CrmContact; deal: CrmDeal }
       paddleCount: o.paddle_count,
       isTest: o.is_test,
       status: o.status,
+      reviewed: o.has_review,
     },
   };
 }

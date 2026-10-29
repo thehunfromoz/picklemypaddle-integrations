@@ -3,7 +3,8 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { mapOrder, splitName, STAGE_ORDER, STAGES } from '../src/crm/crm.js';
-import { applySetup, DEAL_PROPERTIES, hubspotAdapter, hubspotClient, planSetup, portalIdOf } from '../src/crm/hubspot.js';
+import { submitReview } from '../src/orders/reviews.js';
+import { applySetup, CONTACT_PROPERTIES, DEAL_PROPERTIES, describeChange, hubspotAdapter, hubspotClient, planSetup, portalIdOf } from '../src/crm/hubspot.js';
 import { processCrm, resyncAll, retryCrmJob, type CrmDeps } from '../src/crm/sync.js';
 import { BACKOFF_MINUTES } from '../src/email/outbox.js';
 import { STATUSES } from '../src/orders/model.js';
@@ -31,9 +32,20 @@ describe('mapping', () => {
   it('prices the deal at A$60 a paddle and marks TEST orders', () => {
     const { deal } = mapOrder({
       reference: 'PMP-7K3QX', status: 'accepted', is_test: true, name: 'Sam Lee', email: 'sam@example.org', phone: null,
-      suburb: 'Newtown', state: 'NSW', postcode: '2042', paddle_count: 3, crm_contact_id: null, crm_deal_id: null,
+      suburb: 'Newtown', state: 'NSW', postcode: '2042', paddle_count: 3, has_review: false, contact_has_review: false, crm_contact_id: null, crm_deal_id: null,
     });
-    expect(deal).toEqual({ reference: 'PMP-7K3QX', name: '[TEST] PMP-7K3QX', amountCents: 18000, paddleCount: 3, isTest: true, status: 'accepted' });
+    expect(deal).toEqual({ reference: 'PMP-7K3QX', name: '[TEST] PMP-7K3QX', amountCents: 18000, paddleCount: 3, isTest: true, status: 'accepted', reviewed: false });
+  });
+
+  it('carries the "reviewed" flags: the order’s own on the deal, any order’s on the contact (SCRUM-80)', () => {
+    const base = {
+      reference: 'PMP-7K3QX', status: 'completed', is_test: false, name: 'Sam Lee', email: 'sam@example.org', phone: null,
+      suburb: 'Newtown', state: 'NSW', postcode: '2042', paddle_count: 1, crm_contact_id: null, crm_deal_id: null,
+    } as const;
+    const a = mapOrder({ ...base, has_review: false, contact_has_review: true });
+    expect([a.deal.reviewed, a.contact.hasReviewed]).toEqual([false, true]);
+    const b = mapOrder({ ...base, has_review: true, contact_has_review: true });
+    expect([b.deal.reviewed, b.contact.hasReviewed]).toEqual([true, true]);
   });
 });
 
@@ -56,6 +68,27 @@ describe(`HubSpot sync (${DB_BACKEND})`, () => {
   const jobs = async () =>
     (await t.db.query<{ state: string; last_error: string | null; attempts: number }>(`SELECT state, last_error, attempts FROM outbox WHERE kind = 'crm' ORDER BY id`)).rows;
 
+  it('a review sets the deal’s "reviewed" and the contact’s "has reviewed"; a later order keeps the contact’s (SCRUM-80)', async () => {
+    const deps = await setup();
+    const first = await order('reviewer@test.picklemypaddle.com');
+    for (const [to, extra] of [['accepted', {}], ['paid', {}], ['in_queue', {}], ['regritted', {}], ['posted_back', { trackingNumber: 'AP1' }]] as const) {
+      await transitionOrder({ db: t.db, isProduction: false, now: t.clock.now }, { reference: first.reference, to, actor: 'admin', ...extra });
+    }
+    const review = await submitReview(t.db, { token: first.statusToken, quote: 'Plays like new again.', firstName: 'Sam', suburb: 'Newtown', permission: true }, t.clock.now);
+    expect(review.ok).toBe(true);
+    await processCrm(deps);
+    const contact = hs.contacts.get('reviewer@test.picklemypaddle.com')!;
+    const firstDeal = [...hs.deals.values()].find((d) => d.properties.pmp_reference === first.reference)!;
+    expect(firstDeal.properties.pmp_reviewed).toBe('true');
+    expect(contact.properties.pmp_has_reviewed).toBe('true');
+
+    const second = await order('reviewer@test.picklemypaddle.com');
+    await processCrm(deps);
+    const secondDeal = [...hs.deals.values()].find((d) => d.properties.pmp_reference === second.reference)!;
+    expect(secondDeal.properties.pmp_reviewed).toBe('false');
+    expect(hs.contacts.get('reviewer@test.picklemypaddle.com')!.properties.pmp_has_reviewed).toBe('true');
+  });
+
   it('an order creates one contact and one associated deal, without the street address, token or paddle details', async () => {
     const deps = await setup();
     const { reference, statusToken } = await order('player@test.picklemypaddle.com', 2);
@@ -64,11 +97,11 @@ describe(`HubSpot sync (${DB_BACKEND})`, () => {
     expect(hs.contacts.size).toBe(1);
     const contact = hs.contacts.get('player@test.picklemypaddle.com')!;
     expect(contact.properties).toEqual({
-      email: 'player@test.picklemypaddle.com', firstname: 'Test', lastname: 'Player', phone: '0412 345 678', city: 'Sydney', state: 'NSW', zip: '2000',
+      email: 'player@test.picklemypaddle.com', firstname: 'Test', lastname: 'Player', phone: '0412 345 678', city: 'Sydney', state: 'NSW', zip: '2000', pmp_has_reviewed: 'false',
     });
     expect(hs.deals.size).toBe(1);
     const [dealId, deal] = [...hs.deals][0]!;
-    expect(deal.properties).toMatchObject({ dealname: `[TEST] ${reference}`, amount: '120.00', pipeline: 'default', pmp_reference: reference, pmp_paddle_count: '2', pmp_is_test: 'true' });
+    expect(deal.properties).toMatchObject({ dealname: `[TEST] ${reference}`, amount: '120.00', pipeline: 'default', pmp_reference: reference, pmp_paddle_count: '2', pmp_is_test: 'true', pmp_reviewed: 'false' });
     expect(stageLabel(dealId)).toBe('Submitted');
     expect([...deal.contacts]).toEqual([contact.id]);
 
@@ -194,7 +227,15 @@ describe('HubSpot setup as code', () => {
     const hs = fakeHubSpot();
     const c = client(hs);
     const plan = await planSetup(c);
-    expect(plan.changes.map((x) => x.kind)).toEqual(['create_group', ...DEAL_PROPERTIES.map(() => 'create_property'), ...STATUSES.map(() => 'create_stage')]);
+    expect(plan.changes.map((x) => x.kind)).toEqual([
+      'create_group', ...DEAL_PROPERTIES.map(() => 'create_property'),
+      'create_group', ...CONTACT_PROPERTIES.map(() => 'create_property'),
+      ...STATUSES.map(() => 'create_stage'),
+    ]);
+    // SCRUM-80: the "reviewed" flags, on the deal and on the contact.
+    expect(plan.changes.filter((x) => x.kind === 'create_property').map((x) => `${(x as { object: string }).object}.${(x as { property: { name: string } }).property.name}`))
+      .toEqual(expect.arrayContaining(['deals.pmp_reviewed', 'contacts.pmp_has_reviewed']));
+    expect(plan.changes.map(describeChange)).toContain('create contact property pmp_has_reviewed ("Has reviewed", bool)');
     expect(plan.unusedStages).toContain('Appointment scheduled');
     const before = hs.calls.filter((x) => x.method !== 'GET').length;
     expect(before).toBe(0); // planning (the dry run) changes nothing

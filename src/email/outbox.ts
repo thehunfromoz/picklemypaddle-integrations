@@ -31,7 +31,7 @@ export interface MailSettings {
 }
 
 /** Templates that carry the order's private status link. */
-const NEEDS_STATUS_LINK: ReadonlySet<TemplateName> = new Set(['customer_submitted', 'accepted', 'in_queue', 'posted_back']);
+const NEEDS_STATUS_LINK: ReadonlySet<TemplateName> = new Set(['customer_submitted', 'accepted', 'in_queue', 'posted_back', 'review_reminder']);
 
 /** Minutes to wait after each failed attempt; after the last one the email is marked failed. */
 export const BACKOFF_MINUTES = [1, 5, 15, 60, 180, 360, 720] as const;

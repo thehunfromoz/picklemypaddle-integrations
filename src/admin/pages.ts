@@ -85,7 +85,9 @@ ${
     ? html`<p class="empty">Nothing here.</p>`
     : html`<ul class="orders">${orders.map(
         (o) => html`<li><a href="/admin/orders/${o.reference}">
-  <span><span class="ref">${o.reference}</span>${testBadge(o.isTest)}${o.overdue ? html` <span class="badge overdue">Reply overdue</span>` : ''}${promiseBadge(o.promise)}</span>
+  <span><span class="ref">${o.reference}</span>${testBadge(o.isTest)}${o.overdue ? html` <span class="badge overdue">Reply overdue</span>` : ''}${promiseBadge(o.promise)}${
+    o.reviewed ? html` <span class="badge sent">Reviewed${o.reviewed.mayQuote ? '' : ' (private)'}</span>` : ''
+  }</span>
   ${statusBadge(o.status)}
   <span class="meta">${when(o.createdAt)} · ${plural(o.paddles, 'paddle')} · ${plural(o.daysInStatus, 'day')} in ${ADMIN_LABELS[o.status]}${
     o.promise ? ` · back in the post by ${shortDay(o.promise.on)}` : ''
@@ -158,6 +160,33 @@ function actions(ctx: PageContext, o: OrderDetail): Html {
   return html`${markPaid}${moves.map((to) => actionForm(ctx, o, to))}${
     o.status === 'accepted' && ctx.isProduction ? html`<p class="small">Paid is set by Stripe when the customer pays.</p>` : ''
   }`;
+}
+
+/** SCRUM-33/80: the review, or where the one reminder stands; staging can send it now. */
+function reviewSection(ctx: PageContext, o: OrderDetail): Html | string {
+  if (o.review) {
+    return html`<h2>Review</h2>
+<blockquote class="pre">${o.review.quote}</blockquote>
+<p class="small">${o.review.firstName}, ${o.review.suburb} · ${when(o.review.createdAt)} · ${
+      o.review.permission ? 'may be quoted on the website' : 'NOT for the website (no permission)'
+    }${o.reviewReminderAt ? ` · after the reminder of ${when(o.reviewReminderAt)}` : ''}</p>`;
+  }
+  if (o.status !== 'posted_back' && o.status !== 'completed') return '';
+  const state = o.reviewReminderAt
+    ? `No review yet. The one reminder went on ${when(o.reviewReminderAt)}; there won’t be another.`
+    : o.reviewReminderDue
+      ? `No review yet. The one reminder goes automatically on ${when(o.reviewReminderDue)}.`
+      : 'No review yet.';
+  const button =
+    !ctx.isProduction && !o.reviewReminderAt
+      ? html`<details class="action"><summary>Send review reminder now (test)</summary>
+<form method="post" action="/admin/orders/${o.reference}/review-reminder-test">
+  ${csrfField(ctx)}
+  <p class="test-note">Test only: sends the one reminder now instead of 10 days after posting back. Not available in production.</p>
+  <button type="submit">Send review reminder now (test)</button>
+</form></details>`
+      : '';
+  return html`<h2>Review</h2><p class="empty">${state}</p>${button}`;
 }
 
 const ACTOR_LABELS: Record<string, string> = { customer: 'customer', admin: 'you', system: 'automatic', stripe: 'Stripe' };
@@ -234,15 +263,7 @@ ${
     : html`<p class="empty">Nothing sent for this order.</p>`
 }
 
-${
-  o.review
-    ? html`<h2>Review</h2>
-<blockquote class="pre">${o.review.quote}</blockquote>
-<p class="small">${o.review.firstName}, ${o.review.suburb} · ${when(o.review.createdAt)} · ${
-        o.review.permission ? 'may be quoted on the website' : 'NOT for the website (no permission)'
-      }</p>`
-    : ''
-}`,
+${reviewSection(ctx, o)}`,
   );
 }
 
