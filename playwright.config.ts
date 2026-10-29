@@ -10,7 +10,7 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: 0,
   workers: 1,
-  reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
+  reporter: process.env.CI ? [['list'], ['html', { open: 'never' }], ['./tests/e2e/notice-reporter.ts']] : 'list',
   use: {
     baseURL: `http://127.0.0.1:${PORT}`,
     extraHTTPHeaders: {
