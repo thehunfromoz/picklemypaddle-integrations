@@ -258,7 +258,7 @@ exports[`email templates > customer_submitted (production) renders the same text
 <ul style="margin:0 0 16px;padding-left:20px;color:#1E2E52"><li style="margin:0 0 4px;font-size:16px;line-height:1.5">Selkirk Vanguard Power Air</li><li style="margin:0 0 4px;font-size:16px;line-height:1.5">JOOLA</li></ul>
 <h2 style="margin:24px 0 8px;font-size:17px;color:#1E2E52">What happens next</h2>
 <p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">We’ll look at your photos and reply within 1 business day, either to confirm we can re-grit your paddles or with a question. There’s nothing to pay yet.</p>
-<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Once we’ve accepted your order, we’ll email the price, how to pay and where to post your paddles.</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Your estimate is A$120 for re-gritting (A$60 a paddle), plus return postage. Once we’ve accepted your order, we’ll email the total with postage, how to pay and where to post your paddles.</p>
 <p style="margin:8px 0 24px"><a href="https://www.picklemypaddle.com/order/status#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT" style="display:inline-block;background:#4565A6;color:#ffffff;text-decoration:none;font-weight:600;font-size:16px;padding:12px 20px;border-radius:8px">See your order’s progress</a></p>
 <p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">This link is private to you: anyone who has it can see your order’s progress, but not your name or address. If you lose it, use “Email me my links” on the status page.</p>
 <p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">A reminder: re-gritted paddles aren’t allowed in sanctioned tournaments, so keep these for social and club play.</p>
@@ -282,7 +282,7 @@ WHAT HAPPENS NEXT
 
 We’ll look at your photos and reply within 1 business day, either to confirm we can re-grit your paddles or with a question. There’s nothing to pay yet.
 
-Once we’ve accepted your order, we’ll email the price, how to pay and where to post your paddles.
+Your estimate is A$120 for re-gritting (A$60 a paddle), plus return postage. Once we’ve accepted your order, we’ll email the total with postage, how to pay and where to post your paddles.
 
 See your order’s progress:
 https://www.picklemypaddle.com/order/status#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT
@@ -318,7 +318,7 @@ exports[`email templates > customer_submitted (staging) renders the same text an
 <ul style="margin:0 0 16px;padding-left:20px;color:#1E2E52"><li style="margin:0 0 4px;font-size:16px;line-height:1.5">Selkirk Vanguard Power Air</li><li style="margin:0 0 4px;font-size:16px;line-height:1.5">JOOLA</li></ul>
 <h2 style="margin:24px 0 8px;font-size:17px;color:#1E2E52">What happens next</h2>
 <p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">We’ll look at your photos and reply within 1 business day, either to confirm we can re-grit your paddles or with a question. There’s nothing to pay yet.</p>
-<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Once we’ve accepted your order, we’ll email the price, how to pay and where to post your paddles.</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Your estimate is A$120 for re-gritting (A$60 a paddle), plus return postage. Once we’ve accepted your order, we’ll email the total with postage, how to pay and where to post your paddles.</p>
 <p style="margin:8px 0 24px"><a href="http://home-server:8088/order/status#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT" style="display:inline-block;background:#4565A6;color:#ffffff;text-decoration:none;font-weight:600;font-size:16px;padding:12px 20px;border-radius:8px">See your order’s progress</a></p>
 <p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">This link is private to you: anyone who has it can see your order’s progress, but not your name or address. If you lose it, use “Email me my links” on the status page.</p>
 <p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">A reminder: re-gritted paddles aren’t allowed in sanctioned tournaments, so keep these for social and club play.</p>
@@ -344,7 +344,7 @@ WHAT HAPPENS NEXT
 
 We’ll look at your photos and reply within 1 business day, either to confirm we can re-grit your paddles or with a question. There’s nothing to pay yet.
 
-Once we’ve accepted your order, we’ll email the price, how to pay and where to post your paddles.
+Your estimate is A$120 for re-gritting (A$60 a paddle), plus return postage. Once we’ve accepted your order, we’ll email the total with postage, how to pay and where to post your paddles.
 
 See your order’s progress:
 http://home-server:8088/order/status#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT
