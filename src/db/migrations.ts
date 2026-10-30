@@ -262,6 +262,31 @@ export const MIGRATIONS: readonly Migration[] = [
       );
     `,
   },
+  {
+    version: 9,
+    name: 'pricing: terms saved at Accept',
+    sql: `
+      -- SCRUM-81. What the customer was asked to pay, frozen at Accept: amount_cents (from
+      -- SCRUM-75) stays the total; these say how it was made up and which terms applied. Changing a
+      -- price, the postage table or the GST date never alters an order already accepted.
+      ALTER TABLE orders ADD COLUMN subtotal_cents integer;
+      ALTER TABLE orders ADD COLUMN discount_cents integer NOT NULL DEFAULT 0;
+      ALTER TABLE orders ADD COLUMN postage_cents integer;
+      -- The calculated postage, and Attila's reason when he charged something else.
+      ALTER TABLE orders ADD COLUMN postage_quoted_cents integer;
+      ALTER TABLE orders ADD COLUMN postage_override_reason text;
+      ALTER TABLE orders ADD COLUMN postage_detail text;
+      ALTER TABLE orders ADD COLUMN gst_cents integer;
+      ALTER TABLE orders ADD COLUMN tax_treatment text CHECK (tax_treatment IN ('not_registered', 'gst_inclusive'));
+      ALTER TABLE orders ADD COLUMN terms_version text;
+      ALTER TABLE orders ADD COLUMN terms_date date;
+
+      -- Orders accepted before this: re-grit only, no postage recorded, not GST-registered.
+      UPDATE orders SET subtotal_cents = amount_cents, postage_cents = 0, gst_cents = 0,
+             tax_treatment = 'not_registered', terms_version = 'before-scrum-81'
+       WHERE amount_cents IS NOT NULL;
+    `,
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

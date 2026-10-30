@@ -61,3 +61,32 @@ describe('app', () => {
     expect(res.headers.get('x-content-type-options')).toBe('nosniff');
   });
 });
+
+describe('/api/pricing (SCRUM-81)', () => {
+  let p: TestApp;
+  afterEach(async () => p?.close());
+
+  it('gives the website today’s price, GST wording and postage guide, cacheable, with no personal data', async () => {
+    p = await makeApp();
+    const res = await p.app.request('/api/pricing');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('cache-control')).toBe('public, max-age=3600');
+    const body = (await res.json()) as Record<string, unknown> & { postage: { byPaddles: { paddles: number; minCents: number }[] } };
+    expect(body).toMatchObject({
+      date: '2026-10-26',
+      currency: 'AUD',
+      pricePerPaddleCents: 6000,
+      termsVersion: 'price:2026-01-01;gst:none',
+      gst: { registered: false, note: 'No GST is charged: we aren’t registered for GST.' },
+      postage: { table: '2026-07-01', basis: 'cubic' },
+    });
+    expect(body.postage.byPaddles[0]).toEqual({ paddles: 1, minCents: 2225, maxCents: 2225 });
+  });
+
+  it('switches its wording from GST_REGISTERED_FROM, with no rebuild', async () => {
+    p = await makeApp({ env: { GST_REGISTERED_FROM: '2026-10-26' } });
+    const body = (await (await p.app.request('/api/pricing')).json()) as { gst: unknown; termsVersion: string };
+    expect(body.gst).toEqual({ registered: true, note: 'Prices include GST.' });
+    expect(body.termsVersion).toBe('price:2026-01-01;gst:from-2026-10-26');
+  });
+});

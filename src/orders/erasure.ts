@@ -168,6 +168,9 @@ export async function eraseCustomer(deps: RetentionDeps, email: string, fingerpr
       await q.query(
         `UPDATE orders SET email = '', email_norm = '', phone = NULL, street = '', suburb = '', state = '', postcode = '',
                 tracking_number = NULL, idempotency_key = NULL, crm_contact_id = NULL,
+                -- SCRUM-81: the amounts and terms are the tax record and stay; the postage working
+                -- (its zone comes from the address) and Attila's free-text reason go.
+                postage_detail = NULL, postage_override_reason = NULL,
                 review_reminder_at = COALESCE(review_reminder_at, $2), erased_at = $2, updated_at = $2
           WHERE id = ANY($1::uuid[])`,
         [minimiseIds, now],

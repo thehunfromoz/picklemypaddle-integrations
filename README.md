@@ -159,7 +159,7 @@ writes a history row with who made it, and queues its email in the same transact
 
 | From | To (by) | Email to the customer |
 | --- | --- | --- |
-| Submitted | Questions, Accepted, Rejected, Withdrawn (admin) | Accepted (amount), Rejected (reason) |
+| Submitted | Questions, Accepted, Rejected, Withdrawn (admin) | Accepted (re-grit, postage, total, GST line), Rejected (reason) |
 | Questions | Accepted, Rejected, Withdrawn (admin); Lapsed (automatic, 30 days) | as above |
 | Accepted | Paid (Stripe, SCRUM-9; "Mark paid (test)" outside production); Withdrawn (admin); Lapsed (SCRUM-9) | |
 | Paid | In queue (admin, records the arrival day); Withdrawn (admin) | In queue ("back in the post by") |
@@ -178,6 +178,33 @@ the queue (In queue only): orders that arrived earlier, ties by reference, TEST 
 only among TEST orders. **Each year, add the next year's holidays** once NSW publishes them:
 `tests/holidays.test.ts` fails from the day the list no longer covers the next 12 months. The automatic moves
 (`src/orders/auto.ts`) run once a day, are idempotent, and are recorded as "system".
+
+## Prices, postage and GST (SCRUM-81, decided 30 Oct 2026)
+
+`src/pricing/` answers "what are the terms on this Sydney day?": A$60 a paddle (A$54 for clubs),
+whether GST applies, and the return postage. **At Accept the order saves its terms**: re-grit,
+discount (SCRUM-63), postage, total (`amount_cents`), GST included, the tax treatment and a terms
+version. Later price, postage or GST changes never alter an accepted order, and the email, the
+admin and HubSpot all show the saved figures.
+
+- **Prices** live in `src/pricing/terms.ts` (`PRICE_LISTS`, dated). To change a price, add an entry
+  dated from the change; never edit an old one.
+- **GST:** `GST_REGISTERED_FROM` (a date, empty = not registered) and `BUSINESS_ABN`. Before the
+  date, documents say "Invoice" and "No GST has been charged". From it, A$60 *includes* GST
+  (A$5.45; GST = total ÷ 11 to the nearest cent) and documents become "Tax invoice". The issue
+  date decides. Production needs the ABN once Stripe or GST is set up; staging may try a GST date
+  without one.
+- **Postage** is worked out from size and weight (`src/pricing/postage.ts`, data in
+  `postage-data.ts`): the packing for the paddle count (a padded bag for 1–2, a box for 3–10), its
+  size and weight, the **greater of actual and cubic weight** (m³ × 250; the table's `basis` can
+  switch to actual weight only), then Australia Post Parcel Post from Sydney (one national price
+  up to 5 kg; over 5 kg by the destination zone from the return postcode), plus the packaging cost.
+  Australia Post changes prices each July: **add a new dated table then**. The admin's Accept form
+  shows the working and fills in the amount; a different amount needs a reason, which goes in the
+  history. When nothing can be calculated (a postcode outside the zone table and over 5 kg, or more
+  than 10 paddles), Accept needs the amount and a reason.
+- **`GET /api/pricing`** (public, cached 1 h) gives the website today's price, GST wording and
+  postage per paddle count, so the wording changes on the GST date without a rebuild.
 
 ## Order admin (SCRUM-71/72)
 
@@ -345,6 +372,8 @@ All settings come from environment variables; see `.env.example` for the full li
   staging stops the service, so staging can never charge a real card. A test key in production
   stops it too.
 - **HubSpot** uses a separate test portal outside production.
+- **GST and ABN** (SCRUM-81): a bad `GST_REGISTERED_FROM` date or an ABN that fails the ATO
+  checksum stops the service.
 - **Email:** outside production the service won't start without `EMAIL_ALLOWLIST`; in production
   it needs `RESEND_API_KEY` and ignores any allow-list. The allow-list is logged only as a count.
 - Secret values are never logged. Startup logs show them only as `[set]`.

@@ -273,7 +273,7 @@ describe('moving orders (SCRUM-72 AC3, AC4, AC6, AC7)', () => {
     const { reference } = await placeOrder(t);
 
     await move(a, reference, 'questions', { note: 'Asked about the edge guard' });
-    await move(a, reference, 'accepted', { amount: '55.50' });
+    await move(a, reference, 'accepted', { postage: '15.00', postageReason: 'Going out with a club batch' });
     expect((await a.post(`/admin/orders/${reference}/mark-paid-test`)).status).toBe(303);
     await move(a, reference, 'in_queue', { arrivedOn: '2026-10-26' });
     await move(a, reference, 'regritted');
@@ -288,7 +288,7 @@ describe('moving orders (SCRUM-72 AC3, AC4, AC6, AC7)', () => {
       `SELECT ob.payload FROM outbox ob JOIN orders o ON o.id = ob.order_id WHERE o.reference = $1 AND ob.template = 'accepted'`,
       [reference],
     );
-    expect(payload[0]!.payload.amountCents).toBe(5550);
+    expect(payload[0]!.payload.amountCents).toBe(7500); // A$60 + A$15.00 postage (overridden, SCRUM-81)
 
     const { rows: history } = await t.db.query<{ status: string; actor: string; note: string | null }>(
       'SELECT h.status, h.actor, h.note FROM status_history h JOIN orders o ON o.id = h.order_id WHERE o.reference = $1 ORDER BY h.at, h.id',
@@ -351,10 +351,30 @@ describe('moving orders (SCRUM-72 AC3, AC4, AC6, AC7)', () => {
     expect(await res.text()).toContain('can’t be moved to completed');
     expect((await a.post(`/admin/orders/${reference}/status`, { to: 'paid' })).status).toBe(400);
     expect((await a.post(`/admin/orders/${reference}/status`, { to: 'nonsense' })).status).toBe(400);
-    expect((await a.post(`/admin/orders/${reference}/status`, { to: 'accepted', amount: 'lots' })).status).toBe(400);
+    expect((await a.post(`/admin/orders/${reference}/status`, { to: 'accepted', postage: 'lots' })).status).toBe(400);
     // Mark paid (test) from Submitted is not a move in the table either.
     expect((await a.post(`/admin/orders/${reference}/mark-paid-test`)).status).toBe(409);
     expect(await statusOf(t, reference)).toBe('submitted');
+  });
+
+  it('shows the calculated postage at Accept, needs a reason to change it, then shows the fixed price (SCRUM-81)', async () => {
+    t = await makeApp();
+    const a = await makeAdmin(t);
+    const { reference } = await placeOrder(t);
+    const page = await (await a.get(`/admin/orders/${reference}`)).text();
+    expect(page).toContain('name="postage" inputmode="decimal" pattern="\\d{1,5}(\\.\\d{1,2})?" value="22.25"');
+    expect(page).toContain('padded bag, charged on 1.67 kg');
+    expect(page).toContain('Total</dt><dd>A$82.25 · No GST has been charged');
+
+    const noReason = await a.post(`/admin/orders/${reference}/status`, { to: 'accepted', postage: '18' });
+    expect(noReason.status).toBe(400);
+    expect(await noReason.text()).toContain('Say why the postage isn’t the calculated A$22.25.');
+    expect(await statusOf(t, reference)).toBe('submitted');
+
+    await move(a, reference, 'accepted', { postage: '22.25' });
+    const after = await (await a.get(`/admin/orders/${reference}`)).text();
+    expect(after).toContain('Price (fixed at Accept)');
+    expect(after).toContain('<strong>A$82.25</strong> · no GST');
   });
 
   it('offers only the allowed moves on the page', async () => {

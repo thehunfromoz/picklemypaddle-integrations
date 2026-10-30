@@ -142,7 +142,7 @@ export async function processCrm(deps: CrmDeps, batch = 10): Promise<CrmRun> {
 async function loadOrder(db: Db, orderId: string): Promise<OrderForCrm | null> {
   const { rows } = await db.query<OrderForCrm>(
     `SELECT o.reference, o.status, o.is_test, o.name, o.email, o.phone, o.suburb, o.state, o.postcode,
-            o.crm_contact_id, o.crm_deal_id, (SELECT count(*)::int FROM paddles p WHERE p.order_id = o.id) AS paddle_count,
+            o.crm_contact_id, o.crm_deal_id, o.amount_cents, (SELECT count(*)::int FROM paddles p WHERE p.order_id = o.id) AS paddle_count,
             EXISTS (SELECT 1 FROM reviews r WHERE r.order_id = o.id) AS has_review,
             EXISTS (SELECT 1 FROM reviews r JOIN orders o2 ON o2.id = r.order_id
                      WHERE o2.email_norm = o.email_norm AND NOT o2.is_smoke) AS contact_has_review

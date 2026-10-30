@@ -10,6 +10,7 @@
  * known are written `[To confirm: …]`; production refuses to start while any template still
  * contains one (see `placeholdersIn` and server.ts).
  */
+import { taxWording, type TaxTreatment } from '../pricing/terms.js';
 import { PRICE_PER_PADDLE_CENTS } from '../orders/model.js';
 
 export const TEMPLATES = [
@@ -43,8 +44,14 @@ export interface TemplateContext {
   statusUrl?: string;
   /** Attila's tailnet admin link for this order; null until the admin exists (SCRUM-71/72). */
   adminUrl?: string | null;
-  /** Accepted: total in cents, before return postage. */
+  /** Accepted: the total to pay, including return postage (SCRUM-81). */
   amountCents?: number;
+  /** Accepted: the re-grit price for all paddles, and the return postage. */
+  subtotalCents?: number;
+  postageCents?: number;
+  /** Accepted: the GST included, and whether GST applies (from the terms frozen at Accept). */
+  gstCents?: number;
+  taxTreatment?: TaxTreatment;
   /** Accepted: Stripe payment link (SCRUM-9). */
   paymentUrl?: string;
   /** In queue: YYYY-MM-DD. */
@@ -229,7 +236,11 @@ function build(name: TemplateName, ctx: TemplateContext): { subject: string; blo
     case 'accepted': {
       const ref = need(ctx, 'reference', name);
       const n = need(ctx, 'paddles', name).length;
-      const amount = ctx.amountCents ?? n * PRICE_PER_PADDLE_CENTS;
+      const subtotal = ctx.subtotalCents ?? n * PRICE_PER_PADDLE_CENTS;
+      const postage = ctx.postageCents;
+      const amount = ctx.amountCents ?? subtotal + (postage ?? 0);
+      const each = n > 0 ? Math.round(subtotal / n) : PRICE_PER_PADDLE_CENTS;
+      const gst = taxWording(ctx.taxTreatment ?? 'not_registered', amount).gstLine;
       return {
         customer: true,
         subject: `${ref} accepted: how to pay and post your ${paddleWord(n)}`,
@@ -238,8 +249,10 @@ function build(name: TemplateName, ctx: TemplateContext): { subject: string; blo
           { p: `Good news: we’ve checked your photos and we can re-grit your ${paddleWord(n)}.` },
           {
             kv: [
-              ['Re-grit', `${n} × ${money(PRICE_PER_PADDLE_CENTS)} (both faces)`],
-              ['Total', `${money(amount)} plus return postage`],
+              ['Re-grit', `${n} × ${money(each)} (both faces)`],
+              ...(postage !== undefined ? [['Return postage', money(postage)] as [string, string]] : []),
+              ['Total', postage !== undefined ? money(amount) : `${money(amount)} plus return postage`],
+              ['GST', gst],
             ],
           },
           ctx.paymentUrl
@@ -388,6 +401,12 @@ export function sampleContext(name: TemplateName, test: boolean): TemplateContex
     backInPostBy: '2026-11-16',
     trackingNumber: '33XYZ0123456789',
     reason: 'The face has a crack near the edge guard, and re-gritting would make it worse.',
+    // Accepted (SCRUM-81): 2 paddles, the calculated postage for a padded bag.
+    subtotalCents: 12000,
+    postageCents: 2225,
+    amountCents: 14225,
+    gstCents: 0,
+    taxTreatment: 'not_registered',
     links: [
       { reference: 'PMP-7K3QX', url: `${site}/order/status#${'T'.repeat(43)}` },
       { reference: 'PMP-9ABCD', url: `${site}/order/status#${'U'.repeat(43)}` },

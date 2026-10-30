@@ -43,7 +43,7 @@ async function walk(reference: string, ...steps: OrderStatus[]) {
   for (const to of steps) {
     await transitionOrder(
       { db: t.db, isProduction: false, now: t.clock.now },
-      { reference, to, actor: 'admin', note: 'Spoke to Erin on the phone', ...(to === 'posted_back' ? { trackingNumber: 'AP999' } : {}), ...(to === 'rejected' ? { reason: 'Erin’s paddle is cracked.' } : {}), ...(to === 'accepted' ? { amountCents: 5500 } : {}) },
+      { reference, to, actor: 'admin', note: 'Spoke to Erin on the phone', ...(to === 'posted_back' ? { trackingNumber: 'AP999' } : {}), ...(to === 'rejected' ? { reason: 'Erin’s paddle is cracked.' } : {}), ...(to === 'accepted' ? { postageCents: 0, postageReason: 'Collected in person' } : {}) },
     );
   }
 }
@@ -78,7 +78,8 @@ describe('erasure on request', () => {
     // The paid one keeps exactly the tax record. Every column, one by one:
     const { rows } = await t.db.query<Record<string, unknown>>('SELECT * FROM orders WHERE reference = $1', [paid.reference]);
     const o = rows[0]!;
-    const kept = { reference: paid.reference, name: 'Erin Erasable', status: 'completed', is_test: true, is_smoke: false, amount_cents: 5500 };
+    const kept = { reference: paid.reference, name: 'Erin Erasable', status: 'completed', is_test: true, is_smoke: false, amount_cents: 12000,
+      subtotal_cents: 12000, discount_cents: 0, postage_cents: 0, postage_quoted_cents: 2225, gst_cents: 0, tax_treatment: 'not_registered', terms_version: 'price:2026-01-01;gst:none' };
     for (const [col, value] of Object.entries(kept)) expect(o[col], col).toBe(value);
     for (const col of ['id', 'created_at', 'status_changed_at', 'consent_at', 'tournament_ack_at', 'updated_at', 'erased_at', 'arrived_on', 'promise_on', 'crm_deal_id', 'review_reminder_at']) {
       expect(o[col], col).not.toBeNull();
@@ -86,8 +87,11 @@ describe('erasure on request', () => {
     for (const [col, value] of Object.entries({ email: '', email_norm: '', street: '', suburb: '', state: '', postcode: '' })) expect(o[col], col).toBe(value);
     for (const col of ['phone', 'tracking_number', 'idempotency_key', 'crm_contact_id']) expect(o[col], col).toBeNull();
     for (const col of ['retain_until', 'retain_reason', 'retain_set_at']) expect(o[col], col).toBeNull();
+    // SCRUM-81: the postage working and the free-text reason go; the quoted postage and the terms date stay.
+    for (const col of ['postage_detail', 'postage_override_reason']) expect(o[col], col).toBeNull();
+    expect(o.terms_date, 'terms_date').not.toBeNull();
     // Nothing else on the order has been forgotten in this list.
-    const checked = new Set([...Object.keys(kept), 'id', 'created_at', 'status_changed_at', 'consent_at', 'tournament_ack_at', 'updated_at', 'erased_at', 'arrived_on', 'promise_on', 'crm_deal_id', 'review_reminder_at', 'email', 'email_norm', 'street', 'suburb', 'state', 'postcode', 'phone', 'tracking_number', 'idempotency_key', 'crm_contact_id', 'retain_until', 'retain_reason', 'retain_set_at']);
+    const checked = new Set([...Object.keys(kept), 'id', 'created_at', 'status_changed_at', 'consent_at', 'tournament_ack_at', 'updated_at', 'erased_at', 'arrived_on', 'promise_on', 'crm_deal_id', 'review_reminder_at', 'email', 'email_norm', 'street', 'suburb', 'state', 'postcode', 'phone', 'tracking_number', 'idempotency_key', 'crm_contact_id', 'retain_until', 'retain_reason', 'retain_set_at', 'postage_detail', 'postage_override_reason', 'terms_date']);
     expect(Object.keys(o).filter((c) => !checked.has(c))).toEqual([]);
 
     const id = o.id as string;
@@ -228,7 +232,7 @@ describe('admin: Erase a customer', () => {
     expect(retention).toContain('1 deleted, 1 kept as tax records');
     const detail = await (await a.get(`/admin/orders/${paid.reference}`)).text();
     expect(detail).toContain('Erased on request');
-    expect(detail).toContain('A$55');
+    expect(detail).toContain('only the tax record is kept (A$60)');
   });
 
   it('shows open orders and offers no confirm button', async () => {

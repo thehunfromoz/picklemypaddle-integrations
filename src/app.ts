@@ -7,7 +7,10 @@ import { currentVersion, LATEST_VERSION } from './db/migrations.js';
 import { logError } from './log.js';
 import type { AbuseKeys, TrustedProxies } from './orders/abuse.js';
 import type { PhotoStore } from './orders/photos.js';
+import { sydneyDate } from './orders/dates.js';
 import { orderRoutes } from './orders/routes.js';
+import { postageGuide, postageTableOn } from './pricing/postage.js';
+import { priceNote, termsOn } from './pricing/terms.js';
 import type { LinksMailer } from './orders/status.js';
 
 export interface AppDeps {
@@ -54,6 +57,23 @@ export function createApp(config: Config, deps: AppDeps) {
         email: deps.emailProvider ? 'configured' : 'not configured',
       },
       ...(deps.imageEngine ? { imageEngine: deps.imageEngine } : {}),
+    });
+  });
+
+  // SCRUM-81: today's price, GST wording and postage guide, for the website (public; no personal
+  // data). The site reads it so the wording changes on GST_REGISTERED_FROM without a rebuild.
+  app.get('/api/pricing', (c) => {
+    const today = sydneyDate((deps.now ?? (() => new Date()))());
+    const terms = termsOn(today, { gstRegisteredFrom: config.GST_REGISTERED_FROM ?? null });
+    const table = postageTableOn(today);
+    c.header('Cache-Control', 'public, max-age=3600');
+    return c.json({
+      date: today,
+      currency: 'AUD',
+      termsVersion: terms.version,
+      pricePerPaddleCents: terms.pricePerPaddleCents,
+      gst: { registered: terms.treatment === 'gst_inclusive', note: priceNote(terms.treatment) },
+      postage: { table: table.from, basis: table.basis, byPaddles: postageGuide(today) },
     });
   });
 
