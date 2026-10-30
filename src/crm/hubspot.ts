@@ -25,6 +25,18 @@ export interface HubSpotClient {
   request<T>(method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE', path: string, body?: unknown): Promise<T>;
 }
 
+/**
+ * Why a request never got an answer, as a short code: Node's fetch only says "TypeError: fetch
+ * failed" and keeps the reason (ENOTFOUND, ECONNREFUSED, a timeout, a certificate error) in
+ * `cause`. Codes and error names only: never a message, which could quote a URL or header.
+ */
+export function networkCause(err: unknown): string {
+  const e = err as { name?: string; code?: string; cause?: { code?: string; name?: string; cause?: { code?: string } } } | null;
+  if (e?.name === 'TimeoutError' || e?.name === 'AbortError') return 'timeout';
+  const code = e?.cause?.code ?? e?.cause?.cause?.code ?? e?.code ?? e?.cause?.name ?? e?.name ?? 'error';
+  return String(code).replace(/[^A-Za-z0-9_]/g, '').slice(0, 40) || 'error';
+}
+
 export function hubspotClient(token: string, base = 'https://api.hubapi.com', fetchImpl: typeof fetch = fetch, timeoutMs = 15_000): HubSpotClient {
   const root = base.replace(/\/$/, '');
   return {
@@ -42,7 +54,7 @@ export function hubspotClient(token: string, base = 'https://api.hubapi.com', fe
           signal: AbortSignal.timeout(timeoutMs),
         });
       } catch (err) {
-        throw new HubSpotError(null, `network:${(err as Error)?.name ?? 'error'}`, false);
+        throw new HubSpotError(null, `network:${networkCause(err)}`, false);
       }
       if (res.status === 204) return undefined as T;
       if (res.ok) return (await res.json()) as T;
