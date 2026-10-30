@@ -220,6 +220,22 @@ describe(`HubSpot sync (${DB_BACKEND})`, () => {
   });
 });
 
+describe('HubSpot network errors', () => {
+  it('names the reason a request got no answer, not just "TypeError"', async () => {
+    const failing = (cause: unknown) => (async () => {
+      throw Object.assign(new TypeError('fetch failed'), { cause });
+    }) as unknown as typeof fetch;
+    const client = (f: typeof fetch) => hubspotClient(KEY, 'https://api.hubapi.test', f);
+    await expect(client(failing({ code: 'ENOTFOUND' })).request('GET', '/x')).rejects.toMatchObject({ code: 'network:ENOTFOUND', permanent: false });
+    await expect(client(failing({ code: 'UND_ERR_CONNECT_TIMEOUT' })).request('GET', '/x')).rejects.toMatchObject({ code: 'network:UND_ERR_CONNECT_TIMEOUT' });
+    await expect(client(failing(undefined)).request('GET', '/x')).rejects.toMatchObject({ code: 'network:TypeError' });
+    const timeout = (async () => {
+      throw Object.assign(new Error('The operation was aborted due to timeout'), { name: 'TimeoutError' });
+    }) as unknown as typeof fetch;
+    await expect(client(timeout).request('GET', '/x')).rejects.toMatchObject({ code: 'network:timeout' });
+  });
+});
+
 describe('HubSpot setup as code', () => {
   const client = (hs: FakeHubSpot) => hubspotClient(KEY, 'https://api.hubapi.test', hs.fetch);
 
