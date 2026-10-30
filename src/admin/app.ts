@@ -11,12 +11,18 @@
  *   POST /admin/orders/:ref/review-reminder-test  staging only: the one review reminder now (404 in production)
  *   POST /admin/orders/:ref/notes            an internal note
  *   POST /admin/outbox/:id/retry             put a failed email or HubSpot sync back in the queue
+ *   POST /admin/orders/:ref/retention        extend (until, reason) or clear an order's retention (SCRUM-75)
+ *   GET  /admin/retention                    due for deletion soon, extensions, runs, erasures (SCRUM-75)
+ *   GET  /admin/erase · POST /admin/erase/preview · POST /admin/erase/confirm   erasure on request (SCRUM-75)
  *   GET  /admin/photos/:id                   a paddle photo (authorised, never cached)
  *   GET  /admin/admin.css
  */
 import { Hono, type Context } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
-import { retryCrmJob } from '../crm/sync.js';
+import { retryCrmJob, type CrmDeps } from '../crm/sync.js';
+import { ErasureError, eraseCustomer, planErasure, recentErasures } from '../orders/erasure.js';
+import { activeExtensions, recentRuns, RetentionError, setExtension, upcomingDeletions } from '../orders/retention.js';
+import { erasePage, erasePreviewPage, eraseDonePage, orderRetentionSection, retentionPage } from './retention-pages.js';
 import type { Db } from '../db/db.js';
 import { retryEmail } from '../email/outbox.js';
 import { log, logError } from '../log.js';
@@ -43,6 +49,8 @@ export interface AdminDeps {
   now?: () => Date;
   /** The TCP peer's address. Overridable for tests. */
   peer?: (c: Context) => string;
+  /** SCRUM-75: HubSpot, for erasure. Null when it isn't configured here. */
+  crm?: CrmDeps | null;
 }
 
 type Env = { Variables: { admin: AdminIdentity } };
@@ -60,6 +68,8 @@ const DONE: Record<string, string> = {
   note: 'Note saved.',
   retry: 'Queued again; it will be sent within a minute.',
   reminder: 'Review reminder queued; it goes out within a minute.',
+  extended: 'Extension saved: the retention rules wait for it.',
+  cleared: 'Extension removed: the retention rules apply again.',
 };
 
 /** "60", "60.5", "60.50" → cents. Anything else → undefined (bad input). */
@@ -108,7 +118,7 @@ export function createAdminApp(deps: AdminDeps) {
   const showOrder = async (c: Context<Env>, reference: string, flash?: Flash, status: 200 | 400 | 404 | 409 = 200) => {
     const order = REFERENCE_RE.test(reference) ? await loadOrder(deps.db, reference, now()) : null;
     if (!order) return c.html(notFoundPage(ctx(c), `No order ${reference}.`), 404);
-    return c.html(detailPage(ctx(c), order, flash), status);
+    return c.html(detailPage(ctx(c), order, flash, orderRetentionSection(ctx(c), order)), status);
   };
 
   app.get('/admin/orders/:ref', async (c) => {
@@ -185,6 +195,70 @@ export function createAdminApp(deps: AdminDeps) {
       return back(c, reference, 'reminder');
     });
   }
+
+  // ── Retention (SCRUM-75) ──────────────────────────────────────────────────
+  const retentionDeps = { db: deps.db, photos: deps.photos, crm: deps.crm ?? null };
+
+  app.post('/admin/orders/:ref/retention', async (c) => {
+    const reference = c.req.param('ref');
+    if (!REFERENCE_RE.test(reference)) return showOrder(c, reference);
+    const body = await c.req.parseBody();
+    const clear = field(body, 'action') === 'clear';
+    try {
+      await setExtension(deps.db, reference, clear ? null : { until: field(body, 'until') ?? '', reason: field(body, 'reason') ?? '' }, now());
+    } catch (err) {
+      if (err instanceof RetentionError) {
+        if (err.httpStatus === 404) return showOrder(c, reference);
+        return showOrder(c, reference, { kind: 'error', text: err.message }, 400);
+      }
+      throw err;
+    }
+    log('admin_retention_extension', { reference, cleared: clear });
+    return back(c, reference, clear ? 'cleared' : 'extended');
+  });
+
+  app.get('/admin/retention', async (c) =>
+    c.html(
+      retentionPage(ctx(c), {
+        upcoming: await upcomingDeletions(deps.db, now()),
+        extensions: await activeExtensions(deps.db, now()),
+        runs: await recentRuns(deps.db),
+        erasures: await recentErasures(retentionDeps),
+      }),
+    ),
+  );
+
+  app.get('/admin/erase', (c) => c.html(erasePage(ctx(c))));
+
+  const emailField = (body: Record<string, unknown>) => {
+    const email = field(body, 'email');
+    return email && /^[^\s@]+@[^\s@]+$/.test(email) && email.length <= 254 ? email : null;
+  };
+
+  app.post('/admin/erase/preview', async (c) => {
+    const email = emailField(await c.req.parseBody());
+    if (!email) return c.html(erasePage(ctx(c), { kind: 'error', text: 'Enter the customer’s email address.' }), 400);
+    return c.html(erasePreviewPage(ctx(c), await planErasure(retentionDeps, email, now()), !!deps.crm?.adapter));
+  });
+
+  app.post('/admin/erase/confirm', async (c) => {
+    const body = await c.req.parseBody();
+    const email = emailField(body);
+    if (!email) return c.html(erasePage(ctx(c), { kind: 'error', text: 'Enter the customer’s email address.' }), 400);
+    if (field(body, 'confirm') !== 'erase') {
+      return c.html(erasePreviewPage(ctx(c), await planErasure(retentionDeps, email, now()), !!deps.crm?.adapter, { kind: 'error', text: 'Tick the box to confirm.' }), 400);
+    }
+    try {
+      const result = await eraseCustomer(retentionDeps, email, field(body, 'fingerprint') ?? '', now());
+      return c.html(eraseDonePage(ctx(c), result));
+    } catch (err) {
+      if (err instanceof ErasureError) {
+        const status = err.code === 'crm_unavailable' ? 502 : 409;
+        return c.html(erasePreviewPage(ctx(c), await planErasure(retentionDeps, email, now()), !!deps.crm?.adapter, { kind: 'error', text: err.message }), status);
+      }
+      throw err;
+    }
+  });
 
   app.post('/admin/orders/:ref/notes', async (c) => {
     const reference = c.req.param('ref');

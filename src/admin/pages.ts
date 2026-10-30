@@ -28,6 +28,7 @@ export function layout(ctx: PageContext, title: string, body: Html): string {
 <body>
 <header class="bar">
   <a href="/admin/orders">PickleMyPaddle orders${ctx.isProduction ? '' : ' (TEST)'}</a>
+  <a href="/admin/retention">Retention</a>
   <span class="who">Signed in through Tailscale as ${ctx.admin.name ?? ctx.admin.login}</span>
 </header>
 <main>
@@ -191,7 +192,7 @@ function reviewSection(ctx: PageContext, o: OrderDetail): Html | string {
 
 const ACTOR_LABELS: Record<string, string> = { customer: 'customer', admin: 'you', system: 'automatic', stripe: 'Stripe' };
 
-export function detailPage(ctx: PageContext, o: OrderDetail, flash?: Flash): string {
+export function detailPage(ctx: PageContext, o: OrderDetail, flash?: Flash, extra: Html | string = ''): string {
   const amountLine = o.paddles.length * PRICE_PER_PADDLE_CENTS;
   return layout(
     ctx,
@@ -263,7 +264,9 @@ ${
     : html`<p class="empty">Nothing sent for this order.</p>`
 }
 
-${reviewSection(ctx, o)}`,
+${reviewSection(ctx, o)}
+
+${extra}`,
   );
 }
 

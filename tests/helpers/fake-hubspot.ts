@@ -70,6 +70,11 @@ export function fakeHubSpot(opts: { portalId?: string } = {}): FakeHubSpot {
       hs.contacts.set(input0.id, c);
       return json(200, { results: [{ id: c.id }] });
     }
+    if (method === 'POST' && path === '/crm/v3/objects/contacts/search') {
+      const want = body.filterGroups[0].filters[0].value;
+      const c = hs.contacts.get(want);
+      return json(200, { results: c ? [{ id: c.id }] : [] });
+    }
     if (method === 'POST' && path === '/crm/v3/objects/contacts/gdpr-delete') {
       for (const [k, c] of hs.contacts) if (c.id === body.objectId) hs.contacts.delete(k);
       return json(204);
