@@ -20,7 +20,7 @@ describe(`migrations (${DB_BACKEND})`, () => {
     db = await emptyDb();
     expect(await migrate(db)).toBe(LATEST_VERSION);
     expect(await tables(db)).toEqual([
-      'app_secrets', 'order_notes', 'orders', 'outbox', 'paddles', 'photos', 'rate_limit_events', 'reviews', 'schema_migrations', 'status_history', 'status_tokens',
+      'app_secrets', 'erasures', 'order_notes', 'orders', 'outbox', 'paddles', 'photos', 'rate_limit_events', 'retention_runs', 'reviews', 'schema_migrations', 'status_history', 'status_tokens',
     ]);
   });
 

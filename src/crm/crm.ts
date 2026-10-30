@@ -62,9 +62,13 @@ export interface CrmAdapter {
   readonly name: string;
   /** Creates or updates the contact (by email) and the order's deal, associated. */
   sync(contact: CrmContact, deal: CrmDeal, known: Partial<CrmIds>): Promise<CrmIds>;
-  /** Permanent deletion (erasure on request, SCRUM-75). */
+  /** Permanent deletion (erasure on request and retention, SCRUM-75). Gone already is fine. */
   deleteContact(id: string): Promise<void>;
   deleteDeal(id: string): Promise<void>;
+  /** Erasure of a paid order kept for tax (SCRUM-75): leaves only the deal's name, reference and amount. */
+  stripDeal(id: string): Promise<void>;
+  /** The contact for this email, if the CRM has one (erasure, when no ID was stored). */
+  findContactId(email: string): Promise<string | null>;
 }
 
 /** "Sam de la Cruz" → Sam / de la Cruz. One word → that word and an empty last name. */

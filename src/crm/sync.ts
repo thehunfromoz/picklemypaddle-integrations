@@ -24,7 +24,7 @@ export async function enqueueCrmSync(q: Queryable, orderId: string, now: Date): 
   await q.query(
     `INSERT INTO outbox (kind, order_id, template, next_attempt_at, created_at, updated_at)
      SELECT 'crm', o.id, 'sync', $2::timestamptz, $2::timestamptz, $2::timestamptz FROM orders o
-      WHERE o.id = $1::uuid AND NOT o.is_smoke
+      WHERE o.id = $1::uuid AND NOT o.is_smoke AND o.erased_at IS NULL
      ON CONFLICT (order_id) WHERE kind = 'crm' AND state = 'pending' DO NOTHING`,
     [orderId, now],
   );
@@ -56,7 +56,7 @@ interface Job {
 /** Remembers a successful portal check for the life of the process. */
 const verified = new WeakSet<CrmDeps>();
 
-async function checkPortal(deps: CrmDeps): Promise<'ok' | 'mismatch'> {
+export async function checkPortal(deps: CrmDeps): Promise<'ok' | 'mismatch'> {
   if (verified.has(deps) || !deps.portalId || !deps.expectedPortalId) return 'ok';
   const actual = await deps.portalId();
   if (actual !== deps.expectedPortalId) return 'mismatch';
@@ -146,7 +146,7 @@ async function loadOrder(db: Db, orderId: string): Promise<OrderForCrm | null> {
             EXISTS (SELECT 1 FROM reviews r WHERE r.order_id = o.id) AS has_review,
             EXISTS (SELECT 1 FROM reviews r JOIN orders o2 ON o2.id = r.order_id
                      WHERE o2.email_norm = o.email_norm AND NOT o2.is_smoke) AS contact_has_review
-       FROM orders o WHERE o.id = $1`,
+       FROM orders o WHERE o.id = $1 AND o.erased_at IS NULL`,
     [orderId],
   );
   const row = rows[0];
@@ -158,7 +158,7 @@ async function loadOrder(db: Db, orderId: string): Promise<OrderForCrm | null> {
  * portal. The worker then pushes them at its usual pace. Returns how many were queued.
  */
 export async function resyncAll(db: Db, now: Date): Promise<number> {
-  const { rows } = await db.query<{ id: string }>('SELECT id FROM orders WHERE NOT is_smoke ORDER BY created_at');
+  const { rows } = await db.query<{ id: string }>('SELECT id FROM orders WHERE NOT is_smoke AND erased_at IS NULL ORDER BY created_at');
   for (const r of rows) await enqueueCrmSync(db, r.id, now);
   return rows.length;
 }

@@ -264,6 +264,54 @@ interface (`src/crm/crm.ts`), with the HubSpot implementation in `src/crm/hubspo
 - **Resync:** `node dist/cli/crm-resync.js` queues every order (after an outage, or when
   production moves to its own portal).
 
+## Retention and erasure (SCRUM-75)
+
+What the privacy policy promises about keeping data, done by the service itself.
+
+**The daily job** (`src/orders/retention.ts`, in the service's daily jobs). Each rule counts from
+the Sydney day the order reached the status it starts from:
+
+| Rule | When | What goes |
+| --- | --- | --- |
+| photos | 12 months after Completed | the paddle photos (files and rows); the order stays |
+| enquiries | 12 months after Rejected, Withdrawn or Lapsed, never paid | the whole order, its HubSpot deal, and its contact if the customer has no other order |
+| paid | 5 years after a paid order's end status (Completed, or Withdrawn after paying) | the whole order, the tax record included |
+
+The ATO's 5 years run from when a record was made or the transaction completed, whichever is
+later (checked 30 Oct 2026); nothing ties them to the financial year. Open orders are never
+touched. Smoke-test orders go 24 hours after they're placed; Attila's own TEST orders follow the
+rules above (decided 30 Oct 2026). HubSpot is cleaned up before the rows go; if it can't be
+reached the order waits for the next run. Each run writes its counts to `retention_runs` and the
+log, never who.
+
+**Extensions.** From an order's page Attila can keep it longer (a date after today, at most 5
+years on, and a reason such as a dispute). Every rule waits until after that date, then applies
+again. The admin's **Retention** page lists what is due in the next 14 days by rule, the
+extensions in force, the recent runs and the erasures.
+
+**Erasure on request** (`src/orders/erasure.ts`; admin → Retention → Erase a customer). By email
+address, with a preview of exactly what goes and a ticked confirmation:
+
+- never-paid orders are deleted entirely;
+- paid orders inside their 5 years keep only the reference, name, dates, statuses and amount
+  (`orders.amount_cents`, set on Accepted; the payment reference arrives with SCRUM-9). Photos,
+  email, phone, return address, paddle details, the review, internal notes, history notes,
+  status links and queued emails go now, and the paid rule removes the rest later;
+- HubSpot first: the contact is GDPR-deleted (permanent; found by email if its ID wasn't stored),
+  deals are deleted, or stripped to reference and amount for kept orders. If HubSpot fails,
+  nothing is erased. Erased orders are never synced again;
+- refused while any of the customer's orders is still open (it would lose the return address);
+- an `erasures` row records when, the counts and the categories, never who.
+
+Gmail and Resend are outside the service: infra `runbooks/deletion.md`.
+
+**Commands** (from `/opt/picklemypaddle/staging`, with `sudo docker compose -f compose.staging.yml exec integrations`):
+
+- `node dist/cli/retention-run.js --dry-run` lists what is due now and in the next 14 days;
+  without `--dry-run` it runs the job now.
+- `node dist/cli/backdate-order.js PMP-XXXXX 13` (**test only**: refused in production and for
+  non-TEST orders) moves every date on a TEST order back 13 months, to see a rule work.
+
 ## Database (SCRUM-64)
 
 PostgreSQL 18, one server per app, never shared. `DATABASE_URL` is required and secret. Versioned

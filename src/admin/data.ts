@@ -132,6 +132,12 @@ export interface OrderDetail {
   reviewReminderAt: Date | null;
   /** SCRUM-80: when the daily job will send it (posted back + 10 days), while it still can. */
   reviewReminderDue: Date | null;
+  /** SCRUM-75: retention. */
+  everPaid: boolean;
+  amountCents: number | null;
+  retainUntil: string | null;
+  retainReason: string | null;
+  erasedAt: Date | null;
 }
 
 export async function loadOrder(db: Db, reference: string, now: Date = new Date()): Promise<OrderDetail | null> {
@@ -156,11 +162,18 @@ export async function loadOrder(db: Db, reference: string, now: Date = new Date(
     crm_deal_id: string | null;
     review_reminder_at: Date | null;
     posted_back_at: Date | null;
+    ever_paid: boolean;
+    amount_cents: number | null;
+    retain_until: string | null;
+    retain_reason: string | null;
+    erased_at: Date | null;
   }>(
     `SELECT id, reference, status, status_changed_at, created_at, is_test, is_smoke, name, email, phone,
             street, suburb, state, postcode, tracking_number, arrived_on::text AS arrived_on,
             promise_on::text AS promise_on, crm_deal_id, review_reminder_at,
-            (SELECT max(h.at) FROM status_history h WHERE h.order_id = orders.id AND h.status = 'posted_back') AS posted_back_at
+            (SELECT max(h.at) FROM status_history h WHERE h.order_id = orders.id AND h.status = 'posted_back') AS posted_back_at,
+            EXISTS (SELECT 1 FROM status_history h WHERE h.order_id = orders.id AND h.status = 'paid') AS ever_paid,
+            amount_cents, retain_until::text AS retain_until, retain_reason, erased_at
        FROM orders WHERE reference = $1`,
     [reference],
   );
@@ -247,6 +260,11 @@ export async function loadOrder(db: Db, reference: string, now: Date = new Date(
           createdAt: new Date(reviews.rows[0].created_at),
         }
       : null,
+    everPaid: o.ever_paid,
+    amountCents: o.amount_cents === null ? null : Number(o.amount_cents),
+    retainUntil: o.retain_until,
+    retainReason: o.retain_reason,
+    erasedAt: o.erased_at ? new Date(o.erased_at) : null,
     reviewReminderAt: o.review_reminder_at ? new Date(o.review_reminder_at) : null,
     reviewReminderDue:
       !reviews.rows[0] && !o.review_reminder_at && o.posted_back_at && (o.status === 'posted_back' || o.status === 'completed')

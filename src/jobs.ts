@@ -5,10 +5,11 @@
  *  - the email outbox (SCRUM-69) is worked every 10 seconds, the CRM sync (SCRUM-74) every 30.
  *  - daily: Posted back → Completed after 10 days, Questions → Lapsed after 30 (SCRUM-72), and
  *    the one review reminder 10 days after Posted back (SCRUM-80).
- * Order retention for real orders is SCRUM-75, not here.
+ *  - daily: retention (SCRUM-75, src/orders/retention.ts): photos, enquiries and paid orders.
  */
 import type { Db } from './db/db.js';
 import { runAutoTransitions } from './orders/auto.js';
+import { runRetention } from './orders/retention.js';
 import { runReviewReminders } from './orders/review-reminder.js';
 import { processCrm, type CrmDeps } from './crm/sync.js';
 import { processOutbox, type OutboxDeps } from './email/outbox.js';
@@ -91,6 +92,11 @@ export function startJobs(
       log('review_reminders', { queued: await runReviewReminders(db, now()) });
     } catch (err) {
       logError('job_failed', err, { job: 'review_reminders' });
+    }
+    try {
+      await runRetention({ db, photos, crm }, now());
+    } catch (err) {
+      logError('job_failed', err, { job: 'retention' });
     }
   };
   void hourly();

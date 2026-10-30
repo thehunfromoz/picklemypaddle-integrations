@@ -16,7 +16,7 @@ import type { Db } from '../db/db.js';
 import { enqueueOrderEmail, type EmailPayload } from '../email/outbox.js';
 import type { TemplateName } from '../email/templates.js';
 import { backInPostBy, ISO_DATE_RE, sydneyDate } from './dates.js';
-import type { OrderStatus } from './model.js';
+import { PRICE_PER_PADDLE_CENTS, type OrderStatus } from './model.js';
 
 /** Who made a change. */
 export type Actor = 'admin' | 'system' | 'stripe';
@@ -117,6 +117,13 @@ export async function transitionOrder(deps: TransitionDeps, req: TransitionReque
 
     // SCRUM-73: the promise is fixed when the order enters the queue, and the email says the same.
     const promiseOn = arrivedOn ? backInPostBy(arrivedOn) : undefined;
+    // SCRUM-75: the agreed price is kept on the order (the tax record), not only in the email.
+    if (req.to === 'accepted') {
+      await q.query(
+        `UPDATE orders SET amount_cents = COALESCE($2::int, (SELECT count(*)::int FROM paddles p WHERE p.order_id = $1) * $3::int) WHERE id = $1`,
+        [order.id, req.amountCents ?? null, PRICE_PER_PADDLE_CENTS],
+      );
+    }
     await q.query(
       `UPDATE orders SET status = $2, status_changed_at = $3, updated_at = $3,
               tracking_number = COALESCE($4, tracking_number), arrived_on = COALESCE($5::date, arrived_on),

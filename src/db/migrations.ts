@@ -221,6 +221,47 @@ export const MIGRATIONS: readonly Migration[] = [
       ALTER TABLE orders ADD COLUMN review_reminder_at timestamptz;
     `,
   },
+  {
+    version: 8,
+    name: 'retention: amounts, extensions, erasure, audit',
+    sql: `
+      -- SCRUM-75. The agreed price, set on Accepted, so a paid order's tax record keeps its amount
+      -- even after erasure removes the paddle details. Orders accepted before this get paddles x A$60.
+      ALTER TABLE orders ADD COLUMN amount_cents integer;
+      UPDATE orders o SET amount_cents = (SELECT count(*) FROM paddles p WHERE p.order_id = o.id) * 6000
+       WHERE o.amount_cents IS NULL
+         AND EXISTS (SELECT 1 FROM status_history h WHERE h.order_id = o.id AND h.status = 'accepted');
+
+      -- An extension holds an order back from every retention rule until this Sydney date (a dispute,
+      -- say). It expires by itself: once the date has passed the rules apply again.
+      ALTER TABLE orders ADD COLUMN retain_until date;
+      ALTER TABLE orders ADD COLUMN retain_reason text;
+      ALTER TABLE orders ADD COLUMN retain_set_at timestamptz;
+      ALTER TABLE orders ADD CONSTRAINT orders_retain_both CHECK ((retain_until IS NULL) = (retain_reason IS NULL));
+
+      -- Erasure on request kept only the tax minimum of this paid order (personal data is gone).
+      ALTER TABLE orders ADD COLUMN erased_at timestamptz;
+
+      -- What the daily job deleted, by rule: counts only, never who.
+      CREATE TABLE retention_runs (
+        id       bigserial PRIMARY KEY,
+        at       timestamptz NOT NULL DEFAULT now(),
+        rule     text NOT NULL,
+        count    integer NOT NULL
+      );
+      CREATE INDEX retention_runs_at_idx ON retention_runs (at);
+
+      -- Erasures on request: when, and what categories went. No email, name or reference.
+      CREATE TABLE erasures (
+        id               bigserial PRIMARY KEY,
+        at               timestamptz NOT NULL DEFAULT now(),
+        orders_deleted   integer NOT NULL,
+        orders_minimised integer NOT NULL,
+        categories       text NOT NULL,
+        crm              text NOT NULL
+      );
+    `,
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

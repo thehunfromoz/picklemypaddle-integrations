@@ -229,7 +229,30 @@ export function hubspotAdapter(client: HubSpotClient): CrmAdapter & { stageIds()
 
     async deleteContact(id) {
       // GDPR delete: permanent, and HubSpot also blocks the address from being re-created by forms.
-      await client.request('POST', '/crm/v3/objects/contacts/gdpr-delete', { objectId: id });
+      try {
+        await client.request('POST', '/crm/v3/objects/contacts/gdpr-delete', { objectId: id });
+      } catch (err) {
+        if (!(err instanceof HubSpotError && err.status === 404)) throw err;
+      }
+    },
+
+    async findContactId(email) {
+      const r = await client.request<{ results: { id: string }[] }>('POST', '/crm/v3/objects/contacts/search', {
+        filterGroups: [{ filters: [{ propertyName: 'email', operator: 'EQ', value: email.trim().toLowerCase() }] }],
+        properties: ['email'],
+        limit: 1,
+      });
+      return r.results[0]?.id ?? null;
+    },
+
+    async stripDeal(id) {
+      // Everything but the name (the reference), the amount and the stage. Its contact is deleted
+      // by the same erasure, which removes the association too.
+      try {
+        await client.request('PATCH', `/crm/v3/objects/deals/${id}`, { properties: { pmp_paddle_count: '', pmp_reviewed: '' } });
+      } catch (err) {
+        if (!(err instanceof HubSpotError && err.status === 404)) throw err;
+      }
     },
 
     async deleteDeal(id) {
