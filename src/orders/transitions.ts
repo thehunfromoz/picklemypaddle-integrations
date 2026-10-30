@@ -16,7 +16,9 @@ import type { Db } from '../db/db.js';
 import { enqueueOrderEmail, type EmailPayload } from '../email/outbox.js';
 import type { TemplateName } from '../email/templates.js';
 import { backInPostBy, ISO_DATE_RE, sydneyDate } from './dates.js';
-import { PRICE_PER_PADDLE_CENTS, type OrderStatus } from './model.js';
+import { quotePostage } from '../pricing/postage.js';
+import { gstIncluded, termsOn, type TaxSettings } from '../pricing/terms.js';
+import type { OrderStatus } from './model.js';
 
 /** Who made a change. */
 export type Actor = 'admin' | 'system' | 'stripe';
@@ -66,8 +68,13 @@ export interface TransitionRequest {
   trackingNumber?: string;
   /** In queue: the day the paddles arrived (YYYY-MM-DD); defaults to today in Sydney. */
   arrivedOn?: string;
-  /** Accepted: the price if it isn't paddles × A$60. */
-  amountCents?: number;
+  /**
+   * Accepted: the return postage to charge, if not the calculated one (SCRUM-81). Needs
+   * postageReason when it differs from the calculation, or when nothing could be calculated.
+   */
+  postageCents?: number;
+  /** Accepted: why the postage differs from the calculation (kept in the history). */
+  postageReason?: string;
   /** An internal note for the history, never shown to the customer. */
   note?: string;
 }
@@ -76,7 +83,13 @@ export interface TransitionDeps {
   db: Db;
   isProduction: boolean;
   now: Date;
+  /** GST settings (SCRUM-81). Default: not registered. */
+  tax?: TaxSettings;
 }
+
+const NOT_REGISTERED: TaxSettings = { gstRegisteredFrom: null };
+
+const dollars = (cents: number) => `A$${(cents / 100).toFixed(2)}`;
 
 /** May `actor` move an order from `from` to `to`? */
 export function canTransition(from: OrderStatus, to: OrderStatus, actor: Actor, isProduction: boolean): boolean {
@@ -99,6 +112,11 @@ export async function transitionOrder(deps: TransitionDeps, req: TransitionReque
   if (tracking && (tracking.length > MAX_TRACKING || !/^[A-Za-z0-9 -]+$/.test(tracking))) {
     throw new TransitionError(400, 'tracking_invalid', 'Tracking numbers are letters, digits, spaces and dashes.');
   }
+  const postageReason = req.postageReason?.trim();
+  if (req.postageCents !== undefined && (!Number.isInteger(req.postageCents) || req.postageCents < 0 || req.postageCents > 100_000)) {
+    throw new TransitionError(400, 'postage_invalid', 'The postage must be between A$0 and A$1,000.');
+  }
+  if (postageReason && postageReason.length > MAX_REASON) throw new TransitionError(400, 'reason_too_long', `Keep the reason under ${MAX_REASON} characters.`);
   const arrivedOn = req.to === 'in_queue' ? (req.arrivedOn ?? sydneyDate(deps.now)) : undefined;
   if (arrivedOn !== undefined && (!ISO_DATE_RE.test(arrivedOn) || arrivedOn > sydneyDate(deps.now))) {
     throw new TransitionError(400, 'arrival_invalid', 'The arrival date must be today or earlier (YYYY-MM-DD).');
@@ -117,12 +135,50 @@ export async function transitionOrder(deps: TransitionDeps, req: TransitionReque
 
     // SCRUM-73: the promise is fixed when the order enters the queue, and the email says the same.
     const promiseOn = arrivedOn ? backInPostBy(arrivedOn) : undefined;
-    // SCRUM-75: the agreed price is kept on the order (the tax record), not only in the email.
+    // SCRUM-75/81: what the customer is asked to pay, and the terms it was worked out on, are
+    // frozen on the order at Accept (the tax record), not only written into the email.
+    let priceNote: string | undefined;
+    let payloadPrice: Pick<EmailPayload, 'amountCents' | 'subtotalCents' | 'postageCents' | 'gstCents' | 'taxTreatment'> = {};
     if (req.to === 'accepted') {
-      await q.query(
-        `UPDATE orders SET amount_cents = COALESCE($2::int, (SELECT count(*)::int FROM paddles p WHERE p.order_id = $1) * $3::int) WHERE id = $1`,
-        [order.id, req.amountCents ?? null, PRICE_PER_PADDLE_CENTS],
+      const { rows: facts } = await q.query<{ paddles: number; postcode: string }>(
+        'SELECT (SELECT count(*)::int FROM paddles p WHERE p.order_id = o.id) AS paddles, o.postcode FROM orders o WHERE o.id = $1',
+        [order.id],
       );
+      const { paddles, postcode } = facts[0]!;
+      const today = sydneyDate(deps.now);
+      const terms = termsOn(today, deps.tax ?? NOT_REGISTERED);
+      const quote = quotePostage(paddles, postcode, today);
+      let postage: number;
+      if (req.postageCents === undefined || (quote.ok && req.postageCents === quote.cents)) {
+        if (!quote.ok) throw new TransitionError(400, 'postage_required', `${quote.reason} Give a reason too.`);
+        postage = quote.cents;
+      } else {
+        if (!postageReason) {
+          throw new TransitionError(400, 'postage_reason_required', quote.ok
+            ? `Say why the postage isn’t the calculated ${dollars(quote.cents)}.`
+            : 'Say how you worked out the postage.');
+        }
+        postage = req.postageCents;
+        priceNote = quote.ok
+          ? `Postage overridden: ${dollars(quote.cents)} → ${dollars(postage)}. Reason: ${postageReason}`
+          : `Postage entered by hand: ${dollars(postage)} (${quote.reason}) Reason: ${postageReason}`;
+      }
+      const subtotal = paddles * terms.pricePerPaddleCents;
+      const discount = 0; // SCRUM-63
+      const total = subtotal - discount + postage;
+      const gst = gstIncluded(total, terms.treatment);
+      const detail = quote.ok
+        ? `${quote.packing}; ${quote.actualKg} kg actual, ${quote.cubicKg} kg cubic, charged on ${quote.chargeableKg} kg (${quote.basis})${quote.zone ? `, zone ${quote.zone}` : ''}; Australia Post ${dollars(quote.postageCents)} + packaging ${dollars(quote.packagingCents)}; table ${quote.table}`
+        : quote.reason;
+      await q.query(
+        `UPDATE orders SET amount_cents = $2, subtotal_cents = $3, discount_cents = $4, postage_cents = $5,
+                postage_quoted_cents = $6, postage_override_reason = $7, postage_detail = $8, gst_cents = $9,
+                tax_treatment = $10, terms_version = $11, terms_date = $12::date
+          WHERE id = $1`,
+        [order.id, total, subtotal, discount, postage, quote.ok ? quote.cents : null, priceNote ? postageReason : null, detail, gst,
+          terms.treatment, terms.version, today],
+      );
+      payloadPrice = { amountCents: total, subtotalCents: subtotal, postageCents: postage, gstCents: gst, taxTreatment: terms.treatment };
     }
     await q.query(
       `UPDATE orders SET status = $2, status_changed_at = $3, updated_at = $3,
@@ -131,16 +187,15 @@ export async function transitionOrder(deps: TransitionDeps, req: TransitionReque
         WHERE id = $1`,
       [order.id, req.to, deps.now, tracking ?? null, arrivedOn ?? null, promiseOn ?? null],
     );
-    const note = [req.note?.trim(), reason ? `Reason sent to the customer: ${reason}` : undefined].filter(Boolean).join('\n') || null;
+    const note = [req.note?.trim(), priceNote, reason ? `Reason sent to the customer: ${reason}` : undefined].filter(Boolean).join('\n') || null;
     await q.query('INSERT INTO status_history (order_id, status, at, actor, note) VALUES ($1, $2, $3, $4, $5)', [
       order.id, req.to, deps.now, req.actor, note,
     ]);
 
     const template = EMAIL_ON[req.to];
     if (template) {
-      const payload: EmailPayload = {};
+      const payload: EmailPayload = { ...payloadPrice };
       if (reason) payload.reason = reason;
-      if (req.amountCents !== undefined) payload.amountCents = req.amountCents;
       if (promiseOn) payload.backInPostBy = promiseOn;
       // Smoke-test orders (SCRUM-68) never send anything.
       const { rows: smoke } = await q.query<{ is_smoke: boolean }>('SELECT is_smoke FROM orders WHERE id = $1', [order.id]);

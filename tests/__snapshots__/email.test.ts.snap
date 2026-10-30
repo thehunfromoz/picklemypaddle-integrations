@@ -11,7 +11,7 @@ exports[`email templates > accepted (production) renders the same text and HTML 
 <tr><td style="padding:24px">
 <p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Hi Sam,</p>
 <p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Good news: we’ve checked your photos and we can re-grit your paddles.</p>
-<table role="presentation" style="margin:0 0 16px;border-collapse:collapse"><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Re-grit</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">2 × A$60 (both faces)</td></tr><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Total</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">A$120 plus return postage</td></tr></table>
+<table role="presentation" style="margin:0 0 16px;border-collapse:collapse"><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Re-grit</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">2 × A$60 (both faces)</td></tr><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Return postage</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">A$22.25</td></tr><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Total</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">A$142.25</td></tr><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">GST</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">No GST has been charged</td></tr></table>
 <p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">[To confirm: payment link and how return postage is shown, added by SCRUM-9]</p>
 <h2 style="margin:24px 0 8px;font-size:17px;color:#1E2E52">Then post your paddles</h2>
 <p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">[To confirm: postal address and packing tips]</p>
@@ -30,7 +30,9 @@ exports[`email templates > accepted (production) renders the same text and HTML 
 Good news: we’ve checked your photos and we can re-grit your paddles.
 
   Re-grit: 2 × A$60 (both faces)
-  Total: A$120 plus return postage
+  Return postage: A$22.25
+  Total: A$142.25
+  GST: No GST has been charged
 
 [To confirm: payment link and how return postage is shown, added by SCRUM-9]
 
@@ -68,7 +70,7 @@ exports[`email templates > accepted (staging) renders the same text and HTML as 
 <blockquote style="margin:0 0 16px;padding:8px 16px;border-left:4px solid #78A472;color:#1E2E52;font-size:16px;line-height:1.5">TEST ORDER: this email comes from the PickleMyPaddle staging site. Nothing is charged or posted.</blockquote>
 <p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Hi Sam,</p>
 <p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Good news: we’ve checked your photos and we can re-grit your paddles.</p>
-<table role="presentation" style="margin:0 0 16px;border-collapse:collapse"><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Re-grit</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">2 × A$60 (both faces)</td></tr><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Total</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">A$120 plus return postage</td></tr></table>
+<table role="presentation" style="margin:0 0 16px;border-collapse:collapse"><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Re-grit</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">2 × A$60 (both faces)</td></tr><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Return postage</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">A$22.25</td></tr><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Total</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">A$142.25</td></tr><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">GST</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">No GST has been charged</td></tr></table>
 <p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">[To confirm: payment link and how return postage is shown, added by SCRUM-9]</p>
 <h2 style="margin:24px 0 8px;font-size:17px;color:#1E2E52">Then post your paddles</h2>
 <p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">[To confirm: postal address and packing tips]</p>
@@ -89,7 +91,9 @@ Hi Sam,
 Good news: we’ve checked your photos and we can re-grit your paddles.
 
   Re-grit: 2 × A$60 (both faces)
-  Total: A$120 plus return postage
+  Return postage: A$22.25
+  Total: A$142.25
+  GST: No GST has been charged
 
 [To confirm: payment link and how return postage is shown, added by SCRUM-9]
 

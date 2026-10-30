@@ -45,6 +45,8 @@ export interface OrderForCrm {
   state: string;
   postcode: string;
   paddle_count: number;
+  /** The total frozen at Accept (SCRUM-81); null before. */
+  amount_cents?: number | null;
   /** SCRUM-80: this order has a review; any order with this email has one. */
   has_review: boolean;
   contact_has_review: boolean;
@@ -92,8 +94,9 @@ export function mapOrder(o: OrderForCrm): { contact: CrmContact; deal: CrmDeal }
     deal: {
       reference: o.reference,
       name: o.is_test ? `[TEST] ${o.reference}` : o.reference,
-      // Return postage is added by SCRUM-9.
-      amountCents: o.paddle_count * PRICE_PER_PADDLE_CENTS,
+      // SCRUM-81: the total the customer was asked to pay (re-grit and postage) once accepted;
+      // before that, the re-grit estimate.
+      amountCents: o.amount_cents != null ? Number(o.amount_cents) : o.paddle_count * PRICE_PER_PADDLE_CENTS,
       paddleCount: o.paddle_count,
       isTest: o.is_test,
       status: o.status,

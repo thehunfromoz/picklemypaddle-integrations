@@ -12,6 +12,7 @@
  * Outside production, mail reaches only EMAIL_ALLOWLIST; anything else is recorded as
  * `suppressed` and never sent. Smoke-test orders queue nothing at all.
  */
+import type { TaxTreatment } from '../pricing/terms.js';
 import { randomUUID } from 'node:crypto';
 import type { Db, Queryable } from '../db/db.js';
 import { log, logError } from '../log.js';
@@ -42,7 +43,12 @@ const MINUTE = 60 * 1000;
 
 /** Extra facts a template needs that aren't columns on the order. */
 export interface EmailPayload {
+  /** Accepted (SCRUM-81): the frozen total and how it was made up. */
   amountCents?: number;
+  subtotalCents?: number;
+  postageCents?: number;
+  gstCents?: number;
+  taxTreatment?: TaxTreatment;
   paymentUrl?: string;
   backInPostBy?: string;
   reason?: string;

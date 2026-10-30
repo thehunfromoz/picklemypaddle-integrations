@@ -20,6 +20,7 @@
  */
 import { z } from 'zod';
 import { IMAGE_ENGINES } from './orders/image-engine.js';
+import { isValidAbn } from './pricing/terms.js';
 
 export const APP_ENVS = ['development', 'staging', 'production'] as const;
 export type AppEnv = (typeof APP_ENVS)[number];
@@ -176,6 +177,21 @@ const schema = z
     HUBSPOT_TEST_PORTAL_ID: optional(z.string().regex(/^\d+$/, 'must be the numeric HubSpot portal (account) ID')),
     /** HubSpot's API address. Only change it if HubSpot says your data region needs another. */
     HUBSPOT_API_BASE: z.string().url().default('https://api.hubapi.com'),
+
+    // ── Pricing and GST (SCRUM-81) ────────────────────────────────────────────
+    /**
+     * The first Sydney day GST applies (YYYY-MM-DD), once registered. Empty = not registered:
+     * documents say "Invoice" and "No GST has been charged". Orders and documents issued before
+     * the date keep their terms; changing it never rewrites anything already issued.
+     */
+    GST_REGISTERED_FROM: optional(
+      z.string().regex(/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/, 'must be a date like 2027-03-01 (YYYY-MM-DD)').refine(
+        (v) => !Number.isNaN(Date.parse(`${v}T00:00:00Z`)) && new Date(`${v}T00:00:00Z`).toISOString().startsWith(v),
+        { message: 'must be a real calendar date (YYYY-MM-DD)' },
+      ),
+    ),
+    /** The business's ABN, shown on receipts and invoices (11 digits; spaces allowed). */
+    BUSINESS_ABN: optional(z.string().refine(isValidAbn, { message: 'must be a valid 11-digit ABN' })),
   })
   .superRefine((c, ctx) => {
     if (c.APP_ENV === 'production') {
@@ -230,6 +246,14 @@ const schema = z
     }
     if (c.ADMIN_PORT === c.PORT) {
       ctx.addIssue({ code: 'custom', path: ['ADMIN_PORT'], message: 'must differ from PORT: the admin has its own listener, which the public gateway never routes' });
+    }
+    // SCRUM-81: receipts and invoices carry the ABN, so production can't take payments without it.
+    if (c.APP_ENV === 'production' && c.STRIPE_SECRET_KEY && /_live_/.test(c.STRIPE_SECRET_KEY) && !c.BUSINESS_ABN) {
+      ctx.addIssue({ code: 'custom', path: ['BUSINESS_ABN'], message: 'is required in production once STRIPE_SECRET_KEY is set (receipts and invoices show it)' });
+    }
+    // A GST date needs the ABN that tax invoices must show. Staging may try a GST date without one.
+    if (c.APP_ENV === 'production' && c.GST_REGISTERED_FROM && !c.BUSINESS_ABN) {
+      ctx.addIssue({ code: 'custom', path: ['BUSINESS_ABN'], message: 'is required in production when GST_REGISTERED_FROM is set (tax invoices show the ABN)' });
     }
     if (c.STRIPE_SECRET_KEY && !c.STRIPE_WEBHOOK_SECRET) {
       ctx.addIssue({

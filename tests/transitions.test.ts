@@ -156,3 +156,94 @@ describe(`transitionOrder (${DB_BACKEND})`, () => {
     expect((await transitionOrder(deps(), { reference: 'PMP-ZZZZZ', to: 'accepted', actor: 'admin' }).catch((e) => e)).httpStatus).toBe(404);
   });
 });
+
+describe(`price frozen at Accept (SCRUM-81, ${DB_BACKEND})`, () => {
+  let t: TestApp;
+  afterEach(async () => t?.close());
+
+  async function newOrder(extra: { paddles?: number; postcode?: string } = {}): Promise<string> {
+    const fd = await orderForm(t, { email: 'player@test.picklemypaddle.com', paddles: extra.paddles });
+    if (extra.postcode) fd.set('postcode', extra.postcode);
+    const res = await post(t, fd);
+    expect(res.status).toBe(201);
+    return ((await res.json()) as { reference: string }).reference;
+  }
+  const accept = (ref: string, extra: Record<string, unknown> = {}, tax: { gstRegisteredFrom: string | null } = { gstRegisteredFrom: null }) =>
+    transitionOrder({ db: t.db, isProduction: false, now: t.clock.now, tax }, { reference: ref, to: 'accepted', actor: 'admin', ...extra });
+  const saved = async (ref: string) =>
+    (await t.db.query<Record<string, unknown>>(
+      `SELECT amount_cents, subtotal_cents, discount_cents, postage_cents, postage_quoted_cents, postage_override_reason,
+              gst_cents, tax_treatment, terms_version, terms_date::text AS terms_date
+         FROM orders WHERE reference = $1`,
+      [ref],
+    )).rows[0]!;
+  const acceptedEmail = async (ref: string) =>
+    (await t.db.query<{ payload: Record<string, unknown> }>(
+      `SELECT x.payload FROM outbox x JOIN orders o ON o.id = x.order_id WHERE o.reference = $1 AND x.template = 'accepted'`,
+      [ref],
+    )).rows[0]!.payload;
+  const historyNote = async (ref: string) =>
+    (await t.db.query<{ note: string | null }>(
+      `SELECT h.note FROM status_history h JOIN orders o ON o.id = h.order_id WHERE o.reference = $1 AND h.status = 'accepted'`,
+      [ref],
+    )).rows[0]!.note;
+
+  it('saves re-grit, calculated postage, total and the terms, and emails the same figures', async () => {
+    t = await makeApp({ env: { APP_ENV: 'staging' } });
+    const ref = await newOrder({ paddles: 2 });
+    await accept(ref);
+    expect(await saved(ref)).toEqual({
+      amount_cents: 14225, subtotal_cents: 12000, discount_cents: 0, postage_cents: 2225, postage_quoted_cents: 2225,
+      postage_override_reason: null, gst_cents: 0, tax_treatment: 'not_registered', terms_version: 'price:2026-01-01;gst:none',
+      terms_date: sydneyDate(t.clock.now),
+    });
+    expect(await acceptedEmail(ref)).toEqual({ amountCents: 14225, subtotalCents: 12000, postageCents: 2225, gstCents: 0, taxTreatment: 'not_registered' });
+  });
+
+  it('includes GST from the registration day, and leaves orders accepted before it unchanged', async () => {
+    t = await makeApp({ env: { APP_ENV: 'staging' } });
+    const before = await newOrder();
+    await accept(before); // not registered yet
+    const after = await newOrder();
+    // The GST date is set (and the service restarted): today is now on or after it.
+    await accept(after, {}, { gstRegisteredFrom: sydneyDate(t.clock.now) });
+    expect(await saved(before)).toMatchObject({ amount_cents: 8225, gst_cents: 0, tax_treatment: 'not_registered' });
+    expect(await saved(after)).toMatchObject({ amount_cents: 8225, gst_cents: 748, tax_treatment: 'gst_inclusive' });
+    expect((await saved(after)).terms_version).toBe(`price:2026-01-01;gst:from-${sydneyDate(t.clock.now)}`);
+  });
+
+  it('needs a reason to charge postage other than the calculated amount, and records it', async () => {
+    t = await makeApp({ env: { APP_ENV: 'staging' } });
+    const ref = await newOrder();
+    const err = await accept(ref, { postageCents: 1500 }).catch((e) => e);
+    expect([err.httpStatus, err.code]).toEqual([400, 'postage_reason_required']);
+    expect((await saved(ref)).amount_cents).toBeNull();
+
+    // The calculated amount typed back in is not an override.
+    const same = await newOrder();
+    await accept(same, { postageCents: 2225 });
+    expect(await saved(same)).toMatchObject({ postage_cents: 2225, postage_override_reason: null });
+
+    await accept(ref, { postageCents: 1500, postageReason: 'Two paddles going in one bag with order PMP-ABCDE' });
+    expect(await saved(ref)).toMatchObject({ amount_cents: 7500, postage_cents: 1500, postage_quoted_cents: 2225, postage_override_reason: 'Two paddles going in one bag with order PMP-ABCDE' });
+    expect(await historyNote(ref)).toBe('Postage overridden: A$22.25 → A$15.00. Reason: Two paddles going in one bag with order PMP-ABCDE');
+  });
+
+  it('needs the postage typed in, with a reason, when it can’t be calculated', async () => {
+    t = await makeApp({ env: { APP_ENV: 'staging' } });
+    const ref = await newOrder({ paddles: 10, postcode: '6798' }); // over 5 kg, to Christmas Island
+    expect((await accept(ref).catch((e) => e)).code).toBe('postage_required');
+    expect((await accept(ref, { postageCents: 9000 }).catch((e) => e)).code).toBe('postage_reason_required');
+    await accept(ref, { postageCents: 9000, postageReason: 'Quoted at the post office' });
+    expect(await saved(ref)).toMatchObject({ amount_cents: 69000, postage_cents: 9000, postage_quoted_cents: null });
+    expect(await historyNote(ref)).toMatch(/^Postage entered by hand: A\$90\.00 .*Reason: Quoted at the post office$/);
+  });
+
+  it('refuses a negative or absurd postage', async () => {
+    t = await makeApp({ env: { APP_ENV: 'staging' } });
+    const ref = await newOrder();
+    for (const postageCents of [-1, 100_001, 12.5]) {
+      expect((await accept(ref, { postageCents, postageReason: 'x' }).catch((e) => e)).code, String(postageCents)).toBe('postage_invalid');
+    }
+  });
+});

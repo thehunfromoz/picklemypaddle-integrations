@@ -3,6 +3,8 @@
  * HTML forms. No client-side script, so the CSP can allow none; works on a phone over Tailscale.
  */
 import { sydneyDate } from '../orders/dates.js';
+import { quotePostage } from '../pricing/postage.js';
+import { taxWording, termsOn, type TaxSettings } from '../pricing/terms.js';
 import { STATUSES, type OrderStatus, PRICE_PER_PADDLE_CENTS } from '../orders/model.js';
 import { canTransition, EMAIL_ON, TRANSITIONS } from '../orders/transitions.js';
 import { ADMIN_LABELS, WAITING, type ListedOrder, type OrderDetail } from './data.js';
@@ -13,6 +15,8 @@ export interface PageContext {
   admin: AdminIdentity;
   isProduction: boolean;
   now: Date;
+  /** SCRUM-81: GST_REGISTERED_FROM, for the terms an Accept would use today. */
+  tax?: TaxSettings;
 }
 
 export function layout(ctx: PageContext, title: string, body: Html): string {
@@ -114,9 +118,28 @@ function actionForm(ctx: PageContext, o: OrderDetail, to: OrderStatus): Html {
   const emailNote = email ? html`<p class="small">Emails the customer (“${ADMIN_LABELS[to]}”).</p>` : html`<p class="small">No email to the customer.</p>`;
   let fields: Html | string = '';
   if (to === 'accepted') {
-    const standard = o.paddles.length * PRICE_PER_PADDLE_CENTS;
-    fields = html`<label>Amount (A$), if not ${dollars(standard)} for ${plural(o.paddles.length, 'paddle')}
-  <input name="amount" inputmode="decimal" pattern="\\d{1,5}(\\.\\d{1,2})?" placeholder="${(standard / 100).toFixed(0)}"></label>`;
+    // SCRUM-81: the price and postage are worked out here, from today's terms; postage can be
+    // changed, but then it needs a reason (kept in the history).
+    const today = sydneyDate(ctx.now);
+    const terms = termsOn(today, ctx.tax ?? { gstRegisteredFrom: null });
+    const n = o.paddles.length;
+    const regrit = n * terms.pricePerPaddleCents;
+    const quote = quotePostage(n, o.postcode, today);
+    const postageValue = quote.ok ? (quote.cents / 100).toFixed(2) : '';
+    const total = regrit + (quote.ok ? quote.cents : 0);
+    fields = html`<dl class="facts">
+  <dt>Re-grit</dt><dd>${plural(n, 'paddle')} × ${dollars(terms.pricePerPaddleCents)} = ${dollars(regrit)}</dd>
+  <dt>Return postage</dt><dd>${
+    quote.ok
+      ? html`${dollars(quote.cents)}: ${quote.packing}, charged on ${String(quote.chargeableKg)} kg (${String(quote.actualKg)} kg actual, ${String(quote.cubicKg)} kg cubic)${quote.zone ? `, zone ${quote.zone}` : ''}; Australia Post ${dollars(quote.postageCents)} + packaging ${dollars(quote.packagingCents)}`
+      : html`<strong>${quote.reason}</strong>`
+  }</dd>
+  ${quote.ok ? html`<dt>Total</dt><dd>${dollars(total)} · ${taxWording(terms.treatment, total).gstLine}</dd>` : ''}
+</dl>
+<label>Return postage (A$)${quote.ok ? ', calculated' : ', required'}
+  <input name="postage" inputmode="decimal" pattern="\\d{1,5}(\\.\\d{1,2})?" value="${postageValue}"${quote.ok ? '' : ' required'}></label>
+<label>Reason, only if you change the postage${quote.ok ? '' : ' (required)'} (kept in the history, never shown to the customer)
+  <input name="postageReason" maxlength="2000"${quote.ok ? '' : ' required'}></label>`;
   } else if (to === 'rejected') {
     fields = html`<label>Reason, sent to the customer as you type it (required)
   <textarea name="reason" required maxlength="2000"></textarea></label>`;
@@ -214,7 +237,17 @@ ${actions(ctx, o)}
   <dt>Phone</dt><dd>${o.phone ?? '—'}</dd>
   <dt>Return address</dt><dd class="pre">${o.street}
 ${o.suburb} ${o.state} ${o.postcode}</dd>
-  <dt>Standard price</dt><dd>${dollars(amountLine)} (${plural(o.paddles.length, 'paddle')}), plus return postage</dd>
+  ${
+    o.price
+      ? html`<dt>Price (fixed at Accept)</dt><dd>Re-grit ${dollars(o.price.subtotalCents)}${
+          o.price.discountCents ? html` − discount ${dollars(o.price.discountCents)}` : ''
+        } + postage ${dollars(o.price.postageCents)} = <strong>${dollars(o.amountCents ?? 0)}</strong> · ${
+          o.price.taxTreatment === 'gst_inclusive' ? `includes GST ${dollars(o.price.gstCents)}` : 'no GST'
+        }${o.price.postageOverrideReason ? html`<br><span class="small">Postage overridden${
+          o.price.postageQuotedCents !== null ? ` (calculated ${dollars(o.price.postageQuotedCents)})` : ''
+        }: ${o.price.postageOverrideReason}</span>` : ''}${o.price.postageDetail ? html`<br><span class="small">${o.price.postageDetail}</span>` : ''}</dd>`
+      : html`<dt>Standard price</dt><dd>${dollars(amountLine)} (${plural(o.paddles.length, 'paddle')}), plus return postage</dd>`
+  }
   ${o.arrivedOn ? html`<dt>Arrived</dt><dd>${calendarDay(o.arrivedOn)}</dd>` : ''}
   ${o.promise ? html`<dt>Back in the post by</dt><dd>${calendarDay(o.promise.on)}${promiseBadge(o.promise)}</dd>` : ''}
   ${o.trackingNumber ? html`<dt>Tracking</dt><dd>${o.trackingNumber}</dd>` : ''}

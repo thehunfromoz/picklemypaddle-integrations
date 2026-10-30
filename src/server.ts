@@ -113,6 +113,8 @@ const admin = createAdminApp({
   csrfKey: await serviceSecret(db, 'admin-csrf-key'),
   // SCRUM-75: erasure deletes the customer's HubSpot contact too.
   crm: crm.adapter ? crm : null,
+  // SCRUM-81: from this Sydney day, newly accepted orders include GST.
+  tax: { gstRegisteredFrom: config.GST_REGISTERED_FROM ?? null },
 });
 const adminServer = serve({ fetch: admin.fetch, port: config.ADMIN_PORT }, (info) => {
   log('admin_listening', { port: info.port, logins: config.ADMIN_LOGINS?.length ?? 0 });

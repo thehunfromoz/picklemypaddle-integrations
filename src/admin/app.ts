@@ -17,6 +17,7 @@
  *   GET  /admin/photos/:id                   a paddle photo (authorised, never cached)
  *   GET  /admin/admin.css
  */
+import type { TaxSettings } from '../pricing/terms.js';
 import { Hono, type Context } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { retryCrmJob, type CrmDeps } from '../crm/sync.js';
@@ -51,6 +52,8 @@ export interface AdminDeps {
   peer?: (c: Context) => string;
   /** SCRUM-75: HubSpot, for erasure. Null when it isn't configured here. */
   crm?: CrmDeps | null;
+  /** SCRUM-81: GST_REGISTERED_FROM. Default: not registered. */
+  tax?: TaxSettings;
 }
 
 type Env = { Variables: { admin: AdminIdentity } };
@@ -98,7 +101,8 @@ export function createAdminApp(deps: AdminDeps) {
   app.use('*', bodyLimit({ maxSize: 64 * 1024, onError: (c) => c.text('Too large.', 413) }));
   app.use('*', adminGuard({ logins: deps.logins, trusted: deps.trusted, peer: deps.peer ?? nodePeer, csrfKey: deps.csrfKey }));
 
-  const ctx = (c: Context<Env>): PageContext => ({ admin: c.get('admin'), isProduction: deps.isProduction, now: now() });
+  const tax: TaxSettings = deps.tax ?? { gstRegisteredFrom: null };
+  const ctx = (c: Context<Env>): PageContext => ({ admin: c.get('admin'), isProduction: deps.isProduction, now: now(), tax });
   const back = (c: Context<Env>, reference: string, done: keyof typeof DONE) => c.redirect(`/admin/orders/${reference}?done=${done}`, 303);
 
   app.get('/admin/admin.css', (c) => {
@@ -128,7 +132,7 @@ export function createAdminApp(deps: AdminDeps) {
 
   const move = async (c: Context<Env>, req: TransitionRequest) => {
     try {
-      const result = await transitionOrder({ db: deps.db, isProduction: deps.isProduction, now: now() }, req);
+      const result = await transitionOrder({ db: deps.db, isProduction: deps.isProduction, now: now(), tax }, req);
       log('admin_status_changed', { reference: result.reference, from: result.from, to: result.to });
       return back(c, req.reference, 'moved');
     } catch (err) {
@@ -154,11 +158,12 @@ export function createAdminApp(deps: AdminDeps) {
     if (!to || !(STATUSES as readonly string[]).includes(to) || to === 'paid') {
       return showOrder(c, reference, { kind: 'error', text: 'That isn’t a status this form can set.' }, 400);
     }
-    const amount = field(body, 'amount');
-    let amountCents: number | undefined;
-    if (to === 'accepted' && amount !== undefined) {
-      amountCents = parseAmount(amount.replace(/^A?\$/, ''));
-      if (amountCents === undefined) return showOrder(c, reference, { kind: 'error', text: 'The amount must be dollars, like 60 or 60.50.' }, 400);
+    // SCRUM-81: the form arrives with the calculated postage filled in; a different amount needs a reason.
+    const postage = field(body, 'postage');
+    let postageCents: number | undefined;
+    if (to === 'accepted' && postage !== undefined) {
+      postageCents = parseAmount(postage.replace(/^A?\$/, ''));
+      if (postageCents === undefined) return showOrder(c, reference, { kind: 'error', text: 'The postage must be dollars, like 20 or 22.25.' }, 400);
     }
     return move(c, {
       reference,
@@ -167,7 +172,8 @@ export function createAdminApp(deps: AdminDeps) {
       reason: field(body, 'reason'),
       trackingNumber: field(body, 'trackingNumber'),
       arrivedOn: field(body, 'arrivedOn'),
-      amountCents,
+      postageCents,
+      postageReason: to === 'accepted' ? field(body, 'postageReason') : undefined,
       note: field(body, 'note'),
     });
   });

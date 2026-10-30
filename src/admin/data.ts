@@ -2,6 +2,7 @@
  * What the admin pages read (SCRUM-72). Smoke-test orders (SCRUM-68) never appear: they are the
  * staging updater's, and are deleted within a day.
  */
+import type { TaxTreatment } from '../pricing/terms.js';
 import type { Db } from '../db/db.js';
 import { addBusinessDays, promiseState, sydneyDate } from '../orders/dates.js';
 import type { OrderStatus } from '../orders/model.js';
@@ -135,6 +136,18 @@ export interface OrderDetail {
   /** SCRUM-75: retention. */
   everPaid: boolean;
   amountCents: number | null;
+  /** SCRUM-81: how the total was made up, frozen at Accept; null before. */
+  price: {
+    subtotalCents: number;
+    discountCents: number;
+    postageCents: number;
+    postageQuotedCents: number | null;
+    postageOverrideReason: string | null;
+    postageDetail: string | null;
+    gstCents: number;
+    taxTreatment: TaxTreatment;
+    termsVersion: string;
+  } | null;
   retainUntil: string | null;
   retainReason: string | null;
   erasedAt: Date | null;
@@ -164,6 +177,15 @@ export async function loadOrder(db: Db, reference: string, now: Date = new Date(
     posted_back_at: Date | null;
     ever_paid: boolean;
     amount_cents: number | null;
+    subtotal_cents: number | null;
+    discount_cents: number;
+    postage_cents: number | null;
+    postage_quoted_cents: number | null;
+    postage_override_reason: string | null;
+    postage_detail: string | null;
+    gst_cents: number | null;
+    tax_treatment: TaxTreatment | null;
+    terms_version: string | null;
     retain_until: string | null;
     retain_reason: string | null;
     erased_at: Date | null;
@@ -173,7 +195,9 @@ export async function loadOrder(db: Db, reference: string, now: Date = new Date(
             promise_on::text AS promise_on, crm_deal_id, review_reminder_at,
             (SELECT max(h.at) FROM status_history h WHERE h.order_id = orders.id AND h.status = 'posted_back') AS posted_back_at,
             EXISTS (SELECT 1 FROM status_history h WHERE h.order_id = orders.id AND h.status = 'paid') AS ever_paid,
-            amount_cents, retain_until::text AS retain_until, retain_reason, erased_at
+            amount_cents, subtotal_cents, discount_cents, postage_cents, postage_quoted_cents, postage_override_reason,
+            postage_detail, gst_cents, tax_treatment, terms_version,
+            retain_until::text AS retain_until, retain_reason, erased_at
        FROM orders WHERE reference = $1`,
     [reference],
   );
@@ -262,6 +286,20 @@ export async function loadOrder(db: Db, reference: string, now: Date = new Date(
       : null,
     everPaid: o.ever_paid,
     amountCents: o.amount_cents === null ? null : Number(o.amount_cents),
+    price:
+      o.subtotal_cents === null || o.postage_cents === null || o.tax_treatment === null
+        ? null
+        : {
+            subtotalCents: Number(o.subtotal_cents),
+            discountCents: Number(o.discount_cents),
+            postageCents: Number(o.postage_cents),
+            postageQuotedCents: o.postage_quoted_cents === null ? null : Number(o.postage_quoted_cents),
+            postageOverrideReason: o.postage_override_reason,
+            postageDetail: o.postage_detail,
+            gstCents: Number(o.gst_cents ?? 0),
+            taxTreatment: o.tax_treatment,
+            termsVersion: o.terms_version ?? '',
+          },
     retainUntil: o.retain_until,
     retainReason: o.retain_reason,
     erasedAt: o.erased_at ? new Date(o.erased_at) : null,
