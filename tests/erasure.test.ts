@@ -90,8 +90,10 @@ describe('erasure on request', () => {
     // SCRUM-81: the postage working and the free-text reason go; the quoted postage and the terms date stay.
     for (const col of ['postage_detail', 'postage_override_reason']) expect(o[col], col).toBeNull();
     expect(o.terms_date, 'terms_date').not.toBeNull();
+    // SCRUM-63: how the price was made up stays with the tax record (no code on this order).
+    for (const col of ['discount_code', 'discount_kind', 'discount_value']) expect(o[col], col).toBeNull();
     // Nothing else on the order has been forgotten in this list.
-    const checked = new Set([...Object.keys(kept), 'id', 'created_at', 'status_changed_at', 'consent_at', 'tournament_ack_at', 'updated_at', 'erased_at', 'arrived_on', 'promise_on', 'crm_deal_id', 'review_reminder_at', 'email', 'email_norm', 'street', 'suburb', 'state', 'postcode', 'phone', 'tracking_number', 'idempotency_key', 'crm_contact_id', 'retain_until', 'retain_reason', 'retain_set_at', 'postage_detail', 'postage_override_reason', 'terms_date']);
+    const checked = new Set([...Object.keys(kept), 'id', 'created_at', 'status_changed_at', 'consent_at', 'tournament_ack_at', 'updated_at', 'erased_at', 'arrived_on', 'promise_on', 'crm_deal_id', 'review_reminder_at', 'email', 'email_norm', 'street', 'suburb', 'state', 'postcode', 'phone', 'tracking_number', 'idempotency_key', 'crm_contact_id', 'retain_until', 'retain_reason', 'retain_set_at', 'postage_detail', 'postage_override_reason', 'terms_date', 'discount_code', 'discount_kind', 'discount_value']);
     expect(Object.keys(o).filter((c) => !checked.has(c))).toEqual([]);
 
     const id = o.id as string;

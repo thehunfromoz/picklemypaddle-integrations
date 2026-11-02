@@ -116,6 +116,7 @@ links. Until then it changes nothing, so no working link is ever lost.
 | Orders per IP | 5 per hour (`ORDER_LIMIT_PER_IP_HOUR`) |
 | Orders per email address | 3 per 24 hours (`ORDER_LIMIT_PER_EMAIL_DAY`) |
 | "Email me my links" | 3 per address per day, 10 per IP per hour |
+| Discount-code checks (the form's, plus each submitted order that carries a code) | 20 per IP per hour (`DISCOUNT_CHECK_LIMIT_PER_IP_HOUR`) |
 | Request timeout | 120 s |
 
 The client IP is the socket peer, or the right-most `X-Forwarded-For` entry when the peer is in
@@ -208,6 +209,36 @@ admin and HubSpot all show the saved figures.
   the zone table; or more than 10 paddles), Accept needs the amount and a reason.
 - **`GET /api/pricing`** (public, cached 1 h) gives the website today's price, GST wording and
   postage per paddle count, so the wording changes on the GST date without a rebuild.
+
+## Discount codes (SCRUM-63, decided 30 Oct and 2 Nov 2026)
+
+Codes are managed in admin (**Discount codes** in the bar). **Launch offer (decided 2 Nov 2026):**
+unique, unguessable one-person codes, `FREE-` plus 8 easy-read characters, generated up to 20 at a
+time ("Free re-grit codes, one per person"); note on each code who it went to. **Shared codes**
+such as `SPRING10` with a cap on total uses are for later marketing campaigns. A code gives a **free re-grit for up to
+N paddles**, **A$x off** or **x% off** the order's re-grit, never return postage, so every order
+still pays something (Accept refuses an A$0 total). Direct orders only.
+
+- **Format:** 3 to 32 letters, digits and hyphens; matched ignoring case and spaces.
+- **`POST /api/discount-codes/check`** `{ code, email? }` → `{ valid: true, code, kind, value,
+  label }` or `{ valid: false, message }`. Every refusal (unknown, inactive, expired, used up,
+  already used by this email) gets the same message. Rate-limited per IP; refusals are logged as
+  `discount_refused` with the reason only, never the code.
+- **At submit** the order's `discountCode` field is checked again with the code's row locked, and a
+  use is **reserved** in the same transaction (two orders can't both take the last use). A refused
+  code answers `400 { errors: { discountCode } }` and stores nothing. What the code gives is saved
+  on the order (`discount_code`, `discount_kind`, `discount_value`), so changing or deactivating
+  the code later never changes it. **At Accept** the discount is fixed in `discount_cents` with the
+  other terms (SCRUM-81).
+- **Uses:** reserved at submit, **consumed at Paid**, **released** when the order is Rejected,
+  Withdrawn or Lapsed before paying (a paid order keeps its use). A deleted order's held use stops
+  counting. The code page lists uses by order reference only.
+- **Shown on:** the Submitted email ("code applied, confirmed when we accept"), the admin order
+  page and Accept form, the Accepted email (a Discount line), the status page (`discount` in
+  `/api/orders/status`) and the HubSpot deal amount (taken off the estimate before Accept; the
+  saved total after). The receipt follows with SCRUM-84.
+- The shared helpers (`discountCents`, `describeDiscount`, the code format) are in
+  `src/orders/rules.ts`, so the website's estimate uses the same arithmetic.
 
 ## Order admin (SCRUM-71/72)
 

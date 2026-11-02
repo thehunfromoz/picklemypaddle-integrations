@@ -8,10 +8,11 @@ import type { Db, Queryable } from '../db/db.js';
 import { isUniqueViolation } from '../db/db.js';
 import { hashToken, newReference, newStatusToken, normaliseEmail } from './model.js';
 import { PhotoError, processPhoto, type PhotoStore, type ProcessedPhoto } from './photos.js';
-import { MAX_PADDLES, validateOrder, type OrderErrors, type OrderInput, type PhotoInfo } from './rules.js';
+import { reserveCode, type RefusalReason } from './discounts.js';
+import { DISCOUNT_REFUSED, MAX_PADDLES, validateOrder, type OrderErrors, type OrderInput, type PhotoInfo } from './rules.js';
 
-/** Most form fields we'll look at: 9 order fields + 4 per paddle + a few control fields. */
-export const MAX_FORM_ENTRIES = 9 + 4 * MAX_PADDLES + 6;
+/** Most form fields we'll look at: 10 order fields (with the discount code) + 4 per paddle + a few control fields. */
+export const MAX_FORM_ENTRIES = 10 + 4 * MAX_PADDLES + 6;
 
 export interface ParsedForm {
   input: OrderInput;
@@ -21,6 +22,16 @@ export interface ParsedForm {
   formToken: string | undefined;
   /** The hidden field people never see; anything in it means a bot. */
   honeypot: string;
+  /** SCRUM-63: the optional discount code as typed (checked at submit, never trusted). */
+  discountCode: string;
+}
+
+/** The code typed on the form can't be used (any reason; the customer sees one message). */
+export class DiscountRefusedError extends Error {
+  constructor(readonly reason: RefusalReason) {
+    super(DISCOUNT_REFUSED);
+    this.name = 'DiscountRefusedError';
+  }
 }
 
 /** Thrown when the multipart body itself is unusable (as opposed to invalid order details). */
@@ -72,6 +83,7 @@ export function parseOrderForm(fd: FormData): ParsedForm {
     idempotencyKey: /^[A-Za-z0-9_-]{16,64}$/.test(key) ? key : null,
     formToken: str(fd.get('formToken')) || undefined,
     honeypot: str(fd.get('website')),
+    discountCode: str(fd.get('discountCode')).trim().slice(0, 64),
   };
 }
 
@@ -166,6 +178,7 @@ export async function createOrder(
   input: OrderInput,
   photos: ProcessedPaddlePhotos[],
   idempotencyKey: string | null,
+  discountCode = '',
 ): Promise<CreatedOrder> {
   const now = deps.now();
   const emailNorm = normaliseEmail(input.email);
@@ -195,6 +208,11 @@ export async function createOrder(
             t(input.street), t(input.suburb), input.state, t(input.postcode), idempotencyKey],
         );
         const orderId = rows[0]!.id;
+        // SCRUM-63: checked again with the code locked, and a use reserved with the order.
+        if (discountCode) {
+          const reserved = await reserveCode(q, { id: orderId, reference, emailNorm }, discountCode, now);
+          if (!reserved.ok) throw new DiscountRefusedError(reserved.reason);
+        }
         await q.query('INSERT INTO status_history (order_id, status, at, actor) VALUES ($1, $2, $3, $4)', [orderId, 'submitted', now, 'customer']);
         for (const [position, p] of input.paddles.entries()) {
           const { rows: pr } = await q.query<{ id: string }>(

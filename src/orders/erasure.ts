@@ -156,6 +156,13 @@ export async function eraseCustomer(deps: RetentionDeps, email: string, fingerpr
       `SELECT ph.path FROM photos ph JOIN paddles p ON p.id = ph.paddle_id WHERE p.order_id = ANY($1::uuid[])`,
       [all],
     );
+    // SCRUM-63: a one-person code's note may name who it was sent to; clear it before the link to
+    // the order goes. The use itself stays (reference only), so the code's count is unchanged.
+    await q.query(
+      `UPDATE discount_codes c SET note = NULL
+         FROM discount_uses u WHERE u.code_id = c.id AND c.max_uses = 1 AND u.order_id = ANY($1::uuid[])`,
+      [all],
+    );
     if (deleteIds.length) await q.query('DELETE FROM orders WHERE id = ANY($1::uuid[])', [deleteIds]);
     if (minimiseIds.length) {
       const ids = [minimiseIds];

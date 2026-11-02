@@ -7,6 +7,7 @@ import { quotePostage } from '../pricing/postage.js';
 import { taxWording, termsOn, type TaxSettings } from '../pricing/terms.js';
 import { STATUSES, type OrderStatus, PRICE_PER_PADDLE_CENTS } from '../orders/model.js';
 import { canTransition, EMAIL_ON, TRANSITIONS } from '../orders/transitions.js';
+import { describeDiscount, discountCents } from '../orders/rules.js';
 import { ADMIN_LABELS, WAITING, type ListedOrder, type OrderDetail } from './data.js';
 import type { AdminIdentity } from './guard.js';
 import { calendarDay, dollars, html, type Html, when } from './html.js';
@@ -32,6 +33,7 @@ export function layout(ctx: PageContext, title: string, body: Html): string {
 <body>
 <header class="bar">
   <a href="/admin/orders">PickleMyPaddle orders${ctx.isProduction ? '' : ' (TEST)'}</a>
+  <a href="/admin/codes">Discount codes</a>
   <a href="/admin/retention">Retention</a>
   <span class="who">Signed in through Tailscale as ${ctx.admin.name ?? ctx.admin.login}</span>
 </header>
@@ -126,9 +128,11 @@ function actionForm(ctx: PageContext, o: OrderDetail, to: OrderStatus): Html {
     const regrit = n * terms.pricePerPaddleCents;
     const quote = quotePostage(n, o.postcode, today);
     const postageValue = quote.ok ? (quote.cents / 100).toFixed(2) : '';
-    const total = regrit + (quote.ok ? quote.cents : 0);
+    const discount = o.discount ? discountCents(o.discount, n, terms.pricePerPaddleCents) : 0;
+    const total = regrit - discount + (quote.ok ? quote.cents : 0);
     fields = html`<dl class="facts">
   <dt>Re-grit</dt><dd>${plural(n, 'paddle')} × ${dollars(terms.pricePerPaddleCents)} = ${dollars(regrit)}</dd>
+  ${o.discount ? html`<dt>Discount</dt><dd>−${dollars(discount)}: code ${o.discount.code} (${describeDiscount(o.discount)})</dd>` : ''}
   <dt>Return postage</dt><dd>${
     quote.ok
       ? html`${dollars(quote.cents)}: ${quote.packing}, charged on ${String(quote.chargeableKg)} kg (${String(quote.actualKg)} kg actual, ${String(quote.cubicKg)} kg cubic)${quote.zone ? `, zone ${quote.zone}` : ''}; Australia Post ${dollars(quote.postageCents)} + packaging ${quote.packagingCents ? dollars(quote.packagingCents) : `absorbed (${dollars(quote.packagingCostCents)})`}`
@@ -240,13 +244,20 @@ ${o.suburb} ${o.state} ${o.postcode}</dd>
   ${
     o.price
       ? html`<dt>Price (fixed at Accept)</dt><dd>Re-grit ${dollars(o.price.subtotalCents)}${
-          o.price.discountCents ? html` − discount ${dollars(o.price.discountCents)}` : ''
+          o.price.discountCents ? html` − discount ${dollars(o.price.discountCents)}${o.discount ? ` (${o.discount.code})` : ''}` : ''
         } + postage ${dollars(o.price.postageCents)} = <strong>${dollars(o.amountCents ?? 0)}</strong> · ${
           o.price.taxTreatment === 'gst_inclusive' ? `includes GST ${dollars(o.price.gstCents)}` : 'no GST'
         }${o.price.postageOverrideReason ? html`<br><span class="small">Postage overridden${
           o.price.postageQuotedCents !== null ? ` (calculated ${dollars(o.price.postageQuotedCents)})` : ''
         }: ${o.price.postageOverrideReason}</span>` : ''}${o.price.postageDetail ? html`<br><span class="small">${o.price.postageDetail}</span>` : ''}</dd>`
       : html`<dt>Standard price</dt><dd>${dollars(amountLine)} (${plural(o.paddles.length, 'paddle')}), plus return postage</dd>`
+  }
+  ${
+    o.discount
+      ? html`<dt>Discount code</dt><dd>${o.discount.code}: ${describeDiscount(o.discount)}${
+          o.price ? '' : html` <span class="small">(about −${dollars(discountCents(o.discount, o.paddles.length, PRICE_PER_PADDLE_CENTS))}; fixed at Accept, never off postage)</span>`
+        }</dd>`
+      : ''
   }
   ${o.arrivedOn ? html`<dt>Arrived</dt><dd>${calendarDay(o.arrivedOn)}</dd>` : ''}
   ${o.promise ? html`<dt>Back in the post by</dt><dd>${calendarDay(o.promise.on)}${promiseBadge(o.promise)}</dd>` : ''}

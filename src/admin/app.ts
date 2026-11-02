@@ -14,6 +14,8 @@
  *   POST /admin/orders/:ref/retention        extend (until, reason) or clear an order's retention (SCRUM-75)
  *   GET  /admin/retention                    due for deletion soon, extensions, runs, erasures (SCRUM-75)
  *   GET  /admin/erase · POST /admin/erase/preview · POST /admin/erase/confirm   erasure on request (SCRUM-75)
+ *   GET  /admin/codes · POST /admin/codes       discount codes: list, create or generate (SCRUM-63)
+ *   GET  /admin/codes/:id · POST /admin/codes/:id/active · POST /admin/codes/:id/note   one code: uses, (de)activate, note
  *   GET  /admin/photos/:id                   a paddle photo (authorised, never cached)
  *   GET  /admin/admin.css
  */
@@ -32,6 +34,10 @@ import { REFERENCE_RE, STATUSES, type OrderStatus } from '../orders/model.js';
 import type { PhotoStore } from '../orders/photos.js';
 import { queueReviewReminder } from '../orders/review-reminder.js';
 import { TransitionError, transitionOrder, type TransitionRequest } from '../orders/transitions.js';
+import { codePage, codesPage } from './codes-pages.js';
+import { createCode, DiscountCodeError, findCode, generateCodes, listCodes, setCodeActive, setCodeNote, usesOf } from '../orders/discounts.js';
+import type { DiscountKind } from '../orders/rules.js';
+import { sydneyDate } from '../orders/dates.js';
 import { addNote, listOrders, loadOrder, MAX_NOTE, outboxRow, photoPath } from './data.js';
 import { adminGuard, type AdminIdentity } from './guard.js';
 import { detailPage, filterStatuses, listPage, notFoundPage, parseFilter, type Flash, type PageContext } from './pages.js';
@@ -73,6 +79,11 @@ const DONE: Record<string, string> = {
   reminder: 'Review reminder queued; it goes out within a minute.',
   extended: 'Extension saved: the retention rules wait for it.',
   cleared: 'Extension removed: the retention rules apply again.',
+  created: 'Code created. Copy it from the heading.',
+  deactivated: 'Deactivated: new orders can’t use it.',
+  reactivated: 'Reactivated.',
+  generated: 'Codes generated: they’re at the top of the list.',
+  noted: 'Note saved.',
 };
 
 /** "60", "60.5", "60.50" → cents. Anything else → undefined (bad input). */
@@ -285,6 +296,96 @@ export function createAdminApp(deps: AdminDeps) {
     }
     log('admin_retry', { outbox: Number(c.req.param('id')), kind: row.kind });
     return back(c, row.reference, 'retry');
+  });
+
+  // ── Discount codes (SCRUM-63) ─────────────────────────────────────────────
+  const codesList = async (c: Context<Env>, flash?: Flash, status: 200 | 400 = 200) =>
+    c.html(codesPage(ctx(c), await listCodes(deps.db), sydneyDate(now()), flash), status);
+
+  app.get('/admin/codes', (c) => {
+    const done = DONE[c.req.query('done') ?? ''];
+    return codesList(c, done ? { kind: 'done', text: done } : undefined);
+  });
+
+  app.post('/admin/codes', async (c) => {
+    const body = await c.req.parseBody();
+    const kind = field(body, 'kind');
+    if (kind !== 'free' && kind !== 'amount' && kind !== 'percent') return codesList(c, { kind: 'error', text: 'Choose what the code gives.' }, 400);
+    const rawValue = field(body, 'value') ?? '';
+    const value = kind === 'amount' ? parseAmount(rawValue.replace(/^A?\$/, '')) : /^\d{1,5}$/.test(rawValue) ? Number(rawValue) : undefined;
+    if (value === undefined) {
+      return codesList(c, { kind: 'error', text: kind === 'amount' ? 'The amount must be dollars, like 10 or 12.50.' : 'How much must be a whole number.' }, 400);
+    }
+    const maxUses = /^\d{1,5}$/.test(field(body, 'maxUses') ?? '') ? Number(field(body, 'maxUses')) : NaN;
+    const count = field(body, 'count');
+    try {
+      if (count !== undefined && count !== '1') {
+        if (field(body, 'code')) return codesList(c, { kind: 'error', text: 'Several codes are always generated: leave the code blank.' }, 400);
+        const made = await generateCodes(
+          deps.db,
+          {
+            kind: kind as DiscountKind,
+            value,
+            maxUses: /^\d{1,5}$/.test(field(body, 'maxUses') ?? '') ? Number(field(body, 'maxUses')) : NaN,
+            expiresOn: field(body, 'expiresOn') ?? null,
+            onePerEmail: field(body, 'onePerEmail') === 'yes',
+            note: field(body, 'note') ?? null,
+          },
+          /^\d{1,2}$/.test(count) ? Number(count) : NaN,
+          c.get('admin').login,
+          now(),
+        );
+        log('admin_discount_codes_generated', { count: made.length, kind });
+        return c.redirect('/admin/codes?done=generated', 303);
+      }
+      const created = await createCode(
+        deps.db,
+        {
+          code: field(body, 'code'),
+          kind: kind as DiscountKind,
+          value,
+          maxUses,
+          expiresOn: field(body, 'expiresOn') ?? null,
+          onePerEmail: field(body, 'onePerEmail') === 'yes',
+          note: field(body, 'note') ?? null,
+        },
+        c.get('admin').login,
+        now(),
+      );
+      log('admin_discount_code_created', { id: Number(created.id), kind: created.kind });
+      return c.redirect(`/admin/codes/${created.id}?done=created`, 303);
+    } catch (err) {
+      if (err instanceof DiscountCodeError) return codesList(c, { kind: 'error', text: err.message }, 400);
+      throw err;
+    }
+  });
+
+  app.get('/admin/codes/:id', async (c) => {
+    const code = await findCode(deps.db, c.req.param('id'));
+    if (!code) return c.html(notFoundPage(ctx(c), 'No such code.'), 404);
+    const done = DONE[c.req.query('done') ?? ''];
+    return c.html(codePage(ctx(c), code, await usesOf(deps.db, code.id), sydneyDate(now()), done ? { kind: 'done', text: done } : undefined));
+  });
+
+  app.post('/admin/codes/:id/active', async (c) => {
+    const active = field(await c.req.parseBody(), 'active') === 'yes';
+    if (!(await setCodeActive(deps.db, c.req.param('id'), active))) return c.html(notFoundPage(ctx(c), 'No such code.'), 404);
+    log('admin_discount_code_active', { id: Number(c.req.param('id')), active });
+    return c.redirect(`/admin/codes/${c.req.param('id')}?done=${active ? 'reactivated' : 'deactivated'}`, 303);
+  });
+
+  app.post('/admin/codes/:id/note', async (c) => {
+    try {
+      if (!(await setCodeNote(deps.db, c.req.param('id'), field(await c.req.parseBody(), 'note') ?? null))) {
+        return c.html(notFoundPage(ctx(c), 'No such code.'), 404);
+      }
+    } catch (err) {
+      if (!(err instanceof DiscountCodeError)) throw err;
+      const code = await findCode(deps.db, c.req.param('id'));
+      if (!code) return c.html(notFoundPage(ctx(c), 'No such code.'), 404);
+      return c.html(codePage(ctx(c), code, await usesOf(deps.db, code.id), sydneyDate(now()), { kind: 'error', text: err.message }), 400);
+    }
+    return c.redirect(`/admin/codes/${c.req.param('id')}?done=noted`, 303);
   });
 
   app.get('/admin/photos/:id', async (c) => {

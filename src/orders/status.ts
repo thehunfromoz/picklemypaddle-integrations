@@ -15,6 +15,8 @@ import {
   type OrderStatus,
 } from './model.js';
 import { paddlesAhead, promiseOf } from './queue.js';
+import { describeDiscount, discountCents, type DiscountKind } from './rules.js';
+import { PRICE_PER_PADDLE_CENTS } from './model.js';
 
 export interface StatusView {
   reference: string;
@@ -37,6 +39,11 @@ export interface StatusView {
    * a review has been left, null before then.
    */
   review: 'open' | 'received' | null;
+  /**
+   * SCRUM-63: the discount code on the order. `confirmed` once accepted (the amount is then the
+   * one fixed at Accept); before that, the estimate. Null without a code.
+   */
+  discount: { code: string; label: string; cents: number; confirmed: boolean } | null;
 }
 
 /** Every bad link (unknown, malformed, revoked, expired) gets exactly this, by design. */
@@ -56,6 +63,11 @@ export interface TokenOrder {
   /** YYYY-MM-DD, read as text so no driver turns a calendar date into a moment in time. */
   arrived_on: string | null;
   promise_on: string | null;
+  discount_code: string | null;
+  discount_kind: DiscountKind | null;
+  discount_value: number | null;
+  discount_cents: number;
+  terms_date: string | null;
 }
 
 /** The order a live status link opens, or null for any bad link (all treated alike). */
@@ -64,6 +76,7 @@ export async function orderForToken(db: Db, token: unknown, now: Date): Promise<
   const { rows } = await db.query<TokenOrder>(
     `SELECT o.id, o.reference, o.status, o.status_changed_at, o.is_test, o.tracking_number,
             o.arrived_on::text AS arrived_on, o.promise_on::text AS promise_on,
+            o.discount_code, o.discount_kind, o.discount_value, o.discount_cents, o.terms_date::text AS terms_date,
             EXISTS (SELECT 1 FROM reviews r WHERE r.order_id = o.id) AS has_review
        FROM status_tokens t JOIN orders o ON o.id = t.order_id
       WHERE t.token_hash = $1 AND t.revoked_at IS NULL`,
@@ -100,6 +113,20 @@ export async function lookupStatus(db: Db, token: unknown, now: Date): Promise<S
     queuePosition: null,
     test: order.is_test,
     review: order.has_review ? 'received' : REVIEW_STATUSES.has(order.status) ? 'open' : null,
+    discount: discountView(order, paddles.rows.length),
+  };
+}
+
+function discountView(o: TokenOrder, paddles: number): StatusView['discount'] {
+  if (!o.discount_code || !o.discount_kind || o.discount_value === null) return null;
+  const benefit = { kind: o.discount_kind, value: Number(o.discount_value) };
+  // terms_date is set at Accept: from then on the discount is the one fixed on the order.
+  const confirmed = o.terms_date !== null;
+  return {
+    code: o.discount_code,
+    label: describeDiscount(benefit),
+    cents: confirmed ? Number(o.discount_cents) : discountCents(benefit, paddles, PRICE_PER_PADDLE_CENTS),
+    confirmed,
   };
 }
 

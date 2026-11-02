@@ -12,6 +12,7 @@
  */
 import { taxWording, type TaxTreatment } from '../pricing/terms.js';
 import { PRICE_PER_PADDLE_CENTS } from '../orders/model.js';
+import { describeDiscount, discountCents, type DiscountBenefit } from '../orders/rules.js';
 
 export const TEMPLATES = [
   'customer_submitted',
@@ -49,6 +50,11 @@ export interface TemplateContext {
   /** Accepted: the re-grit price for all paddles, and the return postage. */
   subtotalCents?: number;
   postageCents?: number;
+  /** Accepted (SCRUM-63): the discount fixed at Accept, and the code that gave it. */
+  discountCents?: number;
+  discountCode?: string;
+  /** Submitted (SCRUM-63): the code on the order and what it gives, confirmed at Accept. */
+  discountOffer?: DiscountBenefit & { code: string };
   /** Accepted: the GST included, and whether GST applies (from the terms frozen at Accept). */
   gstCents?: number;
   taxTreatment?: TaxTreatment;
@@ -210,6 +216,10 @@ function build(name: TemplateName, ctx: TemplateContext): { subject: string; blo
           { p: `We’ll look at your photos and reply within 1 business day, either to confirm we can re-grit your ${paddleWord(n)} or with a question. There’s nothing to pay yet.` },
           // Same estimate the order form showed: the re-grit price is fixed, only return postage isn't.
           { p: `Your estimate is ${money(n * PRICE_PER_PADDLE_CENTS)} for re-gritting${n > 1 ? ` (${money(PRICE_PER_PADDLE_CENTS)} a paddle)` : ''}, plus return postage. Once we’ve accepted your order, we’ll email the total with postage, how to pay and where to post your ${paddleWord(n)}.` },
+          // SCRUM-63: the code is applied, and confirmed when the order is accepted.
+          ...(ctx.discountOffer
+            ? [{ p: `Code applied: ${ctx.discountOffer.code} (${describeDiscount(ctx.discountOffer)}), so ${money(discountCents(ctx.discountOffer, n, PRICE_PER_PADDLE_CENTS))} off the re-grit. It’s confirmed when we accept your order. Return postage is still payable.` }]
+            : []),
           ...statusBlocks(need(ctx, 'statusUrl', name)),
           { p: tournament(n) },
           { p: 'Thanks,\nPickleMyPaddle' },
@@ -238,7 +248,7 @@ function build(name: TemplateName, ctx: TemplateContext): { subject: string; blo
       const n = need(ctx, 'paddles', name).length;
       const subtotal = ctx.subtotalCents ?? n * PRICE_PER_PADDLE_CENTS;
       const postage = ctx.postageCents;
-      const amount = ctx.amountCents ?? subtotal + (postage ?? 0);
+      const amount = ctx.amountCents ?? subtotal - (ctx.discountCents ?? 0) + (postage ?? 0);
       const each = n > 0 ? Math.round(subtotal / n) : PRICE_PER_PADDLE_CENTS;
       const gst = taxWording(ctx.taxTreatment ?? 'not_registered', amount).gstLine;
       return {
@@ -250,6 +260,7 @@ function build(name: TemplateName, ctx: TemplateContext): { subject: string; blo
           {
             kv: [
               ['Re-grit', `${n} × ${money(each)} (both faces)`],
+              ...(ctx.discountCents && ctx.discountCode ? [[`Discount (${ctx.discountCode})`, `−${money(ctx.discountCents)}`] as [string, string]] : []),
               ...(postage !== undefined ? [['Return postage', money(postage)] as [string, string]] : []),
               ['Total', postage !== undefined ? money(amount) : `${money(amount)} plus return postage`],
               ['GST', gst],
