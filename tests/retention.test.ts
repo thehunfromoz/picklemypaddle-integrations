@@ -125,7 +125,7 @@ async function walk(reference: string, ...steps: OrderStatus[]) {
       {
         reference,
         to,
-        actor: to === 'lapsed' ? 'system' : 'admin',
+        actor: to === 'lapsed' ? 'system' : to === 'paid' ? 'stripe' : 'admin',
         ...(to === 'posted_back' ? { trackingNumber: 'AP1' } : {}),
         ...(to === 'rejected' ? { reason: 'Cracked face.' } : {}),
       },

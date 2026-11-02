@@ -22,7 +22,7 @@ export interface TestAdmin {
 
 export async function makeAdmin(
   t: TestApp,
-  opts: { isProduction?: boolean; logins?: string[] | undefined; trusted?: string[] } = {},
+  opts: { isProduction?: boolean; logins?: string[] | undefined; trusted?: string[]; paymentsConfigured?: boolean } = {},
 ): Promise<TestAdmin> {
   const csrfKey = await serviceSecret(t.db, 'admin-csrf-key');
   const peer = { address: '127.0.0.1' };
@@ -35,6 +35,7 @@ export async function makeAdmin(
     csrfKey,
     now: () => t.clock.now,
     peer: (_c: Context) => peer.address,
+    paymentsConfigured: opts.paymentsConfigured ?? false,
   });
   const identity = (login = ATTILA) => ({ 'Tailscale-User-Login': login, 'Tailscale-User-Name': 'Attila Madarasz', Host: ADMIN_HOST });
   const csrf = (login = ATTILA) => csrfToken(csrfKey, login);

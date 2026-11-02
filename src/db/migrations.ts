@@ -330,6 +330,60 @@ export const MIGRATIONS: readonly Migration[] = [
       ALTER TABLE orders ADD COLUMN discount_value integer;
     `,
   },
+  {
+    version: 11,
+    name: 'stripe payments',
+    sql: `
+      -- SCRUM-82. Each Checkout Session made for an order (one per Pay now click); older open ones
+      -- are expired when a new one is made.
+      CREATE TABLE stripe_sessions (
+        id           text PRIMARY KEY,
+        order_id     uuid NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+        amount_cents integer NOT NULL,
+        created_at   timestamptz NOT NULL,
+        expires_at   timestamptz NOT NULL,
+        expired_at   timestamptz
+      );
+      CREATE INDEX stripe_sessions_order ON stripe_sessions (order_id);
+
+      -- One row per completed, paid Checkout Session, however it was recognised (return, webhook,
+      -- poller): the unique session id makes applying it idempotent. problem is null when the
+      -- payment moved the order to Paid; otherwise why it didn't (amount_mismatch, order_lapsed…),
+      -- for Attila to sort out in the Stripe dashboard. No card details are ever stored.
+      CREATE TABLE payments (
+        id                  bigserial PRIMARY KEY,
+        order_id            uuid REFERENCES orders(id) ON DELETE CASCADE,
+        checkout_session_id text NOT NULL UNIQUE,
+        payment_intent_id   text UNIQUE,
+        amount_cents        integer NOT NULL,
+        currency            text NOT NULL,
+        fee_cents           integer,
+        paid_at             timestamptz NOT NULL,
+        recorded_at         timestamptz NOT NULL,
+        source              text NOT NULL CHECK (source IN ('return', 'webhook', 'poller', 'test')),
+        livemode            boolean NOT NULL,
+        problem             text,
+        refunded_cents      integer NOT NULL DEFAULT 0,
+        refunded_at         timestamptz
+      );
+      CREATE INDEX payments_order ON payments (order_id);
+
+      -- Stripe events already handled (webhook or poller), so each is applied once.
+      CREATE TABLE stripe_events (
+        id          text PRIMARY KEY,
+        type        text NOT NULL,
+        source      text NOT NULL,
+        received_at timestamptz NOT NULL
+      );
+
+      -- Small bits of job state, e.g. the events poller's cursor.
+      CREATE TABLE job_state (
+        name       text PRIMARY KEY,
+        value      text NOT NULL,
+        updated_at timestamptz NOT NULL
+      );
+    `,
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

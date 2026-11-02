@@ -7,7 +7,6 @@
  *   GET  /admin/orders?status=…              the list (default: waiting on Attila)
  *   GET  /admin/orders/:ref                  one order
  *   POST /admin/orders/:ref/status           move it (to, reason, trackingNumber, arrivedOn, amount, note)
- *   POST /admin/orders/:ref/mark-paid-test   staging only: Accepted → Paid without Stripe (404 in production)
  *   POST /admin/orders/:ref/review-reminder-test  staging only: the one review reminder now (404 in production)
  *   POST /admin/orders/:ref/notes            an internal note
  *   POST /admin/outbox/:id/retry             put a failed email or HubSpot sync back in the queue
@@ -60,6 +59,8 @@ export interface AdminDeps {
   crm?: CrmDeps | null;
   /** SCRUM-81: GST_REGISTERED_FROM. Default: not registered. */
   tax?: TaxSettings;
+  /** SCRUM-82: whether a Stripe key is set here (otherwise "Payments not configured"). */
+  paymentsConfigured?: boolean;
 }
 
 type Env = { Variables: { admin: AdminIdentity } };
@@ -113,7 +114,9 @@ export function createAdminApp(deps: AdminDeps) {
   app.use('*', adminGuard({ logins: deps.logins, trusted: deps.trusted, peer: deps.peer ?? nodePeer, csrfKey: deps.csrfKey }));
 
   const tax: TaxSettings = deps.tax ?? { gstRegisteredFrom: null };
-  const ctx = (c: Context<Env>): PageContext => ({ admin: c.get('admin'), isProduction: deps.isProduction, now: now(), tax });
+  const ctx = (c: Context<Env>): PageContext => ({
+    admin: c.get('admin'), isProduction: deps.isProduction, now: now(), tax, paymentsConfigured: deps.paymentsConfigured ?? false,
+  });
   const back = (c: Context<Env>, reference: string, done: keyof typeof DONE) => c.redirect(`/admin/orders/${reference}?done=${done}`, 303);
 
   app.get('/admin/admin.css', (c) => {
@@ -165,7 +168,7 @@ export function createAdminApp(deps: AdminDeps) {
     if (!REFERENCE_RE.test(reference)) return showOrder(c, reference);
     const body = await c.req.parseBody();
     const to = field(body, 'to');
-    // Paid has its own route (staging's test shortcut); Stripe sets it for real (SCRUM-9).
+    // Only Stripe sets Paid (SCRUM-82).
     if (!to || !(STATUSES as readonly string[]).includes(to) || to === 'paid') {
       return showOrder(c, reference, { kind: 'error', text: 'That isn’t a status this form can set.' }, 400);
     }
@@ -189,15 +192,8 @@ export function createAdminApp(deps: AdminDeps) {
     });
   });
 
-  // SCRUM-72 AC6: the route only exists outside production (and the transition rule refuses
-  // admin-set Paid in production anyway).
+  // SCRUM-82 removed "Mark paid (test)": Stripe test cards pay staging orders.
   if (!deps.isProduction) {
-    app.post('/admin/orders/:ref/mark-paid-test', async (c) => {
-      const reference = c.req.param('ref');
-      if (!REFERENCE_RE.test(reference)) return showOrder(c, reference);
-      return move(c, { reference, to: 'paid', actor: 'admin', note: 'Marked paid by hand (test shortcut, not a real payment).' });
-    });
-
     // SCRUM-80: send the one review reminder now rather than 10 days after posting back.
     app.post('/admin/orders/:ref/review-reminder-test', async (c) => {
       const reference = c.req.param('ref');

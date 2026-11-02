@@ -7,6 +7,8 @@
  *   POST /api/orders/status  { token }                    → the minimal status view, or 404
  *   POST /api/orders/links   { email }                    → 202, always the same answer
  *   POST /api/orders/review  { token, quote, firstName, suburb, permission } → 201 (SCRUM-33)
+ *   POST /api/orders/pay     { token }                    → { url } of a fresh Stripe Checkout page (SCRUM-82)
+ *   POST /api/orders/paid    { sessionId }                → { paid, reference? } after Checkout's return (SCRUM-82)
  *   POST /api/discount-codes/check  { code, email? } → { valid, … } (SCRUM-63; discountRoutes below)
  */
 import { Hono, type Context } from 'hono';
@@ -30,7 +32,9 @@ import { normaliseEmail } from './model.js';
 import type { PhotoStore } from './photos.js';
 import { describeDiscount, DISCOUNT_REFUSED, MAX_REQUEST_BYTES } from './rules.js';
 import { submitReview } from './reviews.js';
-import { INVALID_LINK, lookupStatus, requestLinks, type LinksMailer } from './status.js';
+import { INVALID_LINK, lookupStatus, orderForToken, requestLinks, type LinksMailer } from './status.js';
+import { applyEvent, applySession, PaymentError, startPayment, verifyWebhook, type PaymentDeps } from '../payments/payments.js';
+import { StripeError, type StripeEvent } from '../payments/stripe.js';
 
 export interface OrderRouteDeps {
   db: Db;
@@ -39,6 +43,10 @@ export interface OrderRouteDeps {
   trusted: TrustedProxies;
   mailer: LinksMailer | null;
   isProduction: boolean;
+  /** SCRUM-82: Stripe, when a key is set here; null hides Pay now. */
+  payments?: PaymentDeps | null;
+  /** Site origins Stripe may send the customer back to (PUBLIC_SITE_ORIGIN); the first is the default. */
+  siteOrigins?: readonly string[];
   limits: {
     orderPerIpHour: number;
     orderPerEmailDay: number;
@@ -72,6 +80,7 @@ export function orderRoutes(deps: OrderRouteDeps) {
     linksEmail: { bucket: 'links-email', max: L.linksPerEmailDay, windowMs: DAY },
     reviewIp: { bucket: 'review-ip', max: L.linksPerIpHour, windowMs: HOUR },
     discountIp: { bucket: 'discount-ip', max: L.discountChecksPerIpHour, windowMs: HOUR },
+    payIp: { bucket: 'pay-ip', max: L.linksPerIpHour, windowMs: HOUR },
   } satisfies Record<string, Limit>;
   const app = new Hono();
 
@@ -189,7 +198,7 @@ export function orderRoutes(deps: OrderRouteDeps) {
 
   app.post('/status', async (c) => {
     const body = (await c.req.json().catch(() => null)) as { token?: unknown } | null;
-    const view = await lookupStatus(deps.db, body?.token, now());
+    const view = await lookupStatus(deps.db, body?.token, now(), { paymentsOn: !!deps.payments });
     return view ? c.json(view) : c.json(INVALID_LINK, 404);
   });
 
@@ -216,6 +225,64 @@ export function orderRoutes(deps: OrderRouteDeps) {
       logError('links_failed', err);
     }
     return c.json({ message: 'If we have orders for that address, we’ve emailed the links.' }, 202);
+  });
+
+  // SCRUM-82: Pay now. The token proves it's the customer's order; the service makes a fresh
+  // Checkout Session for the total saved at Accept and the browser goes to Stripe's page.
+  const NOT_SET_UP = { error: 'payments_unavailable', message: 'Online payment isn’t available yet. Please email sales@picklemypaddle.com and we’ll sort it out.' };
+  app.post('/pay', async (c) => {
+    const at = now();
+    const ipKey = await ipHash(c);
+    const r = await checkLimit(deps.db, limits.payIp, ipKey, at);
+    if (!r.ok) return limited(c, r.retryAfterSeconds, limits.payIp.bucket, ipKey);
+    await recordEvent(deps.db, limits.payIp.bucket, ipKey, at);
+    const body = (await c.req.json().catch(() => null)) as { token?: unknown } | null;
+    const order = await orderForToken(deps.db, body?.token, at);
+    if (!order) return c.json(INVALID_LINK, 404);
+    if (!deps.payments) return c.json(NOT_SET_UP, 503);
+    const origins = deps.siteOrigins ?? [];
+    const origin = origins.find((o) => o === c.req.header('origin')) ?? origins[0];
+    if (!origin) return c.json(NOT_SET_UP, 503);
+    try {
+      const { url } = await startPayment(deps.payments, order.id, origin);
+      return c.json({ url });
+    } catch (err) {
+      if (err instanceof PaymentError) return c.json({ error: err.code, message: err.message }, err.httpStatus);
+      if (err instanceof StripeError) {
+        log('payment_start_failed', { code: err.code });
+        return c.json({ error: 'stripe_unavailable', message: 'We couldn’t start the payment just now. Please try again in a minute.' }, 502);
+      }
+      throw err;
+    }
+  });
+
+  // SCRUM-82: back from Checkout. The service asks Stripe itself (server to server) and applies
+  // the session, so the customer sees "Paid" at once; the poller and webhook would get there too.
+  app.post('/paid', async (c) => {
+    const at = now();
+    const ipKey = await ipHash(c);
+    const r = await checkLimit(deps.db, limits.payIp, ipKey, at);
+    if (!r.ok) return limited(c, r.retryAfterSeconds, limits.payIp.bucket, ipKey);
+    await recordEvent(deps.db, limits.payIp.bucket, ipKey, at);
+    if (!deps.payments) return c.json(NOT_SET_UP, 503);
+    const body = (await c.req.json().catch(() => null)) as { sessionId?: unknown } | null;
+    const sessionId = typeof body?.sessionId === 'string' && /^cs_(test|live)_[A-Za-z0-9]{10,200}$/.test(body.sessionId) ? body.sessionId : null;
+    if (!sessionId) return c.json({ paid: false }, 404);
+    try {
+      const session = await deps.payments.stripe.getCheckoutSession(sessionId);
+      const outcome = await applySession(deps.payments, session, 'return');
+      const { rows } = await deps.db.query<{ reference: string }>(
+        'SELECT o.reference FROM payments p JOIN orders o ON o.id = p.order_id WHERE p.checkout_session_id = $1 AND p.problem IS NULL',
+        [sessionId],
+      );
+      return c.json(rows[0] ? { paid: true, reference: rows[0].reference } : { paid: false, ...(outcome === 'flagged' ? { review: true } : {}) });
+    } catch (err) {
+      if (err instanceof StripeError) {
+        log('payment_return_failed', { code: err.code });
+        return c.json({ paid: false }, err.status === 404 ? 404 : 502);
+      }
+      throw err;
+    }
   });
 
   // SCRUM-33: a review from the private status page. Needs the order's live link, and the
@@ -285,6 +352,36 @@ export function discountRoutes(deps: Pick<OrderRouteDeps, 'db' | 'keys' | 'trust
         return c.json({ valid: false, message: DISCOUNT_REFUSED });
       }
       return c.json({ valid: true, code: result.code.code, kind: result.benefit.kind, value: result.benefit.value, label: describeDiscount(result.benefit) });
+    },
+  );
+  return app;
+}
+
+/**
+ * SCRUM-82: Stripe's webhook, production only (Stripe can't reach home-server). Raw body, signature
+ * checked with STRIPE_WEBHOOK_SECRET; a bad signature is 400 and changes nothing.
+ */
+export function stripeWebhookRoutes(deps: { payments: PaymentDeps; secret: string }) {
+  const app = new Hono();
+  app.post(
+    '/webhook',
+    bodyLimit({ maxSize: 512 * 1024, onError: (c) => c.json({ error: 'too_large' }, 413) }),
+    async (c) => {
+      const raw = await c.req.text();
+      if (!verifyWebhook(deps.secret, c.req.header('stripe-signature'), raw, deps.payments.now())) {
+        log('stripe_webhook_refused', { reason: 'signature' });
+        return c.json({ error: 'bad_signature' }, 400);
+      }
+      let event: StripeEvent;
+      try {
+        event = JSON.parse(raw) as StripeEvent;
+      } catch {
+        return c.json({ error: 'bad_json' }, 400);
+      }
+      if (typeof event?.id !== 'string' || typeof event.type !== 'string' || !event.data?.object) return c.json({ error: 'bad_event' }, 400);
+      const outcome = await applyEvent(deps.payments, event, 'webhook');
+      log('stripe_webhook', { type: event.type, outcome });
+      return c.json({ received: true });
     },
   );
   return app;

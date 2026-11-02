@@ -9,6 +9,9 @@ import { issueFormToken, loadAbuseKeys, TrustedProxies } from '../../src/orders/
 import { fsPhotoStore, type PhotoStore } from '../../src/orders/photos.js';
 import type { LinksMailer } from '../../src/orders/status.js';
 import { testDb } from './db.js';
+import { TEST_STRIPE_KEY, type FakeStripe } from './fake-stripe.js';
+import type { PaymentDeps } from '../../src/payments/payments.js';
+import { stripeClient } from '../../src/payments/stripe.js';
 import { jpeg } from './images.js';
 
 export const SITE = 'http://localhost:4321';
@@ -16,6 +19,8 @@ export const SITE = 'http://localhost:4321';
 export interface TestApp {
   app: ReturnType<typeof createApp>;
   db: Db;
+  /** SCRUM-82: the payment deps, when made with a fake Stripe. */
+  payments: PaymentDeps | null;
   photoDir: string;
   photos: PhotoStore;
   clock: { now: Date };
@@ -26,7 +31,7 @@ export interface TestApp {
 }
 
 export async function makeApp(
-  opts: { env?: Record<string, string>; photos?: (dir: string) => PhotoStore; mailer?: LinksMailer; db?: Db } = {},
+  opts: { env?: Record<string, string>; photos?: (dir: string) => PhotoStore; mailer?: LinksMailer; db?: Db; stripe?: FakeStripe } = {},
 ): Promise<TestApp> {
   const db = opts.db ?? (await testDb());
   const photoDir = await mkdtemp(path.join(tmpdir(), 'pmp-photos-'));
@@ -43,7 +48,12 @@ export async function makeApp(
   const clock = { now: new Date('2026-10-26T01:00:00Z') };
   const peer = { address: '203.0.113.7' };
   let closed = false;
+  // SCRUM-82: Stripe faked at the HTTP boundary when a test asks for it.
+  const payments: PaymentDeps | null = opts.stripe
+    ? { db, stripe: stripeClient(TEST_STRIPE_KEY, 'https://api.stripe.test', opts.stripe.fetch), isProduction: config.APP_ENV === 'production', now: () => clock.now }
+    : null;
   const app = createApp(config, {
+    payments,
     db,
     photos,
     keys,
@@ -55,6 +65,7 @@ export async function makeApp(
   return {
     app,
     db,
+    payments,
     photoDir,
     photos,
     clock,

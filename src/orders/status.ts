@@ -44,6 +44,11 @@ export interface StatusView {
    * one fixed at Accept); before that, the estimate. Null without a code.
    */
   discount: { code: string; label: string; cents: number; confirmed: boolean } | null;
+  /**
+   * SCRUM-82: what to pay and whether Pay now shows (Accepted, with payments set up here), and
+   * when it was paid. Null before Accept.
+   */
+  payment: { amountCents: number; canPay: boolean; paidAt: string | null } | null;
 }
 
 /** Every bad link (unknown, malformed, revoked, expired) gets exactly this, by design. */
@@ -68,6 +73,8 @@ export interface TokenOrder {
   discount_value: number | null;
   discount_cents: number;
   terms_date: string | null;
+  amount_cents: number | null;
+  paid_at: Date | null;
 }
 
 /** The order a live status link opens, or null for any bad link (all treated alike). */
@@ -77,6 +84,8 @@ export async function orderForToken(db: Db, token: unknown, now: Date): Promise<
     `SELECT o.id, o.reference, o.status, o.status_changed_at, o.is_test, o.tracking_number,
             o.arrived_on::text AS arrived_on, o.promise_on::text AS promise_on,
             o.discount_code, o.discount_kind, o.discount_value, o.discount_cents, o.terms_date::text AS terms_date,
+            o.amount_cents,
+            (SELECT min(pm.paid_at) FROM payments pm WHERE pm.order_id = o.id AND pm.problem IS NULL) AS paid_at,
             EXISTS (SELECT 1 FROM reviews r WHERE r.order_id = o.id) AS has_review
        FROM status_tokens t JOIN orders o ON o.id = t.order_id
       WHERE t.token_hash = $1 AND t.revoked_at IS NULL`,
@@ -90,7 +99,7 @@ export async function orderForToken(db: Db, token: unknown, now: Date): Promise<
 /** Statuses at which a customer may leave a review (SCRUM-33). */
 export const REVIEW_STATUSES: ReadonlySet<OrderStatus> = new Set(['posted_back', 'completed']);
 
-export async function lookupStatus(db: Db, token: unknown, now: Date): Promise<StatusView | null> {
+export async function lookupStatus(db: Db, token: unknown, now: Date, opts: { paymentsOn?: boolean } = {}): Promise<StatusView | null> {
   const order = await orderForToken(db, token, now);
   if (!order) return null;
 
@@ -114,6 +123,14 @@ export async function lookupStatus(db: Db, token: unknown, now: Date): Promise<S
     test: order.is_test,
     review: order.has_review ? 'received' : REVIEW_STATUSES.has(order.status) ? 'open' : null,
     discount: discountView(order, paddles.rows.length),
+    payment:
+      order.amount_cents === null
+        ? null
+        : {
+            amountCents: Number(order.amount_cents),
+            canPay: order.status === 'accepted' && !!opts.paymentsOn,
+            paidAt: order.paid_at ? new Date(order.paid_at).toISOString() : null,
+          },
   };
 }
 

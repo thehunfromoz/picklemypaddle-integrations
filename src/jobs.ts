@@ -6,6 +6,7 @@
  *  - daily: Posted back → Completed after 10 days, Questions → Lapsed after 30 (SCRUM-72), and
  *    the one review reminder 10 days after Posted back (SCRUM-80).
  *  - daily: retention (SCRUM-75, src/orders/retention.ts): photos, enquiries and paid orders.
+ *  - every 2 minutes, with Stripe set up: the payment events poller (SCRUM-82).
  */
 import type { Db } from './db/db.js';
 import { runAutoTransitions } from './orders/auto.js';
@@ -16,6 +17,7 @@ import { processOutbox, type OutboxDeps } from './email/outbox.js';
 import { pruneRateLimitEvents } from './orders/abuse.js';
 import type { PhotoStore } from './orders/photos.js';
 import { log, logError } from './log.js';
+import { pollEvents, type PaymentDeps } from './payments/payments.js';
 
 export async function deleteOldSmokeOrders(db: Db, photos: PhotoStore, now: Date): Promise<number> {
   const cutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000);
@@ -41,7 +43,21 @@ export function startJobs(
   crm: CrmDeps | null = null,
   now: () => Date = () => new Date(),
   isProduction = outbox?.settings.isProduction ?? false,
+  payments: PaymentDeps | null = null,
 ): () => void {
+  let polling = false;
+  const pollStripe = async () => {
+    if (!payments || polling) return;
+    polling = true;
+    try {
+      const run = await pollEvents(payments);
+      if (run.events > 0) log('stripe_poll', { ...run });
+    } catch (err) {
+      logError('job_failed', err, { job: 'stripe_poll' });
+    } finally {
+      polling = false;
+    }
+  };
   let syncing = false;
   const syncCrm = async () => {
     if (!crm || syncing) return;
@@ -103,7 +119,9 @@ export function startJobs(
   void daily();
   void sendEmails();
   void syncCrm();
+  void pollStripe();
   const timers = [
+    setInterval(pollStripe, 2 * 60_000),
     setInterval(hourly, 60 * 60 * 1000),
     setInterval(daily, 24 * 60 * 60 * 1000),
     setInterval(sendEmails, 10_000),

@@ -8,6 +8,7 @@ import { csrfToken } from '../src/admin/guard.js';
 import { loadConfig } from '../src/config.js';
 import { ADMIN_HOST, ATTILA, makeAdmin, type TestAdmin } from './helpers/admin.js';
 import { makeApp, orderForm, post, SITE, type TestApp } from './helpers/app.js';
+import { transitionOrder } from '../src/orders/transitions.js';
 
 let t: TestApp;
 afterEach(async () => {
@@ -274,7 +275,7 @@ describe('moving orders (SCRUM-72 AC3, AC4, AC6, AC7)', () => {
 
     await move(a, reference, 'questions', { note: 'Asked about the edge guard' });
     await move(a, reference, 'accepted', { postage: '15.00', postageReason: 'Going out with a club batch' });
-    expect((await a.post(`/admin/orders/${reference}/mark-paid-test`)).status).toBe(303);
+    await transitionOrder({ db: t.db, isProduction: false, now: t.clock.now }, { reference, to: 'paid', actor: 'stripe' }); // as Stripe would (SCRUM-82)
     await move(a, reference, 'in_queue', { arrivedOn: '2026-10-26' });
     await move(a, reference, 'regritted');
     await move(a, reference, 'posted_back', { trackingNumber: 'AP 1234-5678' });
@@ -295,10 +296,10 @@ describe('moving orders (SCRUM-72 AC3, AC4, AC6, AC7)', () => {
       [reference],
     );
     expect(history.map((h) => `${h.status}/${h.actor}`)).toEqual([
-      'submitted/customer', 'questions/admin', 'accepted/admin', 'paid/admin', 'in_queue/admin', 'regritted/admin', 'posted_back/admin', 'completed/admin',
+      'submitted/customer', 'questions/admin', 'accepted/admin', 'paid/stripe', 'in_queue/admin', 'regritted/admin', 'posted_back/admin', 'completed/admin',
     ]);
     expect(history[1]!.note).toBe('Asked about the edge guard');
-    expect(history[3]!.note).toMatch(/test shortcut/);
+    expect(history[3]!.note).toBeNull(); // set by Stripe (here, the test standing in for it)
 
     const page = await (await a.get(`/admin/orders/${reference}`)).text();
     expect(page).toContain('This order is closed.');
@@ -333,7 +334,7 @@ describe('moving orders (SCRUM-72 AC3, AC4, AC6, AC7)', () => {
     expect(await statusOf(t, reference)).toBe('submitted');
 
     await move(a, reference, 'accepted');
-    await a.post(`/admin/orders/${reference}/mark-paid-test`);
+    await transitionOrder({ db: t.db, isProduction: false, now: t.clock.now }, { reference, to: 'paid', actor: 'stripe' }); // as Stripe would (SCRUM-82)
     await move(a, reference, 'in_queue');
     await move(a, reference, 'regritted');
     const noTracking = await a.post(`/admin/orders/${reference}/status`, { to: 'posted_back' });
@@ -352,8 +353,8 @@ describe('moving orders (SCRUM-72 AC3, AC4, AC6, AC7)', () => {
     expect((await a.post(`/admin/orders/${reference}/status`, { to: 'paid' })).status).toBe(400);
     expect((await a.post(`/admin/orders/${reference}/status`, { to: 'nonsense' })).status).toBe(400);
     expect((await a.post(`/admin/orders/${reference}/status`, { to: 'accepted', postage: 'lots' })).status).toBe(400);
-    // Mark paid (test) from Submitted is not a move in the table either.
-    expect((await a.post(`/admin/orders/${reference}/mark-paid-test`)).status).toBe(409);
+    // The old "Mark paid (test)" route is gone (SCRUM-82).
+    expect((await a.post(`/admin/orders/${reference}/mark-paid-test`)).status).toBe(404);
     expect(await statusOf(t, reference)).toBe('submitted');
   });
 
@@ -388,18 +389,21 @@ describe('moving orders (SCRUM-72 AC3, AC4, AC6, AC7)', () => {
     expect(page).not.toContain('Mark paid (test)');
   });
 
-  it('has "Mark paid (test)" outside production only: in production there is no button and no route', async () => {
+  it('has no "Mark paid (test)" anywhere; says whether Stripe is set up (SCRUM-82)', async () => {
     t = await makeApp();
-    const staging = await makeAdmin(t);
-    const prod = await makeAdmin(t, { isProduction: true });
+    const unset = await makeAdmin(t);
+    const prod = await makeAdmin(t, { isProduction: true, paymentsConfigured: true });
     const { reference } = await placeOrder(t);
-    await move(staging, reference, 'accepted');
+    await move(unset, reference, 'accepted');
 
-    expect(await (await staging.get(`/admin/orders/${reference}`)).text()).toContain('Mark paid (test)');
+    const stagingPage = await (await unset.get(`/admin/orders/${reference}`)).text();
+    expect(stagingPage).not.toContain('Mark paid (test)');
+    expect(stagingPage).toContain('Payments not configured');
     const prodPage = await (await prod.get(`/admin/orders/${reference}`)).text();
     expect(prodPage).not.toContain('Mark paid (test)');
-    expect(prodPage).toContain('Paid is set by Stripe');
-    expect((await prod.post(`/admin/orders/${reference}/mark-paid-test`)).status).toBe(404);
+    expect(prodPage).toContain('Waiting for the customer to pay: Stripe sets Paid when they do.');
+    expect(prodPage).not.toContain('test card');
+    for (const a of [unset, prod]) expect((await a.post(`/admin/orders/${reference}/mark-paid-test`)).status).toBe(404);
     expect(await statusOf(t, reference)).toBe('accepted');
     expect(await (await prod.get('/admin/orders')).text()).not.toContain('(TEST)');
   });

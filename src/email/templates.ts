@@ -58,8 +58,6 @@ export interface TemplateContext {
   /** Accepted: the GST included, and whether GST applies (from the terms frozen at Accept). */
   gstCents?: number;
   taxTreatment?: TaxTreatment;
-  /** Accepted: Stripe payment link (SCRUM-9). */
-  paymentUrl?: string;
   /** In queue: YYYY-MM-DD. */
   arrivedOn?: string;
   /** In queue: YYYY-MM-DD. */
@@ -266,13 +264,14 @@ function build(name: TemplateName, ctx: TemplateContext): { subject: string; blo
               ['GST', gst],
             ],
           },
-          ctx.paymentUrl
-            ? { button: { label: 'Pay now', url: ctx.paymentUrl } }
-            : { p: '[To confirm: payment link and how return postage is shown, added by SCRUM-9]' },
+          // SCRUM-82: never a Stripe link (they expire); Pay now is on the private order page.
+          { p: 'Pay by card on your private order page: card details go straight to Stripe, our payment provider, and never to us.' },
+          { button: { label: 'Pay now on your order page', url: need(ctx, 'statusUrl', name) } },
           { h: 'Then post your ' + paddleWord(n) },
           { p: '[To confirm: postal address and packing tips]' },
           { p: `We’ll email you when ${plural(n, 'it arrives', 'they arrive')}, and ${plural(n, 'it’ll', 'they’ll')} be back in the post within 10 business days of arriving.` },
-          ...statusBlocks(need(ctx, 'statusUrl', name)),
+          // The Pay now button above is the order page link; just the privacy note here.
+          statusBlocks(need(ctx, 'statusUrl', name))[1]!,
           { p: 'Thanks,\nPickleMyPaddle' },
         ],
       };

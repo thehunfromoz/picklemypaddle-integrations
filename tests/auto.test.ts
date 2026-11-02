@@ -25,7 +25,7 @@ async function walk(reference: string, ...steps: [string, Record<string, string>
   for (const [to, extra] of steps) {
     await transitionOrder(
       { db: t.db, isProduction: false, now: t.clock.now },
-      { reference, to: to as never, actor: 'admin', ...(extra ?? {}) },
+      { reference, to: to as never, actor: to === 'paid' ? 'stripe' : 'admin', ...(extra ?? {}) },
     );
   }
 }

@@ -12,7 +12,7 @@
  * Re-gritted → Posted back → Completed, plus the end states Rejected, Withdrawn and Lapsed.
  */
 import { enqueueCrmSync } from '../crm/sync.js';
-import type { Db } from '../db/db.js';
+import type { Db, Queryable } from '../db/db.js';
 import { enqueueOrderEmail, type EmailPayload } from '../email/outbox.js';
 import type { TemplateName } from '../email/templates.js';
 import { backInPostBy, ISO_DATE_RE, sydneyDate } from './dates.js';
@@ -30,7 +30,7 @@ export type Actor = 'admin' | 'system' | 'stripe';
 export const TRANSITIONS: Readonly<Record<OrderStatus, Readonly<Partial<Record<OrderStatus, readonly Actor[]>>>>> = {
   submitted: { questions: ['admin'], accepted: ['admin'], rejected: ['admin'], withdrawn: ['admin'] },
   questions: { accepted: ['admin'], rejected: ['admin'], withdrawn: ['admin'], lapsed: ['system'] },
-  // Paid is set by Stripe (SCRUM-9); outside production, admin's "Mark paid (test)" too (see below).
+  // Paid is set by Stripe only (SCRUM-82).
   accepted: { paid: ['stripe'], withdrawn: ['admin'], lapsed: ['system'] },
   paid: { in_queue: ['admin'], withdrawn: ['admin'] },
   in_queue: { regritted: ['admin'] },
@@ -96,19 +96,25 @@ const NOT_REGISTERED: TaxSettings = { gstRegisteredFrom: null };
 
 const dollars = (cents: number) => `A$${(cents / 100).toFixed(2)}`;
 
-/** May `actor` move an order from `from` to `to`? */
-export function canTransition(from: OrderStatus, to: OrderStatus, actor: Actor, isProduction: boolean): boolean {
-  const actors = TRANSITIONS[from][to];
-  if (!actors) return false;
-  if (actors.includes(actor)) return true;
-  // Staging's "Mark paid (test)" (SCRUM-72 AC6): never in production.
-  return !isProduction && from === 'accepted' && to === 'paid' && actor === 'admin';
+/**
+ * May `actor` move an order from `from` to `to`? The same everywhere since SCRUM-82 removed
+ * staging's "Mark paid (test)": only Stripe sets Paid (`isProduction` is kept for callers).
+ */
+export function canTransition(from: OrderStatus, to: OrderStatus, actor: Actor, _isProduction: boolean): boolean {
+  return TRANSITIONS[from][to]?.includes(actor) ?? false;
 }
 
 const MAX_REASON = 2000;
 const MAX_TRACKING = 64;
 
-export async function transitionOrder(deps: TransitionDeps, req: TransitionRequest): Promise<{ reference: string; from: OrderStatus; to: OrderStatus }> {
+export type TransitionResult = { reference: string; from: OrderStatus; to: OrderStatus };
+
+export async function transitionOrder(deps: TransitionDeps, req: TransitionRequest): Promise<TransitionResult> {
+  return deps.db.tx((q) => transitionWith(q, deps, req));
+}
+
+/** The same, inside a transaction the caller already holds (SCRUM-82: a payment and its Paid together). */
+export async function transitionWith(q: Queryable, deps: Omit<TransitionDeps, 'db'>, req: TransitionRequest): Promise<TransitionResult> {
   const reason = req.reason?.trim();
   const tracking = req.trackingNumber?.trim();
   if (req.to === 'rejected' && !reason) throw new TransitionError(400, 'reason_required', 'Give the customer a reason for rejecting the order.');
@@ -127,7 +133,7 @@ export async function transitionOrder(deps: TransitionDeps, req: TransitionReque
     throw new TransitionError(400, 'arrival_invalid', 'The arrival date must be today or earlier (YYYY-MM-DD).');
   }
 
-  return deps.db.tx(async (q) => {
+  {
     const { rows } = await q.query<{ id: string; status: OrderStatus }>(
       'SELECT id, status FROM orders WHERE reference = $1 FOR UPDATE',
       [req.reference],
@@ -221,5 +227,5 @@ export async function transitionOrder(deps: TransitionDeps, req: TransitionReque
     // SCRUM-74: the deal's stage follows the status.
     await enqueueCrmSync(q, order.id, deps.now);
     return { reference: req.reference, from: order.status, to: req.to };
-  });
+  }
 }

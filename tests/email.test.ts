@@ -91,7 +91,6 @@ describe('email templates', () => {
   it('lists the wording still to confirm (production won’t start until there is none)', () => {
     // A new [To confirm: …] has to be added here on purpose, so none slips through unnoticed.
     expect(placeholdersIn()).toEqual([
-      { template: 'accepted', placeholder: '[To confirm: payment link and how return postage is shown, added by SCRUM-9]' },
       { template: 'accepted', placeholder: '[To confirm: postal address and packing tips]' },
     ]);
   });

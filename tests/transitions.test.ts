@@ -30,10 +30,9 @@ describe('transition table', () => {
     }
   });
 
-  it('adds only "Mark paid (test)" outside production', () => {
+  it('is the same outside production: only Stripe sets Paid (SCRUM-82 removed "Mark paid (test)")', () => {
     for (const from of STATUSES) for (const to of STATUSES) for (const actor of ACTORS) {
-      const extra = from === 'accepted' && to === 'paid' && actor === 'admin';
-      expect(canTransition(from, to, actor, false), key(from, to, actor)).toBe(allowedKeys.has(key(from, to, actor)) || extra);
+      expect(canTransition(from, to, actor, false), key(from, to, actor)).toBe(allowedKeys.has(key(from, to, actor)));
     }
   });
 
@@ -85,7 +84,7 @@ describe(`transitionOrder (${DB_BACKEND})`, () => {
     expect(await step('questions', 'admin', { note: 'Asked about the edge guard' })).toEqual({ reference: ref, from: 'submitted', to: 'questions' });
     expect(await emails(ref)).toEqual([]); // Questions sends nothing: Attila writes from info@
     await step('accepted', 'admin');
-    await step('paid', 'admin'); // staging's "Mark paid (test)"
+    await step('paid', 'stripe');
     await step('in_queue', 'admin', { arrivedOn: '2026-10-26' });
     await step('regritted', 'admin');
     await step('posted_back', 'admin', { trackingNumber: '33XYZ0123456789' });
@@ -101,7 +100,7 @@ describe(`transitionOrder (${DB_BACKEND})`, () => {
     const { rows: history } = await t.db.query<{ status: string; actor: string; note: string | null }>(
       'SELECT h.status, h.actor, h.note FROM status_history h JOIN orders o ON o.id = h.order_id WHERE o.reference = $1 ORDER BY h.id', [ref]);
     expect(history.map((h) => `${h.status}:${h.actor}`)).toEqual([
-      'submitted:customer', 'questions:admin', 'accepted:admin', 'paid:admin', 'in_queue:admin', 'regritted:admin', 'posted_back:admin', 'completed:system',
+      'submitted:customer', 'questions:admin', 'accepted:admin', 'paid:stripe', 'in_queue:admin', 'regritted:admin', 'posted_back:admin', 'completed:system',
     ]);
     expect(history[1]!.note).toBe('Asked about the edge guard');
   });
@@ -117,7 +116,7 @@ describe(`transitionOrder (${DB_BACKEND})`, () => {
     expect(lapse.httpStatus).toBe(409);
   });
 
-  it('has no "Mark paid (test)" in production', async () => {
+  it('refuses Paid from anyone but Stripe', async () => {
     t = await makeApp({ env: { APP_ENV: 'production', RESEND_API_KEY: 're_testkey' } });
     const ref = await newOrder();
     await transitionOrder(deps(true), { reference: ref, to: 'accepted', actor: 'admin' });
@@ -134,7 +133,7 @@ describe(`transitionOrder (${DB_BACKEND})`, () => {
     expect(await emails(ref)).toEqual([{ template: 'rejected', payload: { reason: 'The face is cracked.' } }]);
 
     const ref2 = await newOrder('player+2@test.picklemypaddle.com');
-    for (const to of ['accepted', 'paid', 'in_queue', 'regritted'] as const) await transitionOrder(deps(), { reference: ref2, to, actor: 'admin' });
+    for (const to of ['accepted', 'paid', 'in_queue', 'regritted'] as const) await transitionOrder(deps(), { reference: ref2, to, actor: to === 'paid' ? 'stripe' : 'admin' });
     expect((await transitionOrder(deps(), { reference: ref2, to: 'posted_back', actor: 'admin' }).catch((e) => e)).code).toBe('tracking_required');
     expect((await transitionOrder(deps(), { reference: ref2, to: 'posted_back', actor: 'admin', trackingNumber: '<script>' }).catch((e) => e)).code).toBe('tracking_invalid');
   });
@@ -142,7 +141,7 @@ describe(`transitionOrder (${DB_BACKEND})`, () => {
   it('refuses an arrival date in the future, and defaults it to today in Sydney', async () => {
     t = await makeApp({ env: { APP_ENV: 'staging' } });
     const ref = await newOrder();
-    for (const to of ['accepted', 'paid'] as const) await transitionOrder(deps(), { reference: ref, to, actor: 'admin' });
+    for (const to of ['accepted', 'paid'] as const) await transitionOrder(deps(), { reference: ref, to, actor: to === 'paid' ? 'stripe' : 'admin' });
     expect((await transitionOrder(deps(), { reference: ref, to: 'in_queue', actor: 'admin', arrivedOn: '2099-01-01' }).catch((e) => e)).code).toBe('arrival_invalid');
     await transitionOrder(deps(), { reference: ref, to: 'in_queue', actor: 'admin' });
     const { rows } = await t.db.query<{ d: string }>('SELECT arrived_on::text AS d FROM orders WHERE reference = $1', [ref]);

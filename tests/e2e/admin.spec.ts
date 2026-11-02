@@ -1,6 +1,6 @@
 /**
  * SCRUM-72 e2e: walk an order from Submitted to Completed through the admin, as Attila would on
- * staging, using the "Mark paid (test)" shortcut in place of Stripe. Runs on a desktop and a
+ * staging; the customer's card payment goes through a faked Stripe (SCRUM-82). Runs on a desktop and a
  * phone-sized screen (AC8).
  */
 import { expect, test, type Page } from '@playwright/test';
@@ -16,7 +16,7 @@ async function moveTo(page: Page, label: string, fill?: (page: Page) => Promise<
   await expect(page.locator('h1 .badge').last()).toHaveText(label);
 }
 
-test('walks an order from Submitted to Completed', async ({ page }) => {
+test('walks an order from Submitted to Completed', async ({ page, request }) => {
   await page.goto('/admin');
   await expect(page).toHaveURL(/\/admin\/orders$/);
   await expect(page.getByText('Signed in through Tailscale as E2E Admin')).toBeVisible();
@@ -44,9 +44,15 @@ test('walks an order from Submitted to Completed', async ({ page }) => {
   await expect(page.getByText('Price (fixed at Accept)')).toBeVisible();
   await expect(page.getByText('Postage overridden (calculated A$18): Both paddles fit the smaller bag')).toBeVisible();
 
-  await summary(page, 'Mark paid (test)').click();
-  await page.getByRole('button', { name: 'Mark paid (test)' }).click();
+  // SCRUM-82: no "Mark paid (test)"; the customer pays through (faked) Stripe Checkout.
+  await expect(page.getByText('Mark paid (test)')).toHaveCount(0);
+  await expect(page.getByText('Waiting for the customer to pay: Stripe sets Paid when they do.')).toBeVisible();
+  const paid = await request.post(`http://127.0.0.1:${process.env.E2E_HOOK_PORT ?? 4412}/pay/${reference}`);
+  expect(paid.status()).toBe(200);
+  await page.reload();
   await expect(page.locator('h1 .badge').last()).toHaveText('Paid');
+  await expect(page.getByRole('heading', { name: 'Payment' })).toBeVisible();
+  await expect(page.getByText('Open in Stripe')).toBeVisible();
 
   await moveTo(page, 'In queue'); // the arrival date defaults to today
   await moveTo(page, 'Re-gritted');
