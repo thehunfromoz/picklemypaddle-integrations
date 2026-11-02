@@ -16,6 +16,7 @@ import type { Db } from '../db/db.js';
 import { enqueueOrderEmail, type EmailPayload } from '../email/outbox.js';
 import type { TemplateName } from '../email/templates.js';
 import { backInPostBy, ISO_DATE_RE, sydneyDate } from './dates.js';
+import type { PostageTable } from '../pricing/postage-data.js';
 import { quotePostage } from '../pricing/postage.js';
 import { gstIncluded, termsOn, type TaxSettings } from '../pricing/terms.js';
 import type { OrderStatus } from './model.js';
@@ -85,6 +86,8 @@ export interface TransitionDeps {
   now: Date;
   /** GST settings (SCRUM-81). Default: not registered. */
   tax?: TaxSettings;
+  /** Postage tables; tests only (default: the real ones). */
+  postageTables?: readonly PostageTable[];
 }
 
 const NOT_REGISTERED: TaxSettings = { gstRegisteredFrom: null };
@@ -147,7 +150,7 @@ export async function transitionOrder(deps: TransitionDeps, req: TransitionReque
       const { paddles, postcode } = facts[0]!;
       const today = sydneyDate(deps.now);
       const terms = termsOn(today, deps.tax ?? NOT_REGISTERED);
-      const quote = quotePostage(paddles, postcode, today);
+      const quote = quotePostage(paddles, postcode, today, deps.postageTables);
       let postage: number;
       if (req.postageCents === undefined || (quote.ok && req.postageCents === quote.cents)) {
         if (!quote.ok) throw new TransitionError(400, 'postage_required', `${quote.reason} Give a reason too.`);
@@ -168,7 +171,7 @@ export async function transitionOrder(deps: TransitionDeps, req: TransitionReque
       const total = subtotal - discount + postage;
       const gst = gstIncluded(total, terms.treatment);
       const detail = quote.ok
-        ? `${quote.packing}; ${quote.actualKg} kg actual, ${quote.cubicKg} kg cubic, charged on ${quote.chargeableKg} kg (${quote.basis})${quote.zone ? `, zone ${quote.zone}` : ''}; Australia Post ${dollars(quote.postageCents)} + packaging ${dollars(quote.packagingCents)}; table ${quote.table}`
+        ? `${quote.packing}; ${quote.actualKg} kg actual, ${quote.cubicKg} kg cubic, charged on ${quote.chargeableKg} kg (${quote.basis})${quote.zone ? `, zone ${quote.zone}` : ''}; Australia Post ${dollars(quote.postageCents)} + packaging ${quote.packagingCents ? dollars(quote.packagingCents) : `absorbed (${dollars(quote.packagingCostCents)})`}; table ${quote.table}`
         : quote.reason;
       await q.query(
         `UPDATE orders SET amount_cents = $2, subtotal_cents = $3, discount_cents = $4, postage_cents = $5,

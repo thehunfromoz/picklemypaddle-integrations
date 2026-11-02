@@ -79,7 +79,7 @@ describe('erasure on request', () => {
     const { rows } = await t.db.query<Record<string, unknown>>('SELECT * FROM orders WHERE reference = $1', [paid.reference]);
     const o = rows[0]!;
     const kept = { reference: paid.reference, name: 'Erin Erasable', status: 'completed', is_test: true, is_smoke: false, amount_cents: 12000,
-      subtotal_cents: 12000, discount_cents: 0, postage_cents: 0, postage_quoted_cents: 2225, gst_cents: 0, tax_treatment: 'not_registered', terms_version: 'price:2026-01-01;gst:none' };
+      subtotal_cents: 12000, discount_cents: 0, postage_cents: 0, postage_quoted_cents: 1800, gst_cents: 0, tax_treatment: 'not_registered', terms_version: 'price:2026-01-01;gst:none' };
     for (const [col, value] of Object.entries(kept)) expect(o[col], col).toBe(value);
     for (const col of ['id', 'created_at', 'status_changed_at', 'consent_at', 'tournament_ack_at', 'updated_at', 'erased_at', 'arrived_on', 'promise_on', 'crm_deal_id', 'review_reminder_at']) {
       expect(o[col], col).not.toBeNull();

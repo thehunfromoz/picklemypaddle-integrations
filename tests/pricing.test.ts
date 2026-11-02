@@ -66,42 +66,46 @@ describe('terms on a date', () => {
 });
 
 describe('return postage', () => {
-  it('uses the 1 July 2026 table, and has 16 zones of prices in every band over 5 kg', () => {
+  // The cubic rules stay in the code for when they're needed again (post launch).
+  const cubic: PostageTable[] = [{ ...POSTAGE_TABLES[0]!, basis: 'cubic' }];
+
+  it('uses the 1 July 2026 table, on actual weight, and has 16 zones of prices in every band over 5 kg', () => {
     expect(postageTableOn(DAY).from).toBe('2026-07-01');
+    expect(postageTableOn(DAY).basis).toBe('actual');
     for (const band of POSTAGE_TABLES[0]!.byZone) expect(Object.keys(band.cents).sort()).toEqual([...ZONES].sort());
   });
 
-  it('prices 1–10 paddles to Sydney, charging on cubic weight, plus packaging', () => {
-    const expected: Record<number, [string, number, number]> = {
-      // paddles: [packing, chargeable kg, Australia Post cents]
-      1: ['padded bag', 1.67, 2025],
-      2: ['padded bag', 2.66, 2025],
-      3: ['box', 3, 2025],
-      5: ['box', 4.38, 2445],
-      6: ['box', 5.07, 2470],
-      10: ['box', 7.82, 2520],
+  it('prices 1–10 paddles on actual weight, absorbing the packaging for a single paddle (decided 2 Nov 2026)', () => {
+    const expected: Record<number, [string, number, number, number]> = {
+      // paddles: [packing, chargeable kg, Australia Post cents, packaging charged cents]
+      1: ['padded bag', 0.36, 1170, 0],
+      2: ['padded bag', 0.64, 1600, 200],
+      3: ['box', 1.29, 2025, 350],
+      5: ['box', 1.85, 2025, 350],
+      9: ['box', 2.97, 2025, 350],
+      10: ['box', 3.25, 2445, 350],
     };
-    for (const [n, [packing, kg, postage]] of Object.entries(expected)) {
+    for (const [n, [packing, kg, postage, packaging]] of Object.entries(expected)) {
       const q = ok(quotePostage(Number(n), '2000', DAY));
-      expect([q.packing, q.chargeableKg, q.postageCents], `${n} paddles`).toEqual([packing, kg, postage]);
-      expect(q.cents).toBe(postage + q.packagingCents);
+      expect([q.packing, q.chargeableKg, q.postageCents, q.packagingCents], `${n} paddles`).toEqual([packing, kg, postage, packaging]);
+      expect(q.cents).toBe(postage + packaging);
     }
-    expect(ok(quotePostage(1, '2000', DAY)).cents).toBe(2225); // A$20.25 + A$2.00 bag
+    const one = ok(quotePostage(1, '2000', DAY));
+    expect([one.cents, one.packagingCostCents]).toEqual([1170, 200]); // A$11.70; the A$2 bag is on us
   });
 
-  it('is one national price up to 5 kg, and by zone above it', () => {
-    expect(ok(quotePostage(5, '6725', DAY)).cents).toBe(ok(quotePostage(5, '2000', DAY)).cents);
-    expect(ok(quotePostage(5, '2000', DAY)).zone).toBeUndefined();
-    const far = ok(quotePostage(10, '6725', DAY)); // Broome, WA: zone W3
-    expect([far.zone, far.postageCents]).toEqual(['W3', 5160]);
-    expect(ok(quotePostage(10, '0800', DAY)).zone).toBe('NT1');
+  it('is one national price for every order up to 10 paddles (all under 5 kg on actual weight)', () => {
+    for (let n = 1; n <= 10; n++) {
+      expect(ok(quotePostage(n, '6725', DAY)).cents, `${n} paddles`).toBe(ok(quotePostage(n, '2000', DAY)).cents);
+      expect(ok(quotePostage(n, '6725', DAY)).zone).toBeUndefined();
+    }
   });
 
-  it('charges on actual weight only when the table says so', () => {
-    const actual: PostageTable[] = [{ ...POSTAGE_TABLES[0]!, basis: 'actual' }];
-    const q = ok(quotePostage(1, '2000', DAY, actual));
-    expect([q.chargeableKg, q.postageCents]).toEqual([0.36, 1170]);
-    expect(ok(quotePostage(10, '6725', DAY, actual)).postageCents).toBe(2445); // 3.25 kg: under 5 kg, flat
+  it('on cubic weight, goes over 5 kg for big boxes and prices them by zone', () => {
+    expect([ok(quotePostage(1, '2000', DAY, cubic)).chargeableKg, ok(quotePostage(1, '2000', DAY, cubic)).postageCents]).toEqual([1.67, 2025]);
+    const far = ok(quotePostage(10, '6725', DAY, cubic)); // Broome, WA: zone W3
+    expect([far.chargeableKg, far.zone, far.postageCents]).toEqual([7.82, 'W3', 5160]);
+    expect(ok(quotePostage(10, '0800', DAY, cubic)).zone).toBe('NT1');
   });
 
   it('maps postcodes to zones, taking the cheaper of two for border postcodes', () => {
@@ -111,25 +115,24 @@ describe('return postage', () => {
     expect(zonesFor('2485', table).sort()).toEqual(['N2', 'Q1']);
     expect(zonesFor('6798', table)).toEqual([]); // Christmas Island: not in the table
     expect(zonesFor('20000', table)).toEqual([]);
-    const tweed = ok(quotePostage(10, '2485', DAY));
-    expect(tweed.postageCents).toBe(Math.min(3060, 3000)); // 8 kg band: N2 30.60, Q1 30.00
-    expect(tweed.zone).toBe('Q1');
+    const tweed = ok(quotePostage(10, '2485', DAY, cubic));
+    expect([tweed.zone, tweed.postageCents]).toEqual(['Q1', 3000]); // 8 kg band: N2 30.60, Q1 30.00
   });
 
   it('refuses (so Accept needs a typed amount) when it can’t price the parcel', () => {
-    const outside = quotePostage(10, '6798', DAY);
-    expect(outside).toMatchObject({ ok: false, reason: expect.stringMatching(/zone table/) });
+    expect(quotePostage(10, '6798', DAY, cubic)).toMatchObject({ ok: false, reason: expect.stringMatching(/zone table/) });
     expect(quotePostage(11, '2000', DAY)).toMatchObject({ ok: false, reason: expect.stringMatching(/No packing/) });
     expect(quotePostage(0, '2000', DAY).ok).toBe(false);
-    // A postcode outside the zone table is fine while the parcel is under 5 kg (one national price).
-    expect(ok(quotePostage(2, '6798', DAY)).cents).toBe(2225);
+    // Under 5 kg a postcode outside the zone table is fine (one national price).
+    expect(ok(quotePostage(10, '6798', DAY)).cents).toBe(2795);
   });
 
-  it('gives the website a price, or a range by zone, for each paddle count', () => {
+  it('gives the website one price per paddle count', () => {
     const guide = postageGuide(DAY);
     expect(guide.map((g) => g.paddles)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
-    expect(guide[0]).toEqual({ paddles: 1, minCents: 2225, maxCents: 2225 });
-    expect(guide[9]!.minCents).toBeLessThan(guide[9]!.maxCents);
+    expect(guide[0]).toEqual({ paddles: 1, minCents: 1170, maxCents: 1170 });
+    expect(guide[1]).toEqual({ paddles: 2, minCents: 1800, maxCents: 1800 });
+    expect(guide[9]).toEqual({ paddles: 10, minCents: 2795, maxCents: 2795 });
   });
 });
 

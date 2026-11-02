@@ -362,19 +362,20 @@ describe('moving orders (SCRUM-72 AC3, AC4, AC6, AC7)', () => {
     const a = await makeAdmin(t);
     const { reference } = await placeOrder(t);
     const page = await (await a.get(`/admin/orders/${reference}`)).text();
-    expect(page).toContain('name="postage" inputmode="decimal" pattern="\\d{1,5}(\\.\\d{1,2})?" value="22.25"');
-    expect(page).toContain('padded bag, charged on 1.67 kg');
-    expect(page).toContain('Total</dt><dd>A$82.25 · No GST has been charged');
+    expect(page).toContain('name="postage" inputmode="decimal" pattern="\\d{1,5}(\\.\\d{1,2})?" value="11.70"');
+    expect(page).toContain('padded bag, charged on 0.36 kg');
+    expect(page).toContain('packaging absorbed (A$2)');
+    expect(page).toContain('Total</dt><dd>A$71.70 · No GST has been charged');
 
     const noReason = await a.post(`/admin/orders/${reference}/status`, { to: 'accepted', postage: '18' });
     expect(noReason.status).toBe(400);
-    expect(await noReason.text()).toContain('Say why the postage isn’t the calculated A$22.25.');
+    expect(await noReason.text()).toContain('Say why the postage isn’t the calculated A$11.70.');
     expect(await statusOf(t, reference)).toBe('submitted');
 
-    await move(a, reference, 'accepted', { postage: '22.25' });
+    await move(a, reference, 'accepted', { postage: '11.70' });
     const after = await (await a.get(`/admin/orders/${reference}`)).text();
     expect(after).toContain('Price (fixed at Accept)');
-    expect(after).toContain('<strong>A$82.25</strong> · no GST');
+    expect(after).toContain('<strong>A$71.70</strong> · no GST');
   });
 
   it('offers only the allowed moves on the page', async () => {

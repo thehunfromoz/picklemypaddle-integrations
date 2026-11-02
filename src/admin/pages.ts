@@ -131,7 +131,7 @@ function actionForm(ctx: PageContext, o: OrderDetail, to: OrderStatus): Html {
   <dt>Re-grit</dt><dd>${plural(n, 'paddle')} × ${dollars(terms.pricePerPaddleCents)} = ${dollars(regrit)}</dd>
   <dt>Return postage</dt><dd>${
     quote.ok
-      ? html`${dollars(quote.cents)}: ${quote.packing}, charged on ${String(quote.chargeableKg)} kg (${String(quote.actualKg)} kg actual, ${String(quote.cubicKg)} kg cubic)${quote.zone ? `, zone ${quote.zone}` : ''}; Australia Post ${dollars(quote.postageCents)} + packaging ${dollars(quote.packagingCents)}`
+      ? html`${dollars(quote.cents)}: ${quote.packing}, charged on ${String(quote.chargeableKg)} kg (${String(quote.actualKg)} kg actual, ${String(quote.cubicKg)} kg cubic)${quote.zone ? `, zone ${quote.zone}` : ''}; Australia Post ${dollars(quote.postageCents)} + packaging ${quote.packagingCents ? dollars(quote.packagingCents) : `absorbed (${dollars(quote.packagingCostCents)})`}`
       : html`<strong>${quote.reason}</strong>`
   }</dd>
   ${quote.ok ? html`<dt>Total</dt><dd>${dollars(total)} · ${taxWording(terms.treatment, total).gstLine}</dd>` : ''}

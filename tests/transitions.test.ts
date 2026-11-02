@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { addBusinessDays, backInPostBy, sydneyDate } from '../src/orders/dates.js';
 import { STATUSES, type OrderStatus } from '../src/orders/model.js';
 import { canTransition, EMAIL_ON, TRANSITIONS, TransitionError, transitionOrder, type Actor } from '../src/orders/transitions.js';
+import { POSTAGE_TABLES, type PostageTable } from '../src/pricing/postage-data.js';
 import { DB_BACKEND } from './helpers/db.js';
 import { makeApp, orderForm, post, type TestApp } from './helpers/app.js';
 
@@ -168,8 +169,12 @@ describe(`price frozen at Accept (SCRUM-81, ${DB_BACKEND})`, () => {
     expect(res.status).toBe(201);
     return ((await res.json()) as { reference: string }).reference;
   }
-  const accept = (ref: string, extra: Record<string, unknown> = {}, tax: { gstRegisteredFrom: string | null } = { gstRegisteredFrom: null }) =>
-    transitionOrder({ db: t.db, isProduction: false, now: t.clock.now, tax }, { reference: ref, to: 'accepted', actor: 'admin', ...extra });
+  const accept = (
+    ref: string,
+    extra: Record<string, unknown> = {},
+    tax: { gstRegisteredFrom: string | null } = { gstRegisteredFrom: null },
+    postageTables?: PostageTable[],
+  ) => transitionOrder({ db: t.db, isProduction: false, now: t.clock.now, tax, postageTables }, { reference: ref, to: 'accepted', actor: 'admin', ...extra });
   const saved = async (ref: string) =>
     (await t.db.query<Record<string, unknown>>(
       `SELECT amount_cents, subtotal_cents, discount_cents, postage_cents, postage_quoted_cents, postage_override_reason,
@@ -193,11 +198,11 @@ describe(`price frozen at Accept (SCRUM-81, ${DB_BACKEND})`, () => {
     const ref = await newOrder({ paddles: 2 });
     await accept(ref);
     expect(await saved(ref)).toEqual({
-      amount_cents: 14225, subtotal_cents: 12000, discount_cents: 0, postage_cents: 2225, postage_quoted_cents: 2225,
+      amount_cents: 13800, subtotal_cents: 12000, discount_cents: 0, postage_cents: 1800, postage_quoted_cents: 1800,
       postage_override_reason: null, gst_cents: 0, tax_treatment: 'not_registered', terms_version: 'price:2026-01-01;gst:none',
       terms_date: sydneyDate(t.clock.now),
     });
-    expect(await acceptedEmail(ref)).toEqual({ amountCents: 14225, subtotalCents: 12000, postageCents: 2225, gstCents: 0, taxTreatment: 'not_registered' });
+    expect(await acceptedEmail(ref)).toEqual({ amountCents: 13800, subtotalCents: 12000, postageCents: 1800, gstCents: 0, taxTreatment: 'not_registered' });
   });
 
   it('includes GST from the registration day, and leaves orders accepted before it unchanged', async () => {
@@ -207,8 +212,8 @@ describe(`price frozen at Accept (SCRUM-81, ${DB_BACKEND})`, () => {
     const after = await newOrder();
     // The GST date is set (and the service restarted): today is now on or after it.
     await accept(after, {}, { gstRegisteredFrom: sydneyDate(t.clock.now) });
-    expect(await saved(before)).toMatchObject({ amount_cents: 8225, gst_cents: 0, tax_treatment: 'not_registered' });
-    expect(await saved(after)).toMatchObject({ amount_cents: 8225, gst_cents: 748, tax_treatment: 'gst_inclusive' });
+    expect(await saved(before)).toMatchObject({ amount_cents: 7170, gst_cents: 0, tax_treatment: 'not_registered' });
+    expect(await saved(after)).toMatchObject({ amount_cents: 7170, gst_cents: 652, tax_treatment: 'gst_inclusive' });
     expect((await saved(after)).terms_version).toBe(`price:2026-01-01;gst:from-${sydneyDate(t.clock.now)}`);
   });
 
@@ -221,20 +226,22 @@ describe(`price frozen at Accept (SCRUM-81, ${DB_BACKEND})`, () => {
 
     // The calculated amount typed back in is not an override.
     const same = await newOrder();
-    await accept(same, { postageCents: 2225 });
-    expect(await saved(same)).toMatchObject({ postage_cents: 2225, postage_override_reason: null });
+    await accept(same, { postageCents: 1170 });
+    expect(await saved(same)).toMatchObject({ postage_cents: 1170, postage_override_reason: null });
 
     await accept(ref, { postageCents: 1500, postageReason: 'Two paddles going in one bag with order PMP-ABCDE' });
-    expect(await saved(ref)).toMatchObject({ amount_cents: 7500, postage_cents: 1500, postage_quoted_cents: 2225, postage_override_reason: 'Two paddles going in one bag with order PMP-ABCDE' });
-    expect(await historyNote(ref)).toBe('Postage overridden: A$22.25 → A$15.00. Reason: Two paddles going in one bag with order PMP-ABCDE');
+    expect(await saved(ref)).toMatchObject({ amount_cents: 7500, postage_cents: 1500, postage_quoted_cents: 1170, postage_override_reason: 'Two paddles going in one bag with order PMP-ABCDE' });
+    expect(await historyNote(ref)).toBe('Postage overridden: A$11.70 → A$15.00. Reason: Two paddles going in one bag with order PMP-ABCDE');
   });
 
   it('needs the postage typed in, with a reason, when it can’t be calculated', async () => {
     t = await makeApp({ env: { APP_ENV: 'staging' } });
-    const ref = await newOrder({ paddles: 10, postcode: '6798' }); // over 5 kg, to Christmas Island
-    expect((await accept(ref).catch((e) => e)).code).toBe('postage_required');
-    expect((await accept(ref, { postageCents: 9000 }).catch((e) => e)).code).toBe('postage_reason_required');
-    await accept(ref, { postageCents: 9000, postageReason: 'Quoted at the post office' });
+    // On cubic weight, 10 paddles to Christmas Island are over 5 kg and outside the zone table.
+    const cubic: PostageTable[] = [{ ...POSTAGE_TABLES[0]!, basis: 'cubic' }];
+    const ref = await newOrder({ paddles: 10, postcode: '6798' });
+    expect((await accept(ref, {}, undefined, cubic).catch((e) => e)).code).toBe('postage_required');
+    expect((await accept(ref, { postageCents: 9000 }, undefined, cubic).catch((e) => e)).code).toBe('postage_reason_required');
+    await accept(ref, { postageCents: 9000, postageReason: 'Quoted at the post office' }, undefined, cubic);
     expect(await saved(ref)).toMatchObject({ amount_cents: 69000, postage_cents: 9000, postage_quoted_cents: null });
     expect(await historyNote(ref)).toMatch(/^Postage entered by hand: A\$90\.00 .*Reason: Quoted at the post office$/);
   });

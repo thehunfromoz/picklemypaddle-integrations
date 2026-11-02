@@ -196,13 +196,16 @@ admin and HubSpot all show the saved figures.
   without one.
 - **Postage** is worked out from size and weight (`src/pricing/postage.ts`, data in
   `postage-data.ts`): the packing for the paddle count (a padded bag for 1–2, a box for 3–10), its
-  size and weight, the **greater of actual and cubic weight** (m³ × 250; the table's `basis` can
-  switch to actual weight only), then Australia Post Parcel Post from Sydney (one national price
-  up to 5 kg; over 5 kg by the destination zone from the return postcode), plus the packaging cost.
+  size and weight, the chargeable weight (**actual weight for launch**, decided 2 Nov 2026; the
+  table's `basis: 'cubic'` charges the greater of actual and cubic, m³ × 250), then Australia Post
+  Parcel Post from Sydney (one national price up to 5 kg; over 5 kg by the destination zone from the
+  return postcode). Packaging is **absorbed for a single paddle** and charged at cost from two
+  paddles (`chargePackagingFromPaddles`). On today's figures: 1 paddle A$11.70, 2 A$18.00, 3–9
+  A$23.75, 10 A$27.95, anywhere in Australia.
   Australia Post changes prices each July: **add a new dated table then**. The admin's Accept form
   shows the working and fills in the amount; a different amount needs a reason, which goes in the
-  history. When nothing can be calculated (a postcode outside the zone table and over 5 kg, or more
-  than 10 paddles), Accept needs the amount and a reason.
+  history. When nothing can be calculated (on cubic weight, a parcel over 5 kg to a postcode outside
+  the zone table; or more than 10 paddles), Accept needs the amount and a reason.
 - **`GET /api/pricing`** (public, cached 1 h) gives the website today's price, GST wording and
   postage per paddle count, so the wording changes on the GST date without a rebuild.
 
