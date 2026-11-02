@@ -19,6 +19,8 @@ export const E2E_LOGIN = 'e2e-admin@test.picklemypaddle.com';
 // SCRUM-82: Stripe is faked; the hook below pays an order the way a customer would.
 const stripe = fakeStripe();
 const t = await makeApp({ stripe, env: { APP_ENV: 'staging', ORDER_MIN_FILL_SECONDS: '0' } });
+// The admin runs on real time; so must the payments, or Paid would sort before the moves made in the browser.
+t.payments!.now = () => new Date();
 // Enough orders for every test in both browser projects (desktop, phone): each test takes the
 // first order still Submitted. A rejection the server refused leaves its order Submitted.
 const references: string[] = [];
