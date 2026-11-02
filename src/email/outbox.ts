@@ -20,6 +20,7 @@ import { hashToken, newStatusToken } from '../orders/model.js';
 import type { LinksMailer } from '../orders/status.js';
 import { ALERT_TO, SendError, type EmailSender } from './sender.js';
 import { render, type TemplateContext, type TemplateName } from './templates.js';
+import type { DiscountKind } from '../orders/rules.js';
 
 export interface MailSettings {
   isProduction: boolean;
@@ -46,6 +47,9 @@ export interface EmailPayload {
   /** Accepted (SCRUM-81): the frozen total and how it was made up. */
   amountCents?: number;
   subtotalCents?: number;
+  /** SCRUM-63: the discount off the re-grit, and the code that gave it. */
+  discountCents?: number;
+  discountCode?: string;
   postageCents?: number;
   gstCents?: number;
   taxTreatment?: TaxTreatment;
@@ -113,6 +117,10 @@ interface OrderFacts {
   tracking_number: string | null;
   /** YYYY-MM-DD, read as text so no driver turns the calendar date into a moment in time. */
   arrived_on: string | null;
+  /** SCRUM-63: the code on the order and what it gives, saved at submit. */
+  discount_code: string | null;
+  discount_kind: DiscountKind | null;
+  discount_value: number | null;
 }
 
 const firstName = (name: string) => name.trim().split(/\s+/)[0] ?? name.trim();
@@ -180,7 +188,8 @@ async function sendOne(deps: OutboxDeps, row: OutboxRow, now: Date): Promise<key
   }
 
   const { rows: orders } = await db.query<OrderFacts>(
-    'SELECT id, reference, name, tracking_number, arrived_on::text AS arrived_on FROM orders WHERE id = $1',
+    `SELECT id, reference, name, tracking_number, arrived_on::text AS arrived_on, discount_code, discount_kind, discount_value
+       FROM orders WHERE id = $1`,
     [row.order_id],
   );
   const order = orders[0];
@@ -230,6 +239,9 @@ async function sendOne(deps: OutboxDeps, row: OutboxRow, now: Date): Promise<key
     adminUrl: settings.adminUrl ? `${settings.adminUrl}/admin/orders/${order.reference}` : null,
     trackingNumber: order.tracking_number ?? undefined,
     arrivedOn: order.arrived_on ?? undefined,
+    ...(order.discount_code && order.discount_kind && order.discount_value !== null
+      ? { discountOffer: { code: order.discount_code, kind: order.discount_kind, value: Number(order.discount_value) } }
+      : {}),
     ...extras,
   };
 

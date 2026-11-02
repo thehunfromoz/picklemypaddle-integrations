@@ -78,3 +78,31 @@ test('refuses a rejection without a reason, in the browser and on the server', a
   await page.getByRole('button', { name: 'Move to Rejected' }).click();
   await expect(page.getByRole('alert')).toContainText('Give the customer a reason');
 });
+
+// SCRUM-63: discount codes, as Attila makes them when someone emails for the launch offer.
+test('creates a shared code and generates a one-person code', async ({ page }) => {
+  await page.goto('/admin/orders');
+  await page.getByRole('link', { name: 'Discount codes' }).click();
+  await expect(page.locator('h1')).toHaveText('Discount codes');
+
+  await summary(page, 'Create a code').click();
+  const create = page.locator('form', { has: page.getByRole('button', { name: 'Create code' }) });
+  const shared = `E2E${Date.now().toString(36).toUpperCase()}`;
+  await create.getByLabel(/^Code/).fill(shared.toLowerCase());
+  await create.getByLabel('What it gives').selectOption('free');
+  await create.getByLabel(/^How much/).fill('1');
+  await create.getByLabel('Total uses').fill('10');
+  await create.getByRole('button', { name: 'Create code' }).click();
+  await expect(page.getByRole('status')).toHaveText('Code created. Copy it from the heading.');
+  await expect(page.locator('h1 .ref')).toHaveText(shared);
+
+  await page.getByRole('link', { name: '← Discount codes' }).click();
+  await page.getByLabel(/^Who it’s for/).fill('E2E player');
+  await page.getByRole('button', { name: 'Generate code' }).click();
+  await expect(page.locator('h1 .ref')).toHaveText(/^FREE-[A-Z2-9]{8}$/);
+  await expect(page.getByText('Free re-grit for 1 paddle · 0 of 1 used')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Deactivate' }).click();
+  await expect(page.getByRole('status')).toHaveText('Deactivated: new orders can’t use it.');
+  await expect(page.locator('h1 .badge')).toHaveText('Inactive');
+});

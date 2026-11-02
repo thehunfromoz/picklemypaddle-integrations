@@ -19,7 +19,9 @@ import { backInPostBy, ISO_DATE_RE, sydneyDate } from './dates.js';
 import type { PostageTable } from '../pricing/postage-data.js';
 import { quotePostage } from '../pricing/postage.js';
 import { gstIncluded, termsOn, type TaxSettings } from '../pricing/terms.js';
+import { settleUseForStatus } from './discounts.js';
 import type { OrderStatus } from './model.js';
+import { discountCents, type DiscountKind } from './rules.js';
 
 /** Who made a change. */
 export type Actor = 'admin' | 'system' | 'stripe';
@@ -141,13 +143,15 @@ export async function transitionOrder(deps: TransitionDeps, req: TransitionReque
     // SCRUM-75/81: what the customer is asked to pay, and the terms it was worked out on, are
     // frozen on the order at Accept (the tax record), not only written into the email.
     let priceNote: string | undefined;
-    let payloadPrice: Pick<EmailPayload, 'amountCents' | 'subtotalCents' | 'postageCents' | 'gstCents' | 'taxTreatment'> = {};
+    let payloadPrice: Pick<EmailPayload, 'amountCents' | 'subtotalCents' | 'discountCents' | 'discountCode' | 'postageCents' | 'gstCents' | 'taxTreatment'> = {};
     if (req.to === 'accepted') {
-      const { rows: facts } = await q.query<{ paddles: number; postcode: string }>(
-        'SELECT (SELECT count(*)::int FROM paddles p WHERE p.order_id = o.id) AS paddles, o.postcode FROM orders o WHERE o.id = $1',
+      const { rows: facts } = await q.query<{ paddles: number; postcode: string; discount_code: string | null; discount_kind: DiscountKind | null; discount_value: number | null }>(
+        `SELECT (SELECT count(*)::int FROM paddles p WHERE p.order_id = o.id) AS paddles, o.postcode,
+                o.discount_code, o.discount_kind, o.discount_value
+           FROM orders o WHERE o.id = $1`,
         [order.id],
       );
-      const { paddles, postcode } = facts[0]!;
+      const { paddles, postcode, discount_code: code, discount_kind: kind, discount_value: value } = facts[0]!;
       const today = sydneyDate(deps.now);
       const terms = termsOn(today, deps.tax ?? NOT_REGISTERED);
       const quote = quotePostage(paddles, postcode, today, deps.postageTables);
@@ -167,8 +171,13 @@ export async function transitionOrder(deps: TransitionDeps, req: TransitionReque
           : `Postage entered by hand: ${dollars(postage)} (${quote.reason}) Reason: ${postageReason}`;
       }
       const subtotal = paddles * terms.pricePerPaddleCents;
-      const discount = 0; // SCRUM-63
+      // SCRUM-63: what the code gave was saved at submit; never off postage.
+      const discount = kind && value !== null ? discountCents({ kind, value: Number(value) }, paddles, terms.pricePerPaddleCents) : 0;
       const total = subtotal - discount + postage;
+      // SCRUM-63: codes never waive postage, so there is always something to pay through Stripe.
+      if (total <= 0) {
+        throw new TransitionError(400, 'nothing_to_pay', 'With this order’s code the total would be A$0. Charge the return postage (Stripe can’t take a nil payment).');
+      }
       const gst = gstIncluded(total, terms.treatment);
       const detail = quote.ok
         ? `${quote.packing}; ${quote.actualKg} kg actual, ${quote.cubicKg} kg cubic, charged on ${quote.chargeableKg} kg (${quote.basis})${quote.zone ? `, zone ${quote.zone}` : ''}; Australia Post ${dollars(quote.postageCents)} + packaging ${quote.packagingCents ? dollars(quote.packagingCents) : `absorbed (${dollars(quote.packagingCostCents)})`}; table ${quote.table}`
@@ -181,7 +190,10 @@ export async function transitionOrder(deps: TransitionDeps, req: TransitionReque
         [order.id, total, subtotal, discount, postage, quote.ok ? quote.cents : null, priceNote ? postageReason : null, detail, gst,
           terms.treatment, terms.version, today],
       );
-      payloadPrice = { amountCents: total, subtotalCents: subtotal, postageCents: postage, gstCents: gst, taxTreatment: terms.treatment };
+      payloadPrice = {
+        amountCents: total, subtotalCents: subtotal, postageCents: postage, gstCents: gst, taxTreatment: terms.treatment,
+        ...(discount > 0 && code ? { discountCents: discount, discountCode: code } : {}),
+      };
     }
     await q.query(
       `UPDATE orders SET status = $2, status_changed_at = $3, updated_at = $3,
@@ -190,6 +202,8 @@ export async function transitionOrder(deps: TransitionDeps, req: TransitionReque
         WHERE id = $1`,
       [order.id, req.to, deps.now, tracking ?? null, arrivedOn ?? null, promiseOn ?? null],
     );
+    // SCRUM-63: Paid consumes the order's reserved code use; Rejected, Withdrawn and Lapsed release it.
+    await settleUseForStatus(q, order.id, req.to, deps.now);
     const note = [req.note?.trim(), priceNote, reason ? `Reason sent to the customer: ${reason}` : undefined].filter(Boolean).join('\n') || null;
     await q.query('INSERT INTO status_history (order_id, status, at, actor, note) VALUES ($1, $2, $3, $4, $5)', [
       order.id, req.to, deps.now, req.actor, note,

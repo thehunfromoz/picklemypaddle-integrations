@@ -53,6 +53,7 @@ details.action { background: #fff; border: 1px solid var(--line); border-radius:
 details.action summary { cursor: pointer; padding: .7rem .9rem; font-weight: 600; }
 details.action form { padding: 0 .9rem .9rem; display: grid; gap: .6rem; }
 label { display: grid; gap: .2rem; font-size: .95rem; }
+label.check { display: flex; gap: .4rem; align-items: center; }
 input, textarea, select { font: inherit; padding: .5rem .6rem; border: 1px solid #b8bfcc; border-radius: .35rem; width: 100%; background: #fff; color: inherit; }
 textarea { min-height: 5rem; }
 button { font: inherit; font-weight: 600; padding: .6rem 1rem; border: 0; border-radius: .4rem; background: var(--blue); color: #fff; cursor: pointer; justify-self: start; min-height: 2.75rem; }

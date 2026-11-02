@@ -2,6 +2,7 @@
  * What the admin pages read (SCRUM-72). Smoke-test orders (SCRUM-68) never appear: they are the
  * staging updater's, and are deleted within a day.
  */
+import type { DiscountKind } from '../orders/rules.js';
 import type { TaxTreatment } from '../pricing/terms.js';
 import type { Db } from '../db/db.js';
 import { addBusinessDays, promiseState, sydneyDate } from '../orders/dates.js';
@@ -148,6 +149,8 @@ export interface OrderDetail {
     taxTreatment: TaxTreatment;
     termsVersion: string;
   } | null;
+  /** SCRUM-63: the discount code on the order and what it gives (saved at submit). */
+  discount: { code: string; kind: DiscountKind; value: number } | null;
   retainUntil: string | null;
   retainReason: string | null;
   erasedAt: Date | null;
@@ -186,6 +189,9 @@ export async function loadOrder(db: Db, reference: string, now: Date = new Date(
     gst_cents: number | null;
     tax_treatment: TaxTreatment | null;
     terms_version: string | null;
+    discount_code: string | null;
+    discount_kind: DiscountKind | null;
+    discount_value: number | null;
     retain_until: string | null;
     retain_reason: string | null;
     erased_at: Date | null;
@@ -196,7 +202,7 @@ export async function loadOrder(db: Db, reference: string, now: Date = new Date(
             (SELECT max(h.at) FROM status_history h WHERE h.order_id = orders.id AND h.status = 'posted_back') AS posted_back_at,
             EXISTS (SELECT 1 FROM status_history h WHERE h.order_id = orders.id AND h.status = 'paid') AS ever_paid,
             amount_cents, subtotal_cents, discount_cents, postage_cents, postage_quoted_cents, postage_override_reason,
-            postage_detail, gst_cents, tax_treatment, terms_version,
+            postage_detail, gst_cents, tax_treatment, terms_version, discount_code, discount_kind, discount_value,
             retain_until::text AS retain_until, retain_reason, erased_at
        FROM orders WHERE reference = $1`,
     [reference],
@@ -300,6 +306,10 @@ export async function loadOrder(db: Db, reference: string, now: Date = new Date(
             taxTreatment: o.tax_treatment,
             termsVersion: o.terms_version ?? '',
           },
+    discount:
+      o.discount_code && o.discount_kind && o.discount_value !== null
+        ? { code: o.discount_code, kind: o.discount_kind, value: Number(o.discount_value) }
+        : null,
     retainUntil: o.retain_until,
     retainReason: o.retain_reason,
     erasedAt: o.erased_at ? new Date(o.erased_at) : null,

@@ -111,3 +111,53 @@ export function validateOrder(input: OrderInput): OrderErrors {
 
   return errors;
 }
+
+// ── Discount codes (SCRUM-63) ─────────────────────────────────────────────────
+
+/**
+ * What a code gives, always off the re-grit and never off return postage:
+ *  - free:    re-grits free for up to `value` paddles of the order;
+ *  - amount:  `value` cents off the order's re-grit;
+ *  - percent: `value` per cent off the order's re-grit (1–100).
+ */
+export type DiscountKind = 'free' | 'amount' | 'percent';
+
+export interface DiscountBenefit {
+  kind: DiscountKind;
+  value: number;
+}
+
+/** Letters, digits and hyphens, 3 to 32 long, starting and ending with a letter or digit. */
+export const DISCOUNT_CODE_RE = /^[A-Z0-9](?:[A-Z0-9-]{1,30})[A-Z0-9]$/;
+
+/** One plain message for every refused code, which never says why (SCRUM-63 AC2). */
+export const DISCOUNT_REFUSED = 'That code can’t be used. Check it, or carry on without one.';
+
+/** Codes are matched ignoring case and surrounding spaces. */
+export function normaliseDiscountCode(code: string): string {
+  return code.trim().toUpperCase();
+}
+
+export function isDiscountCodeShape(code: string): boolean {
+  return DISCOUNT_CODE_RE.test(normaliseDiscountCode(code));
+}
+
+/** The discount, in cents, on an order of `paddles` at `pricePerPaddleCents`; never more than the re-grit. */
+export function discountCents(benefit: DiscountBenefit, paddles: number, pricePerPaddleCents: number): number {
+  const subtotal = Math.max(0, paddles) * pricePerPaddleCents;
+  let off: number;
+  if (benefit.kind === 'free') off = Math.min(benefit.value, paddles) * pricePerPaddleCents;
+  else if (benefit.kind === 'amount') off = benefit.value;
+  else off = Math.round((subtotal * benefit.value) / 100);
+  return Math.max(0, Math.min(off, subtotal));
+}
+
+/** "Free re-grit for 1 paddle", "A$10 off the re-grit", "25% off the re-grit". */
+export function describeDiscount(benefit: DiscountBenefit): string {
+  if (benefit.kind === 'free') return `Free re-grit for ${benefit.value === 1 ? '1 paddle' : `up to ${benefit.value} paddles`}`;
+  if (benefit.kind === 'amount') {
+    const dollars = benefit.value % 100 === 0 ? String(benefit.value / 100) : (benefit.value / 100).toFixed(2);
+    return `A$${dollars} off the re-grit`;
+  }
+  return `${benefit.value}% off the re-grit`;
+}

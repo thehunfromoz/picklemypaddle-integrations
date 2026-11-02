@@ -8,7 +8,7 @@ import { logError } from './log.js';
 import type { AbuseKeys, TrustedProxies } from './orders/abuse.js';
 import type { PhotoStore } from './orders/photos.js';
 import { sydneyDate } from './orders/dates.js';
-import { orderRoutes } from './orders/routes.js';
+import { discountRoutes, orderRoutes } from './orders/routes.js';
 import { postageGuide, postageTableOn } from './pricing/postage.js';
 import { priceNote, termsOn } from './pricing/terms.js';
 import type { LinksMailer } from './orders/status.js';
@@ -92,7 +92,20 @@ export function createApp(config: Config, deps: AppDeps) {
         linksPerEmailDay: config.LINKS_LIMIT_PER_EMAIL_DAY,
         linksPerIpHour: config.LINKS_LIMIT_PER_IP_HOUR,
         minFillSeconds: config.ORDER_MIN_FILL_SECONDS,
+        discountChecksPerIpHour: config.DISCOUNT_CHECK_LIMIT_PER_IP_HOUR,
       },
+      now: deps.now,
+      peer: deps.peer,
+    }),
+  );
+
+  app.route(
+    '/api/discount-codes',
+    discountRoutes({
+      db: deps.db,
+      keys: deps.keys,
+      trusted: deps.trusted,
+      checksPerIpHour: config.DISCOUNT_CHECK_LIMIT_PER_IP_HOUR,
       now: deps.now,
       peer: deps.peer,
     }),

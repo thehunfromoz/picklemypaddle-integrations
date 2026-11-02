@@ -7,6 +7,7 @@
  * data is turned into CRM data, and its tests assert that.
  */
 import { PRICE_PER_PADDLE_CENTS, STATUSES, type OrderStatus } from '../orders/model.js';
+import { discountCents, type DiscountKind } from '../orders/rules.js';
 
 export interface CrmContact {
   email: string;
@@ -47,6 +48,9 @@ export interface OrderForCrm {
   paddle_count: number;
   /** The total frozen at Accept (SCRUM-81); null before. */
   amount_cents?: number | null;
+  /** SCRUM-63: the code's benefit, saved at submit; taken off the estimate before Accept. */
+  discount_kind?: DiscountKind | null;
+  discount_value?: number | null;
   /** SCRUM-80: this order has a review; any order with this email has one. */
   has_review: boolean;
   contact_has_review: boolean;
@@ -96,7 +100,14 @@ export function mapOrder(o: OrderForCrm): { contact: CrmContact; deal: CrmDeal }
       name: o.is_test ? `[TEST] ${o.reference}` : o.reference,
       // SCRUM-81: the total the customer was asked to pay (re-grit and postage) once accepted;
       // before that, the re-grit estimate.
-      amountCents: o.amount_cents != null ? Number(o.amount_cents) : o.paddle_count * PRICE_PER_PADDLE_CENTS,
+      // SCRUM-63: a code's discount comes off the estimate too.
+      amountCents:
+        o.amount_cents != null
+          ? Number(o.amount_cents)
+          : o.paddle_count * PRICE_PER_PADDLE_CENTS -
+            (o.discount_kind && o.discount_value != null
+              ? discountCents({ kind: o.discount_kind, value: Number(o.discount_value) }, o.paddle_count, PRICE_PER_PADDLE_CENTS)
+              : 0),
       paddleCount: o.paddle_count,
       isTest: o.is_test,
       status: o.status,

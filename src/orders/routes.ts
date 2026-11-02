@@ -7,6 +7,7 @@
  *   POST /api/orders/status  { token }                    → the minimal status view, or 404
  *   POST /api/orders/links   { email }                    → 202, always the same answer
  *   POST /api/orders/review  { token, quote, firstName, suburb, permission } → 201 (SCRUM-33)
+ *   POST /api/discount-codes/check  { code, email? } → { valid, … } (SCRUM-63; discountRoutes below)
  */
 import { Hono, type Context } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
@@ -23,10 +24,11 @@ import {
   type Limit,
   type TrustedProxies,
 } from './abuse.js';
-import { BadFormError, createOrder, fakeOrder, findReplayOrder, parseOrderForm, validateAndProcess } from './intake.js';
+import { checkCode } from './discounts.js';
+import { BadFormError, createOrder, DiscountRefusedError, fakeOrder, findReplayOrder, parseOrderForm, validateAndProcess } from './intake.js';
 import { normaliseEmail } from './model.js';
 import type { PhotoStore } from './photos.js';
-import { MAX_REQUEST_BYTES } from './rules.js';
+import { describeDiscount, DISCOUNT_REFUSED, MAX_REQUEST_BYTES } from './rules.js';
 import { submitReview } from './reviews.js';
 import { INVALID_LINK, lookupStatus, requestLinks, type LinksMailer } from './status.js';
 
@@ -43,6 +45,8 @@ export interface OrderRouteDeps {
     linksPerEmailDay: number;
     linksPerIpHour: number;
     minFillSeconds: number;
+    /** SCRUM-63: discount-code checks per IP per hour (form checks and codes on submit). */
+    discountChecksPerIpHour: number;
   };
   now?: () => Date;
   /** The TCP peer's address (the gateway, behind Compose). Overridable for tests. */
@@ -67,6 +71,7 @@ export function orderRoutes(deps: OrderRouteDeps) {
     linksIp: { bucket: 'links-ip', max: L.linksPerIpHour, windowMs: HOUR },
     linksEmail: { bucket: 'links-email', max: L.linksPerEmailDay, windowMs: DAY },
     reviewIp: { bucket: 'review-ip', max: L.linksPerIpHour, windowMs: HOUR },
+    discountIp: { bucket: 'discount-ip', max: L.discountChecksPerIpHour, windowMs: HOUR },
   } satisfies Record<string, Limit>;
   const app = new Hono();
 
@@ -143,15 +148,31 @@ export function orderRoutes(deps: OrderRouteDeps) {
       const emailCheck = await checkLimit(deps.db, limits.orderEmail, emailKey, at);
       if (!emailCheck.ok) return limited(c, emailCheck.retryAfterSeconds, limits.orderEmail.bucket, emailKey);
 
+      // SCRUM-63: a code on the order counts as a check, so submitting can't be used to guess codes.
+      if (form.discountCode) {
+        const r = await checkLimit(deps.db, limits.discountIp, ipKey, at);
+        if (!r.ok) return limited(c, r.retryAfterSeconds, limits.discountIp.bucket, ipKey);
+        await recordEvent(deps.db, limits.discountIp.bucket, ipKey, at);
+      }
+
       const checked = await validateAndProcess(form);
       if (checked.errors) return c.json({ errors: checked.errors }, 400);
 
-      const order = await createOrder(
-        { db: deps.db, photos: deps.photos, isProduction: deps.isProduction, now },
-        form.input,
-        checked.photos,
-        form.idempotencyKey,
-      );
+      let order;
+      try {
+        order = await createOrder(
+          { db: deps.db, photos: deps.photos, isProduction: deps.isProduction, now },
+          form.input,
+          checked.photos,
+          form.idempotencyKey,
+          form.discountCode,
+        );
+      } catch (err) {
+        if (!(err instanceof DiscountRefusedError)) throw err;
+        // Counted, never the code itself (SCRUM-63 AC8).
+        log('discount_refused', { at: 'submit', reason: err.reason });
+        return c.json({ errors: { discountCode: DISCOUNT_REFUSED } }, 400);
+      }
       if (!order.replay) {
         await recordEvent(deps.db, limits.orderIp.bucket, ipKey, at);
         await recordEvent(deps.db, limits.orderEmail.bucket, emailKey, at);
@@ -226,6 +247,46 @@ export function orderRoutes(deps: OrderRouteDeps) {
     },
   );
 
+  return app;
+}
+
+/**
+ * SCRUM-63: the form's check of a discount code, for the estimate. Rate-limited per IP; refusals
+ * all get the same message and are logged by reason only, never with the code.
+ */
+export function discountRoutes(deps: Pick<OrderRouteDeps, 'db' | 'keys' | 'trusted' | 'now' | 'peer'> & { checksPerIpHour: number }) {
+  const now = deps.now ?? (() => new Date());
+  const peer = deps.peer ?? nodePeer;
+  const limit: Limit = { bucket: 'discount-ip', max: deps.checksPerIpHour, windowMs: HOUR };
+  const app = new Hono();
+  app.use('*', async (c, next) => {
+    await next();
+    c.header('Cache-Control', 'no-store');
+  });
+  app.post(
+    '/check',
+    bodyLimit({ maxSize: 1024, onError: (c) => c.json({ error: 'too_large' }, 413) }),
+    async (c) => {
+      const at = now();
+      const ipKey = hashKey(deps.keys.pepper, await clientIp(peer(c), c.req.header('x-forwarded-for'), deps.trusted));
+      const r = await checkLimit(deps.db, limit, ipKey, at);
+      if (!r.ok) {
+        log('rate_limited', { bucket: limit.bucket, key: ipKey.slice(0, 12) });
+        c.header('Retry-After', String(r.retryAfterSeconds));
+        return c.json({ error: 'rate_limited', message: RATE_MESSAGE, retryAfter: r.retryAfterSeconds }, 429);
+      }
+      await recordEvent(deps.db, limit.bucket, ipKey, at);
+      const body = (await c.req.json().catch(() => null)) as { code?: unknown; email?: unknown } | null;
+      const code = typeof body?.code === 'string' ? body.code.slice(0, 64) : '';
+      const email = typeof body?.email === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email.trim()) ? normaliseEmail(body.email) : null;
+      const result = await checkCode(deps.db, code, { now: at, emailNorm: email });
+      if (!result.ok) {
+        log('discount_refused', { at: 'check', reason: result.reason });
+        return c.json({ valid: false, message: DISCOUNT_REFUSED });
+      }
+      return c.json({ valid: true, code: result.code.code, kind: result.benefit.kind, value: result.benefit.value, label: describeDiscount(result.benefit) });
+    },
+  );
   return app;
 }
 

@@ -100,6 +100,8 @@ export const LIMIT_DEFAULTS = {
   ORDER_LIMIT_PER_EMAIL_DAY: 3,
   LINKS_LIMIT_PER_EMAIL_DAY: 3,
   LINKS_LIMIT_PER_IP_HOUR: 10,
+  /** SCRUM-63: discount-code checks (the form's and the codes on submitted orders) per IP. */
+  DISCOUNT_CHECK_LIMIT_PER_IP_HOUR: 20,
   ORDER_MIN_FILL_SECONDS: 3,
 } as const;
 
@@ -128,6 +130,7 @@ const schema = z
     ORDER_LIMIT_PER_EMAIL_DAY: count(LIMIT_DEFAULTS.ORDER_LIMIT_PER_EMAIL_DAY),
     LINKS_LIMIT_PER_EMAIL_DAY: count(LIMIT_DEFAULTS.LINKS_LIMIT_PER_EMAIL_DAY),
     LINKS_LIMIT_PER_IP_HOUR: count(LIMIT_DEFAULTS.LINKS_LIMIT_PER_IP_HOUR),
+    DISCOUNT_CHECK_LIMIT_PER_IP_HOUR: count(LIMIT_DEFAULTS.DISCOUNT_CHECK_LIMIT_PER_IP_HOUR),
     /** Submissions faster than this after the form loaded are treated as bots. */
     ORDER_MIN_FILL_SECONDS: z.coerce.number().int().min(0).max(60).default(LIMIT_DEFAULTS.ORDER_MIN_FILL_SECONDS),
     /** Photo engine (SCRUM-66): vips (the image's libvips tools), sharp (development), or auto. */

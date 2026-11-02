@@ -287,6 +287,49 @@ export const MIGRATIONS: readonly Migration[] = [
        WHERE amount_cents IS NOT NULL;
     `,
   },
+  {
+    version: 10,
+    name: 'discount codes',
+    sql: `
+      -- SCRUM-63. Codes Attila manages in admin; direct orders only, never off postage.
+      CREATE TABLE discount_codes (
+        id            bigserial PRIMARY KEY,
+        code          text NOT NULL UNIQUE CHECK (code ~ '^[A-Z0-9][A-Z0-9-]{1,30}[A-Z0-9]$'),
+        kind          text NOT NULL CHECK (kind IN ('free', 'amount', 'percent')),
+        value         integer NOT NULL CHECK (value > 0),
+        max_uses      integer NOT NULL CHECK (max_uses > 0),
+        expires_on    date,
+        one_per_email boolean NOT NULL DEFAULT true,
+        note          text,
+        active        boolean NOT NULL DEFAULT true,
+        created_at    timestamptz NOT NULL DEFAULT now(),
+        created_by    text,
+        CHECK (kind <> 'percent' OR value <= 100)
+      );
+
+      -- One row per order that used a code: reserved at submit, consumed at Paid, released when the
+      -- order is Rejected, Withdrawn or Lapsed unpaid. Only references are kept for Attila's list;
+      -- the per-email rule reads the order itself, so a deleted order's use stops counting for its
+      -- email (and, if still only reserved, stops counting at all).
+      CREATE TABLE discount_uses (
+        id          bigserial PRIMARY KEY,
+        code_id     bigint NOT NULL REFERENCES discount_codes(id),
+        order_id    uuid REFERENCES orders(id) ON DELETE SET NULL,
+        reference   text NOT NULL,
+        state       text NOT NULL CHECK (state IN ('reserved', 'consumed', 'released')),
+        reserved_at timestamptz NOT NULL,
+        settled_at  timestamptz
+      );
+      CREATE INDEX discount_uses_code ON discount_uses (code_id, state);
+      CREATE UNIQUE INDEX discount_uses_order ON discount_uses (order_id) WHERE order_id IS NOT NULL;
+
+      -- What the code gave, saved on the order at submit, so changing or deactivating the code
+      -- later never changes the order. discount_cents is the estimate until Accept fixes it.
+      ALTER TABLE orders ADD COLUMN discount_code text;
+      ALTER TABLE orders ADD COLUMN discount_kind text CHECK (discount_kind IN ('free', 'amount', 'percent'));
+      ALTER TABLE orders ADD COLUMN discount_value integer;
+    `,
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;
