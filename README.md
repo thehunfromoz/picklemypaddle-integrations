@@ -162,7 +162,7 @@ writes a history row with who made it, and queues its email in the same transact
 | --- | --- | --- |
 | Submitted | Questions, Accepted, Rejected, Withdrawn (admin) | Accepted (re-grit, postage, total, GST line), Rejected (reason) |
 | Questions | Accepted, Rejected, Withdrawn (admin); Lapsed (automatic, 30 days) | as above |
-| Accepted | Paid (Stripe only, SCRUM-82); Withdrawn (admin); Lapsed (SCRUM-83) | |
+| Accepted | Paid (Stripe only, SCRUM-82); Withdrawn (admin); Lapsed (automatic, unpaid on day 30, SCRUM-83) | |
 | Paid | In queue (admin, records the arrival day); Withdrawn (admin) | In queue ("back in the post by") |
 | In queue | Re-gritted (admin) | |
 | Re-gritted | Posted back (admin, tracking number required) | Posted back (tracking, review link) |
@@ -273,6 +273,27 @@ Cards are entered only on Stripe's own Checkout pages (PCI SAQ A); no card detai
 - **The key** is a **restricted key** with only: Checkout Sessions **Write**; PaymentIntents,
   Charges, Balance and Events **Read**. Live keys are refused outside production, test keys in
   production. `STRIPE_WEBHOOK_SECRET` is required in production only.
+
+## Unpaid orders (SCRUM-83, decided 30 Oct and 2 Nov 2026)
+
+Days are Sydney calendar days from the Accepted time in the history (`src/orders/auto.ts`,
+`src/orders/payment-reminder.ts`), run daily with the other jobs:
+
+- **Day 14**, still Accepted: one **payment reminder** ("PMP-… is waiting for payment; it lapses on
+  <date>", Pay now on the order page). Once only (`orders.payment_reminder_at`); smoke orders never.
+- **Day 30**, still Accepted: **Accepted → Lapsed** (actor `system`, note "Automatic: unpaid 30 days
+  after acceptance."), no email. Open Checkout Sessions are expired at Stripe; a discount code use is
+  given back; Pay now disappears (409). Lapsed orders then follow the 12-month rule (SCRUM-75).
+- **Late payments:** a payment for a Lapsed or Withdrawn order is recorded with its problem, never
+  applied; Attila gets an `alert_payment` email (reference and admin link only) and the order shows
+  in "Waiting on you" with a **Payment after lapse** badge. He either **reinstates** it (admin only,
+  with a note: the order moves to Paid, the payment is marked reinstated by him, a discount code use
+  is taken again) or refunds it in Stripe. Other payment problems (wrong amount, a second payment)
+  alert the same way with **Check payment**. An order with any Stripe payment counts as paid for
+  retention and erasure.
+- The admin list shows "lapses in N days unless paid" for Accepted orders.
+- **On staging:** `node dist/cli/backdate-order.js PMP-XXXXX 15d` then `node dist/cli/unpaid-run.js`
+  sends the reminder; `31d` then `unpaid-run.js` lapses it.
 
 ## Order admin (SCRUM-71/72)
 

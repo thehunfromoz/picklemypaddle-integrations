@@ -7,7 +7,7 @@ import { quotePostage } from '../pricing/postage.js';
 import { taxWording, termsOn, type TaxSettings } from '../pricing/terms.js';
 import { STATUSES, type OrderStatus, PRICE_PER_PADDLE_CENTS } from '../orders/model.js';
 import { canTransition, EMAIL_ON, TRANSITIONS } from '../orders/transitions.js';
-import { dashboardUrl } from '../payments/payments.js';
+import { dashboardUrl, problemText, REINSTATABLE } from '../payments/payments.js';
 import { describeDiscount, discountCents } from '../orders/rules.js';
 import { ADMIN_LABELS, WAITING, type ListedOrder, type OrderDetail } from './data.js';
 import type { AdminIdentity } from './guard.js';
@@ -80,6 +80,7 @@ export function listPage(ctx: PageContext, filter: ListFilter, orders: ListedOrd
   const overdue = orders.filter((o) => o.overdue).length;
   const late = orders.filter((o) => o.promise?.state === 'late').length;
   const soon = orders.filter((o) => o.promise?.state === 'soon').length;
+  const payIssues = orders.filter((o) => o.paymentProblem).length;
   return layout(
     ctx,
     heading,
@@ -90,18 +91,21 @@ export function listPage(ctx: PageContext, filter: ListFilter, orders: ListedOrd
 ${overdue > 0 ? html`<p class="flash warn">${plural(overdue, 'order')} past the 1-business-day reply promise.</p>` : ''}
 ${late > 0 ? html`<p class="flash error">${plural(late, 'order')} past the “back in the post by” date.</p>` : ''}
 ${soon > 0 ? html`<p class="flash warn">${plural(soon, 'order')} due back in the post within 2 business days.</p>` : ''}
+${payIssues > 0 ? html`<p class="flash error">${plural(payIssues, 'payment')} to check: reinstate the order or refund in Stripe.</p>` : ''}
 ${
   orders.length === 0
     ? html`<p class="empty">Nothing here.</p>`
     : html`<ul class="orders">${orders.map(
         (o) => html`<li><a href="/admin/orders/${o.reference}">
   <span><span class="ref">${o.reference}</span>${testBadge(o.isTest)}${o.overdue ? html` <span class="badge overdue">Reply overdue</span>` : ''}${promiseBadge(o.promise)}${
+    o.paymentProblem ? html` <span class="badge overdue">${o.paymentProblem === 'late' ? 'Payment after lapse' : 'Check payment'}</span>` : ''
+  }${
     o.reviewed ? html` <span class="badge sent">Reviewed${o.reviewed.mayQuote ? '' : ' (private)'}</span>` : ''
   }</span>
   ${statusBadge(o.status)}
   <span class="meta">${when(o.createdAt)} · ${plural(o.paddles, 'paddle')} · ${plural(o.daysInStatus, 'day')} in ${ADMIN_LABELS[o.status]}${
     o.promise ? ` · back in the post by ${shortDay(o.promise.on)}` : ''
-  }</span>
+  }${o.lapsesInDays !== null ? ` · lapses ${o.lapsesInDays <= 0 ? 'today' : `in ${plural(o.lapsesInDays, 'day')}`} unless paid` : ''}</span>
 </a></li>`,
       )}</ul>`
 }`,
@@ -173,7 +177,8 @@ function actionForm(ctx: PageContext, o: OrderDetail, to: OrderStatus): Html {
 }
 
 function actions(ctx: PageContext, o: OrderDetail): Html {
-  const moves = (Object.keys(TRANSITIONS[o.status]) as OrderStatus[]).filter((to) => canTransition(o.status, to, 'admin', ctx.isProduction));
+  // Paid is never a plain move: Stripe sets it, or Attila reinstates a late payment (below).
+  const moves = (Object.keys(TRANSITIONS[o.status]) as OrderStatus[]).filter((to) => to !== 'paid' && canTransition(o.status, to, 'admin', ctx.isProduction));
   // SCRUM-82: only Stripe sets Paid, when the customer pays from the status page.
   const waiting =
     o.status !== 'accepted'
@@ -183,8 +188,22 @@ function actions(ctx: PageContext, o: OrderDetail): Html {
             ctx.isProduction ? '' : ' On staging, pay from the status page with Stripe test card 4242 4242 4242 4242.'
           }</p>`
         : html`<p class="flash error" role="alert">Payments not configured: no Stripe key is set here, so the customer can’t pay online.</p>`;
-  if (moves.length === 0) return html`${waiting || html`<p class="empty">This order is closed.</p>`}`;
-  return html`${waiting}${moves.map((to) => actionForm(ctx, o, to))}`;
+  // SCRUM-83: a late payment on a Lapsed or Withdrawn order: reinstate it, or refund in Stripe.
+  const late = o.payments.find((p) => p.problem && REINSTATABLE.has(p.problem) && p.refundedCents < p.amountCents);
+  const reinstate =
+    late && (o.status === 'lapsed' || o.status === 'withdrawn')
+      ? html`<p class="flash error" role="alert">Payment received after the order ${o.status === 'lapsed' ? 'lapsed' : 'was withdrawn'}: ${dollars(late.amountCents)}. Reinstate it, or refund it in Stripe (the Payment section has the link).</p>
+<details class="action" open><summary>Reinstate as paid</summary>
+<form method="post" action="/admin/orders/${o.reference}/reinstate">
+  ${csrfField(ctx)}
+  <p class="small">Moves the order to Paid, takes the late payment as its payment, and records you and your note in the history.</p>
+  <label>Why (required, kept in the history, never shown to the customer)
+    <textarea name="note" required maxlength="2000"></textarea></label>
+  <button type="submit">Reinstate as paid</button>
+</form></details>`
+      : '';
+  if (moves.length === 0) return html`${reinstate}${waiting || (reinstate ? '' : html`<p class="empty">This order is closed.</p>`)}`;
+  return html`${reinstate}${waiting}${moves.map((to) => actionForm(ctx, o, to))}`;
 }
 
 /** SCRUM-82: the Stripe payment(s) and any refunds. */
@@ -196,19 +215,14 @@ function paymentSection(o: OrderDetail): Html | string {
     return html`<li><strong>${dollars(p.amountCents)}</strong> by card · ${when(p.paidAt)}${
       p.feeCents !== null ? ` · Stripe fee ${dollars(p.feeCents)}` : ''
     } · via ${p.source}${p.livemode ? '' : ' · TEST mode'}
-  ${p.problem ? html`<div class="flash error" role="alert">Not applied: ${PROBLEMS[p.problem] ?? p.problem}. Check it in Stripe and refund it there if needed.</div>` : ''}
+  ${p.problem ? html`<div class="flash error" role="alert">Not applied: ${problemText(p.problem)}. Check it in Stripe and refund it there if needed.</div>` : ''}
+  ${p.reinstatedAt ? html`<div class="small">Reinstated ${when(p.reinstatedAt)} by ${p.reinstatedBy ?? 'admin'}</div>` : ''}
   ${p.refundedCents ? html`<div>Refunded ${dollars(p.refundedCents)}${p.refundedAt ? ` (recorded ${when(p.refundedAt)})` : ''}</div>` : ''}
   <div class="small">${p.paymentIntentId ?? p.checkoutSessionId}${url ? html` · <a href="${url}" target="_blank" rel="noopener noreferrer">Open in Stripe</a>` : ''}</div></li>`;
   })}</ul>`;
 }
 
-const PROBLEMS: Record<string, string> = {
-  amount_mismatch: 'the amount paid isn’t the order’s total',
-  order_missing: 'no such order',
-  order_lapsed: 'the order had lapsed',
-  order_withdrawn: 'the order had been withdrawn',
-  order_paid: 'the order was already paid (a second payment)',
-};
+
 
 /** SCRUM-33/80: the review, or where the one reminder stands; staging can send it now. */
 function reviewSection(ctx: PageContext, o: OrderDetail): Html | string {

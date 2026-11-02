@@ -38,8 +38,9 @@ export const TRANSITIONS: Readonly<Record<OrderStatus, Readonly<Partial<Record<O
   posted_back: { completed: ['admin', 'system'] },
   completed: {},
   rejected: {},
-  withdrawn: {},
-  lapsed: {},
+  // SCRUM-83: "Reinstate as paid" when a late payment arrives (admin, with a note; see reinstateLatePayment).
+  withdrawn: { paid: ['admin'] },
+  lapsed: { paid: ['admin'] },
 };
 
 /** The customer's email for each status that has one (SCRUM-69 AC5; Questions sends nothing). */
@@ -80,6 +81,8 @@ export interface TransitionRequest {
   postageReason?: string;
   /** An internal note for the history, never shown to the customer. */
   note?: string;
+  /** SCRUM-83: set only by reinstateLatePayment, the one way admin may set Paid. */
+  reinstate?: boolean;
 }
 
 export interface TransitionDeps {
@@ -140,6 +143,10 @@ export async function transitionWith(q: Queryable, deps: Omit<TransitionDeps, 'd
     );
     const order = rows[0];
     if (!order) throw new TransitionError(404, 'not_found', 'No such order.');
+    // Admin sets Paid only by reinstating a late payment (SCRUM-83), which checks the payment.
+    if (req.to === 'paid' && req.actor === 'admin' && !req.reinstate) {
+      throw new TransitionError(409, 'transition_not_allowed', 'Only Stripe sets Paid; a late payment is reinstated from its order page.');
+    }
     if (!canTransition(order.status, req.to, req.actor, deps.isProduction)) {
       throw new TransitionError(409, 'transition_not_allowed', `An order that is ${order.status} can’t be moved to ${req.to} by ${req.actor}.`);
     }

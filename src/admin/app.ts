@@ -7,6 +7,7 @@
  *   GET  /admin/orders?status=…              the list (default: waiting on Attila)
  *   GET  /admin/orders/:ref                  one order
  *   POST /admin/orders/:ref/status           move it (to, reason, trackingNumber, arrivedOn, amount, note)
+ *   POST /admin/orders/:ref/reinstate        Lapsed/Withdrawn with a late payment → Paid, with a note (SCRUM-83)
  *   POST /admin/orders/:ref/review-reminder-test  staging only: the one review reminder now (404 in production)
  *   POST /admin/orders/:ref/notes            an internal note
  *   POST /admin/outbox/:id/retry             put a failed email or HubSpot sync back in the queue
@@ -34,6 +35,7 @@ import type { PhotoStore } from '../orders/photos.js';
 import { queueReviewReminder } from '../orders/review-reminder.js';
 import { TransitionError, transitionOrder, type TransitionRequest } from '../orders/transitions.js';
 import { codePage, codesPage } from './codes-pages.js';
+import { reinstateLatePayment } from '../payments/payments.js';
 import { createCode, DiscountCodeError, findCode, generateCodes, listCodes, setCodeActive, setCodeNote, usesOf } from '../orders/discounts.js';
 import type { DiscountKind } from '../orders/rules.js';
 import { sydneyDate } from '../orders/dates.js';
@@ -85,6 +87,7 @@ const DONE: Record<string, string> = {
   reactivated: 'Reactivated.',
   generated: 'Codes generated: they’re at the top of the list.',
   noted: 'Note saved.',
+  reinstated: 'Reinstated: the order is Paid, with the late payment as its payment.',
 };
 
 /** "60", "60.5", "60.50" → cents. Anything else → undefined (bad input). */
@@ -130,7 +133,8 @@ export function createAdminApp(deps: AdminDeps) {
   app.get('/admin/orders', async (c) => {
     const filter = parseFilter(c.req.query('status'));
     if (!filter) return c.html(notFoundPage(ctx(c), 'There is no such status.'), 404);
-    return c.html(listPage(ctx(c), filter, await listOrders(deps.db, filterStatuses(filter), now())));
+    // SCRUM-83: "Waiting on you" also lists orders with a payment to check, whatever their status.
+    return c.html(listPage(ctx(c), filter, await listOrders(deps.db, filterStatuses(filter), now(), { withPaymentProblems: filter === 'waiting' })));
   });
 
   const showOrder = async (c: Context<Env>, reference: string, flash?: Flash, status: 200 | 400 | 404 | 409 = 200) => {
@@ -190,6 +194,23 @@ export function createAdminApp(deps: AdminDeps) {
       postageReason: to === 'accepted' ? field(body, 'postageReason') : undefined,
       note: field(body, 'note'),
     });
+  });
+
+  // SCRUM-83: reinstate a late payment (Lapsed or Withdrawn → Paid), with a note.
+  app.post('/admin/orders/:ref/reinstate', async (c) => {
+    const reference = c.req.param('ref');
+    if (!REFERENCE_RE.test(reference)) return showOrder(c, reference);
+    try {
+      await reinstateLatePayment(deps.db, reference, c.get('admin').login, field(await c.req.parseBody(), 'note') ?? '', { isProduction: deps.isProduction, now: now() });
+    } catch (err) {
+      if (err instanceof TransitionError) {
+        if (err.httpStatus === 404) return showOrder(c, reference);
+        return showOrder(c, reference, { kind: 'error', text: err.message }, err.httpStatus);
+      }
+      throw err;
+    }
+    log('admin_payment_reinstated', { reference });
+    return back(c, reference, 'reinstated');
   });
 
   // SCRUM-82 removed "Mark paid (test)": Stripe test cards pay staging orders.

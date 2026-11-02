@@ -2,7 +2,8 @@
  * What the admin pages read (SCRUM-72). Smoke-test orders (SCRUM-68) never appear: they are the
  * staging updater's, and are deleted within a day.
  */
-import { paymentsOf, type PaymentRecord } from '../payments/payments.js';
+import { paymentsOf, REINSTATABLE, type PaymentRecord } from '../payments/payments.js';
+import { unpaidLapsesOn } from '../orders/auto.js';
 import type { DiscountKind } from '../orders/rules.js';
 import type { TaxTreatment } from '../pricing/terms.js';
 import type { Db } from '../db/db.js';
@@ -34,6 +35,9 @@ export const ADMIN_LABELS: Record<OrderStatus, string> = {
 
 const DAY = 24 * 60 * 60 * 1000;
 
+/** Whole calendar days from one YYYY-MM-DD to another. */
+const daysBetween = (from: string, to: string) => Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY);
+
 export interface ListedOrder {
   reference: string;
   createdAt: Date;
@@ -48,6 +52,10 @@ export interface ListedOrder {
   promise: { on: string; state: 'ok' | 'soon' | 'late' } | null;
   /** SCRUM-80: the customer left a review (and whether it may be quoted). */
   reviewed: { mayQuote: boolean } | null;
+  /** SCRUM-83: a Stripe payment that wasn't applied: 'late' (after a lapse or withdrawal) or 'other'. */
+  paymentProblem: 'late' | 'other' | null;
+  /** SCRUM-83: Accepted orders: Sydney days until it lapses unpaid (0 = today). */
+  lapsesInDays: number | null;
 }
 
 function promiseFor(status: OrderStatus, order: { promise_on: string | null; arrived_on: string | null }, now: Date) {
@@ -60,7 +68,7 @@ export function replyOverdue(status: OrderStatus, createdAt: Date, now: Date): b
   return status === 'submitted' && sydneyDate(now) > addBusinessDays(sydneyDate(createdAt), 1);
 }
 
-export async function listOrders(db: Db, statuses: readonly OrderStatus[], now: Date): Promise<ListedOrder[]> {
+export async function listOrders(db: Db, statuses: readonly OrderStatus[], now: Date, opts: { withPaymentProblems?: boolean } = {}): Promise<ListedOrder[]> {
   const { rows } = await db.query<{
     reference: string;
     created_at: Date;
@@ -71,15 +79,22 @@ export async function listOrders(db: Db, statuses: readonly OrderStatus[], now: 
     arrived_on: string | null;
     promise_on: string | null;
     review_permission: boolean | null;
+    payment_problem: string | null;
+    accepted_at: Date | null;
   }>(
     `SELECT o.reference, o.created_at, o.status, o.status_changed_at, o.is_test,
             o.arrived_on::text AS arrived_on, o.promise_on::text AS promise_on,
             (SELECT r.permission FROM reviews r WHERE r.order_id = o.id) AS review_permission,
-            (SELECT count(*) FROM paddles p WHERE p.order_id = o.id)::int AS paddles
+            (SELECT count(*) FROM paddles p WHERE p.order_id = o.id)::int AS paddles,
+            (SELECT min(pm.problem) FROM payments pm WHERE pm.order_id = o.id AND pm.problem IS NOT NULL
+               AND pm.refunded_cents < pm.amount_cents) AS payment_problem,
+            (SELECT max(h.at) FROM status_history h WHERE h.order_id = o.id AND h.status = 'accepted') AS accepted_at
        FROM orders o
-      WHERE NOT o.is_smoke AND o.status = ANY($1::text[])
+      WHERE NOT o.is_smoke AND (o.status = ANY($1::text[])
+        OR ($2::boolean AND EXISTS (SELECT 1 FROM payments pm WHERE pm.order_id = o.id AND pm.problem IS NOT NULL
+                                    AND pm.refunded_cents < pm.amount_cents)))
       ORDER BY o.created_at`,
-    [statuses],
+    [statuses, opts.withPaymentProblems ?? false],
   );
   return rows.map((r) => {
     const createdAt = new Date(r.created_at);
@@ -95,6 +110,11 @@ export async function listOrders(db: Db, statuses: readonly OrderStatus[], now: 
       overdue: replyOverdue(r.status, createdAt, now),
       promise: promiseFor(r.status, r, now),
       reviewed: r.review_permission === null ? null : { mayQuote: r.review_permission },
+      paymentProblem: r.payment_problem === null ? null : REINSTATABLE.has(r.payment_problem) ? 'late' : 'other',
+      lapsesInDays:
+        r.status === 'accepted' && r.accepted_at
+          ? daysBetween(sydneyDate(now), unpaidLapsesOn(sydneyDate(new Date(r.accepted_at))))
+          : null,
     };
   });
 }
@@ -203,7 +223,8 @@ export async function loadOrder(db: Db, reference: string, now: Date = new Date(
             street, suburb, state, postcode, tracking_number, arrived_on::text AS arrived_on,
             promise_on::text AS promise_on, crm_deal_id, review_reminder_at,
             (SELECT max(h.at) FROM status_history h WHERE h.order_id = orders.id AND h.status = 'posted_back') AS posted_back_at,
-            EXISTS (SELECT 1 FROM status_history h WHERE h.order_id = orders.id AND h.status = 'paid') AS ever_paid,
+            (EXISTS (SELECT 1 FROM status_history h WHERE h.order_id = orders.id AND h.status = 'paid')
+              OR EXISTS (SELECT 1 FROM payments pm WHERE pm.order_id = orders.id)) AS ever_paid,
             amount_cents, subtotal_cents, discount_cents, postage_cents, postage_quoted_cents, postage_override_reason,
             postage_detail, gst_cents, tax_treatment, terms_version, discount_code, discount_kind, discount_value,
             retain_until::text AS retain_until, retain_reason, erased_at

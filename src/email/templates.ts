@@ -24,6 +24,8 @@ export const TEMPLATES = [
   'links',
   'alert_review',
   'review_reminder',
+  'payment_reminder',
+  'alert_payment',
 ] as const;
 export type TemplateName = (typeof TEMPLATES)[number];
 
@@ -53,6 +55,10 @@ export interface TemplateContext {
   /** Accepted (SCRUM-63): the discount fixed at Accept, and the code that gave it. */
   discountCents?: number;
   discountCode?: string;
+  /** Payment reminder (SCRUM-83): the Sydney day the order lapses if still unpaid. */
+  lapsesOn?: string;
+  /** Payment alert (SCRUM-83): what needs Attila's attention, in a few words. */
+  problem?: string;
   /** Submitted (SCRUM-63): the code on the order and what it gives, confirmed at Accept. */
   discountOffer?: DiscountBenefit & { code: string };
   /** Accepted: the GST included, and whether GST applies (from the terms frozen at Accept). */
@@ -221,6 +227,38 @@ function build(name: TemplateName, ctx: TemplateContext): { subject: string; blo
           ...statusBlocks(need(ctx, 'statusUrl', name)),
           { p: tournament(n) },
           { p: 'Thanks,\nPickleMyPaddle' },
+        ],
+      };
+    }
+
+    case 'payment_reminder': {
+      // SCRUM-83: day 14, once. The lapse date and the order page's Pay now; no Stripe link.
+      const ref = need(ctx, 'reference', name);
+      const n = need(ctx, 'paddles', name).length;
+      const lapses = longDate(need(ctx, 'lapsesOn', name));
+      return {
+        customer: true,
+        subject: `${ref} is waiting for payment`,
+        blocks: [
+          { p: `Hi ${need(ctx, 'firstName', name)},` },
+          { p: `Your order ${ref} is waiting for payment${ctx.amountCents !== undefined ? ` (${money(ctx.amountCents)}, including return postage)` : ''}. It lapses on ${lapses} if it’s still unpaid then, and you’re welcome to order again any time.` },
+          { button: { label: 'Pay now on your order page', url: need(ctx, 'statusUrl', name) } },
+          { p: `Changed your mind, or have a question about your ${paddleWord(n)}? Just reply to this email.` },
+          statusBlocks(need(ctx, 'statusUrl', name))[1]!,
+          { p: 'Thanks,\nPickleMyPaddle' },
+        ],
+      };
+    }
+
+    case 'alert_payment': {
+      // SCRUM-83: a payment that wasn't applied. Reference, what happened and the admin link only.
+      const ref = need(ctx, 'reference', name);
+      return {
+        customer: false,
+        subject: `Payment to check: ${ref}`,
+        blocks: [
+          { p: `A Stripe payment for ${ref} wasn’t applied: ${need(ctx, 'problem', name)}. Nothing was refunded and the order hasn’t moved. Check it in admin: a late payment can be reinstated there, or refund it in the Stripe dashboard.` },
+          ctx.adminUrl ? { button: { label: 'Open it in admin', url: ctx.adminUrl } } : { p: 'Open the order in admin.' },
         ],
       };
     }
@@ -422,6 +460,9 @@ export function sampleContext(name: TemplateName, test: boolean): TemplateContex
       { reference: 'PMP-9ABCD', url: `${site}/order/status#${'U'.repeat(43)}` },
     ],
     reviewUrl: `${site}/order/status?review=1#${'T'.repeat(43)}`,
+    // SCRUM-83: accepted 2 Nov 2026, lapses 30 days later.
+    lapsesOn: '2026-12-02',
+    problem: 'it arrived after the order lapsed',
     review: { quote: 'Feels brand new: the spin is back. Quick turnaround too.', firstName: 'Sam', suburb: 'Newtown', permission: true },
     ...(name === 'links' ? { reference: undefined } : {}),
   };

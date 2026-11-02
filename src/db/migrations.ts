@@ -384,6 +384,17 @@ export const MIGRATIONS: readonly Migration[] = [
       );
     `,
   },
+  {
+    version: 12,
+    name: 'unpaid orders: reminder, reinstated late payments',
+    sql: `
+      -- SCRUM-83. The one payment reminder (day 14), set when it is queued.
+      ALTER TABLE orders ADD COLUMN payment_reminder_at timestamptz;
+      -- A late payment Attila reinstated (the order moved to Paid): who and when.
+      ALTER TABLE payments ADD COLUMN reinstated_at timestamptz;
+      ALTER TABLE payments ADD COLUMN reinstated_by text;
+    `,
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

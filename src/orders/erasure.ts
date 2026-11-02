@@ -77,7 +77,8 @@ export async function planErasure(deps: Pick<RetentionDeps, 'db'>, email: string
     ever_paid: boolean;
   }>(
     `SELECT o.id, o.reference, o.status, o.created_at, o.status_changed_at, o.crm_contact_id, o.crm_deal_id,
-            EXISTS (SELECT 1 FROM status_history h WHERE h.order_id = o.id AND h.status = 'paid') AS ever_paid
+            (EXISTS (SELECT 1 FROM status_history h WHERE h.order_id = o.id AND h.status = 'paid')
+              OR EXISTS (SELECT 1 FROM payments pm WHERE pm.order_id = o.id)) AS ever_paid
        FROM orders o WHERE o.email_norm = $1 AND o.email_norm <> '' AND NOT o.is_smoke AND o.erased_at IS NULL
       ORDER BY o.created_at, o.reference`,
     [emailNorm],

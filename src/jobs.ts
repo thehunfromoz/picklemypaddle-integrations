@@ -3,7 +3,8 @@
  *  - smoke-test orders (SCRUM-68) are deleted 24 hours after they were placed, photos included;
  *  - rate-limit history older than two days is deleted (SCRUM-67).
  *  - the email outbox (SCRUM-69) is worked every 10 seconds, the CRM sync (SCRUM-74) every 30.
- *  - daily: Posted back → Completed after 10 days, Questions → Lapsed after 30 (SCRUM-72), and
+ *  - daily: Posted back → Completed after 10 days, Questions → Lapsed after 30 (SCRUM-72),
+ *    Accepted → Lapsed unpaid after 30 and the one payment reminder on day 14 (SCRUM-83), and
  *    the one review reminder 10 days after Posted back (SCRUM-80).
  *  - daily: retention (SCRUM-75, src/orders/retention.ts): photos, enquiries and paid orders.
  *  - every 2 minutes, with Stripe set up: the payment events poller (SCRUM-82).
@@ -12,6 +13,7 @@ import type { Db } from './db/db.js';
 import { runAutoTransitions } from './orders/auto.js';
 import { runRetention } from './orders/retention.js';
 import { runReviewReminders } from './orders/review-reminder.js';
+import { runPaymentReminders } from './orders/payment-reminder.js';
 import { processCrm, type CrmDeps } from './crm/sync.js';
 import { processOutbox, type OutboxDeps } from './email/outbox.js';
 import { pruneRateLimitEvents } from './orders/abuse.js';
@@ -99,10 +101,15 @@ export function startJobs(
       logError('job_failed', err, { job: 'rate_limit_prune' });
     }
     try {
-      const run = await runAutoTransitions(db, now(), isProduction);
+      const run = await runAutoTransitions(db, now(), isProduction, payments);
       log('auto_transitions', { ...run });
     } catch (err) {
       logError('job_failed', err, { job: 'auto_transitions' });
+    }
+    try {
+      log('payment_reminders', { queued: await runPaymentReminders(db, now()) });
+    } catch (err) {
+      logError('job_failed', err, { job: 'payment_reminders' });
     }
     try {
       log('review_reminders', { queued: await runReviewReminders(db, now()) });
