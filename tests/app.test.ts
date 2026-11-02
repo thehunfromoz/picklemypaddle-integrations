@@ -78,9 +78,9 @@ describe('/api/pricing (SCRUM-81)', () => {
       pricePerPaddleCents: 6000,
       termsVersion: 'price:2026-01-01;gst:none',
       gst: { registered: false, note: 'No GST is charged: we aren’t registered for GST.' },
-      postage: { table: '2026-07-01', basis: 'cubic' },
+      postage: { table: '2026-07-01', basis: 'actual' },
     });
-    expect(body.postage.byPaddles[0]).toEqual({ paddles: 1, minCents: 2225, maxCents: 2225 });
+    expect(body.postage.byPaddles[0]).toEqual({ paddles: 1, minCents: 1170, maxCents: 1170 });
   });
 
   it('switches its wording from GST_REGISTERED_FROM, with no rebuild', async () => {

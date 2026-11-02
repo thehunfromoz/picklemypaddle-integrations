@@ -11,6 +11,10 @@
  * Paddle size and weight: the largest regulation paddle (17 in / 43.2 cm long, ~21 cm wide,
  * ~2 cm thick with an edge guard, 200–255 g) plus 10% each way for packing (Attila, 30 Oct 2026).
  * Packaging costs are estimates (per unit, from pack prices) until Attila buys stock.
+ *
+ * Decided 2 Nov 2026 (Attila), for launch: charge on ACTUAL weight, not cubic (revisit after launch
+ * if Australia Post cubes our parcels), and absorb the packaging for a single paddle; orders of two
+ * or more paddles pay the packaging cost as well.
  */
 
 export type Zone = 'N1' | 'N2' | 'V1' | 'V2' | 'Q1' | 'Q2' | 'Q3' | 'Q4' | 'S1' | 'S2' | 'NT1' | 'W1' | 'W2' | 'W3' | 'T1' | 'NF';
@@ -39,6 +43,11 @@ export interface PostageTable {
    * own-packaging parcel; safe). 'actual': actual weight only (cheaper; a counter may still cube).
    */
   basis: 'cubic' | 'actual';
+  /**
+   * The packaging cost is added only for orders of at least this many paddles; below it we absorb
+   * it (decided 2 Nov 2026: keep a single paddle as cheap as possible).
+   */
+  chargePackagingFromPaddles: number;
   /** Cubic weight = volume in m³ × this (Australia Post: 250). */
   cubicFactor: number;
   paddle: { lengthCm: number; widthCm: number; thicknessCm: number; weightKg: number };
@@ -60,7 +69,8 @@ export const POSTAGE_TABLES: readonly PostageTable[] = [
   {
     from: '2026-07-01',
     source: 'Australia Post Parcel Post charges as at 1 July 2026, posted in Sydney (N1)',
-    basis: 'cubic',
+    basis: 'actual',
+    chargePackagingFromPaddles: 2,
     cubicFactor: 250,
     paddle: { lengthCm: 47.5, widthCm: 23, thicknessCm: 2.2, weightKg: 0.28 },
     packings: [

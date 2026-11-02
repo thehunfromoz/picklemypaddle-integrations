@@ -401,10 +401,10 @@ export function sampleContext(name: TemplateName, test: boolean): TemplateContex
     backInPostBy: '2026-11-16',
     trackingNumber: '33XYZ0123456789',
     reason: 'The face has a crack near the edge guard, and re-gritting would make it worse.',
-    // Accepted (SCRUM-81): 2 paddles, the calculated postage for a padded bag.
+    // Accepted (SCRUM-81): 2 paddles, the calculated postage for a padded bag (actual weight + bag).
     subtotalCents: 12000,
-    postageCents: 2225,
-    amountCents: 14225,
+    postageCents: 1800,
+    amountCents: 13800,
     gstCents: 0,
     taxTreatment: 'not_registered',
     links: [

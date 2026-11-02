@@ -2,9 +2,9 @@
  * Return postage, worked out from size and weight (SCRUM-81; decided 30 Oct 2026).
  *
  * For N paddles going back to a postcode: choose the packing for N, work out its size and weight,
- * charge on the greater of actual and cubic weight (or actual only, per the table's basis), find
+ * charge on the table's basis (actual weight for launch; or the greater of actual and cubic), find
  * the Australia Post price (one national price up to 5 kg; by destination zone above), and add
- * what the packaging costs. The result pre-fills Accept in admin; Attila can override it there,
+ * the packaging cost for multi-paddle orders (a single paddle's is absorbed). The result pre-fills Accept in admin; Attila can override it there,
  * with a reason. If no price can be found (a postcode outside the table, or too heavy) the quote
  * says why and Accept needs the amount typed in.
  */
@@ -14,7 +14,10 @@ export interface PostageQuote {
   ok: true;
   cents: number;
   postageCents: number;
+  /** What the packaging is charged at: its cost, or 0 when we absorb it (one paddle). */
   packagingCents: number;
+  /** What the packaging costs us, charged or not (for the ledger, SCRUM-86). */
+  packagingCostCents: number;
   packing: string;
   actualKg: number;
   cubicKg: number;
@@ -63,9 +66,10 @@ export function quotePostage(paddles: number, postcode: string, date: string, ta
   const cubicKg = round2(((packing.lengthCm * packing.widthCm * depthCm) / 1_000_000) * table.cubicFactor);
   const chargeableKg = table.basis === 'cubic' ? Math.max(actualKg, cubicKg) : actualKg;
 
-  const base = { packing: packing.name, actualKg, cubicKg, chargeableKg, table: table.from, basis: table.basis, packagingCents: packing.costCents };
+  const packagingCents = paddles >= table.chargePackagingFromPaddles ? packing.costCents : 0;
+  const base = { packing: packing.name, actualKg, cubicKg, chargeableKg, table: table.from, basis: table.basis, packagingCents, packagingCostCents: packing.costCents };
   const flat = table.flat.find((b) => chargeableKg <= b.upToKg);
-  if (flat) return { ok: true, ...base, postageCents: flat.cents, cents: flat.cents + packing.costCents };
+  if (flat) return { ok: true, ...base, postageCents: flat.cents, cents: flat.cents + packagingCents };
 
   const band = table.byZone.find((b) => chargeableKg <= b.upToKg);
   if (!band) return { ok: false, reason: `Over ${table.byZone[table.byZone.length - 1]?.upToKg ?? 5} kg: enter the postage.` };
@@ -73,7 +77,7 @@ export function quotePostage(paddles: number, postcode: string, date: string, ta
   if (zones.length === 0) return { ok: false, reason: `Postcode ${postcode} isn’t in Australia Post’s zone table: enter the postage.` };
   // A postcode in two zones takes the cheaper charge (Table 3).
   const zone = zones.reduce((best, z) => (band.cents[z] < band.cents[best] ? z : best));
-  return { ok: true, ...base, zone, postageCents: band.cents[zone], cents: band.cents[zone] + packing.costCents };
+  return { ok: true, ...base, zone, postageCents: band.cents[zone], cents: band.cents[zone] + packagingCents };
 }
 
 /** For the website: the postage for each paddle count, as a single price or a range by zone. */

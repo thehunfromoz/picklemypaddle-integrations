@@ -37,12 +37,12 @@ test('walks an order from Submitted to Completed', async ({ page }) => {
   await moveTo(page, 'Questions');
   // SCRUM-81: the calculated postage is filled in; changing it needs a reason.
   await moveTo(page, 'Accepted', async (p) => {
-    await expect(p.getByLabel(/Return postage \(A\$\)/)).toHaveValue('22.25');
-    await p.getByLabel(/Return postage \(A\$\)/).fill('18');
+    await expect(p.getByLabel(/Return postage \(A\$\)/)).toHaveValue('18.00');
+    await p.getByLabel(/Return postage \(A\$\)/).fill('15');
     await p.getByLabel(/Reason, only if you change the postage/).fill('Both paddles fit the smaller bag');
   });
   await expect(page.getByText('Price (fixed at Accept)')).toBeVisible();
-  await expect(page.getByText('Postage overridden (calculated A$22.25): Both paddles fit the smaller bag')).toBeVisible();
+  await expect(page.getByText('Postage overridden (calculated A$18): Both paddles fit the smaller bag')).toBeVisible();
 
   await summary(page, 'Mark paid (test)').click();
   await page.getByRole('button', { name: 'Mark paid (test)' }).click();
