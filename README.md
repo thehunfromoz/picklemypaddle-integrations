@@ -212,9 +212,10 @@ admin and HubSpot all show the saved figures.
 
 ## Discount codes (SCRUM-63, decided 30 Oct and 2 Nov 2026)
 
-Codes are managed in admin (**Discount codes** in the bar): a shared code such as `LAUNCH10` with
-a cap on total uses, or a one-person code generated as `FREE-` plus 8 easy-read characters (the
-"Free re-grit for one person" form makes one in a click). A code gives a **free re-grit for up to
+Codes are managed in admin (**Discount codes** in the bar). **Launch offer (decided 2 Nov 2026):**
+unique, unguessable one-person codes, `FREE-` plus 8 easy-read characters, generated up to 20 at a
+time ("Free re-grit codes, one per person"); note on each code who it went to. **Shared codes**
+such as `SPRING10` with a cap on total uses are for later marketing campaigns. A code gives a **free re-grit for up to
 N paddles**, **A$x off** or **x% off** the order's re-grit, never return postage, so every order
 still pays something (Accept refuses an A$0 total). Direct orders only.
 

@@ -15,7 +15,7 @@
  *   GET  /admin/retention                    due for deletion soon, extensions, runs, erasures (SCRUM-75)
  *   GET  /admin/erase · POST /admin/erase/preview · POST /admin/erase/confirm   erasure on request (SCRUM-75)
  *   GET  /admin/codes · POST /admin/codes       discount codes: list, create or generate (SCRUM-63)
- *   GET  /admin/codes/:id · POST /admin/codes/:id/active   one code's uses; deactivate or reactivate
+ *   GET  /admin/codes/:id · POST /admin/codes/:id/active · POST /admin/codes/:id/note   one code: uses, (de)activate, note
  *   GET  /admin/photos/:id                   a paddle photo (authorised, never cached)
  *   GET  /admin/admin.css
  */
@@ -35,7 +35,7 @@ import type { PhotoStore } from '../orders/photos.js';
 import { queueReviewReminder } from '../orders/review-reminder.js';
 import { TransitionError, transitionOrder, type TransitionRequest } from '../orders/transitions.js';
 import { codePage, codesPage } from './codes-pages.js';
-import { createCode, DiscountCodeError, findCode, listCodes, setCodeActive, usesOf } from '../orders/discounts.js';
+import { createCode, DiscountCodeError, findCode, generateCodes, listCodes, setCodeActive, setCodeNote, usesOf } from '../orders/discounts.js';
 import type { DiscountKind } from '../orders/rules.js';
 import { sydneyDate } from '../orders/dates.js';
 import { addNote, listOrders, loadOrder, MAX_NOTE, outboxRow, photoPath } from './data.js';
@@ -82,6 +82,8 @@ const DONE: Record<string, string> = {
   created: 'Code created. Copy it from the heading.',
   deactivated: 'Deactivated: new orders can’t use it.',
   reactivated: 'Reactivated.',
+  generated: 'Codes generated: they’re at the top of the list.',
+  noted: 'Note saved.',
 };
 
 /** "60", "60.5", "60.50" → cents. Anything else → undefined (bad input). */
@@ -300,7 +302,10 @@ export function createAdminApp(deps: AdminDeps) {
   const codesList = async (c: Context<Env>, flash?: Flash, status: 200 | 400 = 200) =>
     c.html(codesPage(ctx(c), await listCodes(deps.db), sydneyDate(now()), flash), status);
 
-  app.get('/admin/codes', (c) => codesList(c));
+  app.get('/admin/codes', (c) => {
+    const done = DONE[c.req.query('done') ?? ''];
+    return codesList(c, done ? { kind: 'done', text: done } : undefined);
+  });
 
   app.post('/admin/codes', async (c) => {
     const body = await c.req.parseBody();
@@ -312,7 +317,27 @@ export function createAdminApp(deps: AdminDeps) {
       return codesList(c, { kind: 'error', text: kind === 'amount' ? 'The amount must be dollars, like 10 or 12.50.' : 'How much must be a whole number.' }, 400);
     }
     const maxUses = /^\d{1,5}$/.test(field(body, 'maxUses') ?? '') ? Number(field(body, 'maxUses')) : NaN;
+    const count = field(body, 'count');
     try {
+      if (count !== undefined && count !== '1') {
+        if (field(body, 'code')) return codesList(c, { kind: 'error', text: 'Several codes are always generated: leave the code blank.' }, 400);
+        const made = await generateCodes(
+          deps.db,
+          {
+            kind: kind as DiscountKind,
+            value,
+            maxUses: /^\d{1,5}$/.test(field(body, 'maxUses') ?? '') ? Number(field(body, 'maxUses')) : NaN,
+            expiresOn: field(body, 'expiresOn') ?? null,
+            onePerEmail: field(body, 'onePerEmail') === 'yes',
+            note: field(body, 'note') ?? null,
+          },
+          /^\d{1,2}$/.test(count) ? Number(count) : NaN,
+          c.get('admin').login,
+          now(),
+        );
+        log('admin_discount_codes_generated', { count: made.length, kind });
+        return c.redirect('/admin/codes?done=generated', 303);
+      }
       const created = await createCode(
         deps.db,
         {
@@ -347,6 +372,20 @@ export function createAdminApp(deps: AdminDeps) {
     if (!(await setCodeActive(deps.db, c.req.param('id'), active))) return c.html(notFoundPage(ctx(c), 'No such code.'), 404);
     log('admin_discount_code_active', { id: Number(c.req.param('id')), active });
     return c.redirect(`/admin/codes/${c.req.param('id')}?done=${active ? 'reactivated' : 'deactivated'}`, 303);
+  });
+
+  app.post('/admin/codes/:id/note', async (c) => {
+    try {
+      if (!(await setCodeNote(deps.db, c.req.param('id'), field(await c.req.parseBody(), 'note') ?? null))) {
+        return c.html(notFoundPage(ctx(c), 'No such code.'), 404);
+      }
+    } catch (err) {
+      if (!(err instanceof DiscountCodeError)) throw err;
+      const code = await findCode(deps.db, c.req.param('id'));
+      if (!code) return c.html(notFoundPage(ctx(c), 'No such code.'), 404);
+      return c.html(codePage(ctx(c), code, await usesOf(deps.db, code.id), sydneyDate(now()), { kind: 'error', text: err.message }), 400);
+    }
+    return c.redirect(`/admin/codes/${c.req.param('id')}?done=noted`, 303);
   });
 
   app.get('/admin/photos/:id', async (c) => {

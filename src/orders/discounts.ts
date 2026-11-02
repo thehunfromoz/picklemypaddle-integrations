@@ -213,6 +213,24 @@ export async function createCode(q: Queryable, c: NewCode, by: string, now: Date
   }
 }
 
+/** Generates `count` one-person codes with the same settings (e.g. the 10 launch codes). */
+export async function generateCodes(q: Queryable, c: Omit<NewCode, 'code'>, count: number, by: string, now: Date): Promise<DiscountCode[]> {
+  if (!Number.isInteger(count) || count < 1 || count > MAX_BATCH) throw new DiscountCodeError(`Generate 1 to ${MAX_BATCH} codes at a time.`);
+  const out: DiscountCode[] = [];
+  for (let i = 0; i < count; i++) out.push(await createCode(q, { ...c, code: undefined }, by, now));
+  return out;
+}
+
+export const MAX_BATCH = 20;
+
+/** Attila's note on a code, e.g. who it was sent to. Empty clears it. */
+export async function setCodeNote(q: Queryable, id: string, note: string | null): Promise<boolean> {
+  if (!/^\d{1,18}$/.test(id)) return false;
+  if (note && note.length > MAX_CODE_NOTE) throw new DiscountCodeError(`Keep the note under ${MAX_CODE_NOTE} characters.`);
+  const { rows } = await q.query('UPDATE discount_codes SET note = $2 WHERE id = $1 RETURNING id', [id, note?.trim() || null]);
+  return rows.length > 0;
+}
+
 export async function findCode(q: Queryable, id: string): Promise<DiscountCode | null> {
   if (!/^\d{1,18}$/.test(id)) return null;
   const { rows } = await q.query<CodeRow>(`${SELECT_CODES} WHERE c.id = $1`, [id]);

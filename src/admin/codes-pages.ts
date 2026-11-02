@@ -3,7 +3,7 @@
  * one-person code), a one-click "free re-grit for one person", deactivate/reactivate, and each
  * code's uses by order reference only.
  */
-import { GENERATED_PREFIX, type CodeUse, type DiscountCode } from '../orders/discounts.js';
+import { GENERATED_PREFIX, MAX_BATCH, MAX_CODE_NOTE, type CodeUse, type DiscountCode } from '../orders/discounts.js';
 import { describeDiscount } from '../orders/rules.js';
 import { calendarDay, html, type Html, when } from './html.js';
 import { layout, type Flash, type PageContext } from './pages.js';
@@ -33,20 +33,22 @@ ${flashBox(flash)}
 <h1>Discount codes</h1>
 <p class="small">Direct orders only. A code always comes off the re-grit, never off return postage. A use is held when the order is placed, used up when it’s paid, and given back if the order is rejected, withdrawn or lapses unpaid.</p>
 
-<details class="action" open><summary>Free re-grit for one person</summary>
+<details class="action" open><summary>Free re-grit codes, one per person</summary>
 <form method="post" action="/admin/codes">
   ${csrfField(ctx)}
   <input type="hidden" name="kind" value="free">
   <input type="hidden" name="value" value="1">
   <input type="hidden" name="maxUses" value="1">
   <input type="hidden" name="onePerEmail" value="yes">
-  <p class="small">Makes a random ${GENERATED_PREFIX}XXXXXXXX code: one paddle free, one use. Send it from info@.</p>
-  <label>Who it’s for (optional note, only you see it)<input name="note" maxlength="500"></label>
-  <label>Last day it can be used (optional)<input type="date" name="expiresOn" min="${today}"></label>
-  <button type="submit">Generate code</button>
+  <p class="small">Each is a random, unguessable ${GENERATED_PREFIX}XXXXXXXX code: one paddle free, one use; return postage is still paid. Send each to one person from info@, and note on the code who it went to.</p>
+  <label>How many codes (1 to ${MAX_BATCH})<input name="count" required inputmode="numeric" pattern="\\d{1,2}" value="1"></label>
+  <label>Note (optional, only you see it), e.g. “Launch offer”<input name="note" maxlength="500"></label>
+  <label>Last day they can be used (optional)<input type="date" name="expiresOn" min="${today}"></label>
+  <button type="submit">Generate codes</button>
 </form></details>
 
 <details class="action"><summary>Create a code</summary>
+<p class="small">For marketing campaigns: a shared code such as SPRING10, capped at a number of uses.</p>
 <form method="post" action="/admin/codes">
   ${csrfField(ctx)}
   <label>Code (leave blank to generate a random ${GENERATED_PREFIX}XXXXXXXX one; letters, digits and hyphens)
@@ -89,7 +91,12 @@ export function codePage(ctx: PageContext, c: DiscountCode, uses: CodeUse[], tod
 ${flashBox(flash)}
 <h1><span class="ref">${c.code}</span> ${state(c, today)}</h1>
 <p>${facts(c)}</p>
-<p class="small">Created ${when(c.createdAt)}${c.note ? html` · ${c.note}` : ''}</p>
+<p class="small">Created ${when(c.createdAt)}</p>
+<form method="post" action="/admin/codes/${c.id}/note">
+  ${csrfField(ctx)}
+  <label>Note (only you see it), e.g. who it was sent to<input name="note" maxlength="${MAX_CODE_NOTE}" value="${c.note ?? ''}"></label>
+  <button type="submit" class="secondary">Save note</button>
+</form>
 <form method="post" action="/admin/codes/${c.id}/active">
   ${csrfField(ctx)}
   <input type="hidden" name="active" value="${c.active ? 'no' : 'yes'}">

@@ -339,4 +339,23 @@ describe('discount codes admin page', () => {
     const order = await (await admin.get(`/admin/orders/${reference}`)).text();
     expect(order).toContain('LAUNCH10: Free re-grit for 1 paddle');
   });
+
+  it('generates 10 unique one-person launch codes at once, and notes who each went to', async () => {
+    t = await makeApp();
+    const admin = await makeAdmin(t);
+    const r = await admin.post('/admin/codes', { kind: 'free', value: '1', maxUses: '1', onePerEmail: 'yes', count: '10', note: 'Launch offer' });
+    expect(r.status).toBe(303);
+    expect(r.headers.get('location')).toBe('/admin/codes?done=generated');
+    const codes = await listCodes(t.db);
+    expect(codes).toHaveLength(10);
+    expect(new Set(codes.map((c) => c.code)).size).toBe(10);
+    for (const c of codes) expect(c).toMatchObject({ kind: 'free', value: 1, maxUses: 1, onePerEmail: true, note: 'Launch offer' });
+    expect((await admin.post('/admin/codes', { kind: 'free', value: '1', maxUses: '1', count: '21' })).status).toBe(400);
+    expect((await admin.post('/admin/codes', { code: 'TYPED', kind: 'free', value: '1', maxUses: '1', count: '2' })).status).toBe(400);
+
+    const id = codes[0]!.id;
+    expect((await admin.post(`/admin/codes/${id}/note`, { note: 'Sam, Olympic Park club' })).status).toBe(303);
+    expect((await listCodes(t.db)).find((c) => c.id === id)!.note).toBe('Sam, Olympic Park club');
+    expect(await (await admin.get(`/admin/codes/${id}`)).text()).toContain('value="Sam, Olympic Park club"');
+  });
 });

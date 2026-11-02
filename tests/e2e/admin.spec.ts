@@ -97,10 +97,19 @@ test('creates a shared code and generates a one-person code', async ({ page }) =
   await expect(page.locator('h1 .ref')).toHaveText(shared);
 
   await page.getByRole('link', { name: '← Discount codes' }).click();
-  await page.getByLabel(/^Who it’s for/).fill('E2E player');
-  await page.getByRole('button', { name: 'Generate code' }).click();
+  const batch = `E2E launch ${Date.now().toString(36)}`;
+  await page.getByLabel(/^How many codes/).fill('2');
+  await page.getByLabel(/^Note \(optional/).first().fill(batch);
+  await page.getByRole('button', { name: 'Generate codes' }).click();
+  await expect(page.getByRole('status')).toHaveText('Codes generated: they’re at the top of the list.');
+  const generated = page.locator('ul.orders a', { hasText: batch });
+  await expect(generated).toHaveCount(2);
+  await generated.first().click();
   await expect(page.locator('h1 .ref')).toHaveText(/^FREE-[A-Z2-9]{8}$/);
   await expect(page.getByText('Free re-grit for 1 paddle · 0 of 1 used')).toBeVisible();
+  await page.getByLabel(/^Note \(only you see it\)/).fill('E2E player');
+  await page.getByRole('button', { name: 'Save note' }).click();
+  await expect(page.getByRole('status')).toHaveText('Note saved.');
 
   await page.getByRole('button', { name: 'Deactivate' }).click();
   await expect(page.getByRole('status')).toHaveText('Deactivated: new orders can’t use it.');
