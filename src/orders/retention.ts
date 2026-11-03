@@ -118,7 +118,9 @@ export async function retentionOrders(db: Db, where = 'TRUE', params: unknown[] 
   }>(
     `SELECT o.id, o.reference, o.status, o.status_changed_at, o.is_test, o.erased_at, o.email_norm,
             o.crm_contact_id, o.crm_deal_id, o.retain_until::text AS retain_until, o.retain_reason,
-            EXISTS (SELECT 1 FROM status_history h WHERE h.order_id = o.id AND h.status = 'paid') AS ever_paid,
+            -- SCRUM-83: a Stripe payment counts even if never applied (a late one, refunded): money changed hands.
+            (EXISTS (SELECT 1 FROM status_history h WHERE h.order_id = o.id AND h.status = 'paid')
+              OR EXISTS (SELECT 1 FROM payments pm WHERE pm.order_id = o.id)) AS ever_paid,
             EXISTS (SELECT 1 FROM photos ph JOIN paddles p ON p.id = ph.paddle_id WHERE p.order_id = o.id) AS has_photos
        FROM orders o
       WHERE NOT o.is_smoke AND o.status IN ('completed', 'rejected', 'withdrawn', 'lapsed') AND (${where})

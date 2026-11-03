@@ -33,7 +33,7 @@ export interface MailSettings {
 }
 
 /** Templates that carry the order's private status link. */
-const NEEDS_STATUS_LINK: ReadonlySet<TemplateName> = new Set(['customer_submitted', 'accepted', 'in_queue', 'posted_back', 'review_reminder']);
+const NEEDS_STATUS_LINK: ReadonlySet<TemplateName> = new Set(['customer_submitted', 'accepted', 'in_queue', 'posted_back', 'review_reminder', 'payment_reminder']);
 
 /** Minutes to wait after each failed attempt; after the last one the email is marked failed. */
 export const BACKOFF_MINUTES = [1, 5, 15, 60, 180, 360, 720] as const;
@@ -55,6 +55,10 @@ export interface EmailPayload {
   taxTreatment?: TaxTreatment;
   backInPostBy?: string;
   reason?: string;
+  /** Payment reminder (SCRUM-83): the Sydney day the order lapses. */
+  lapsesOn?: string;
+  /** Payment alert (SCRUM-83): what wasn't right with a payment. */
+  problem?: string;
   /** Review alert: whether the customer allowed quoting (SCRUM-33). */
   permission?: boolean;
 }
@@ -91,7 +95,7 @@ export async function enqueueOrderEmail(
   // Every parameter is typed: Postgres can't infer types in a SELECT list.
   await q.query(
     `INSERT INTO outbox (kind, order_id, template, recipient, payload, next_attempt_at, created_at, updated_at)
-     SELECT 'email', o.id, $2::text, CASE WHEN $2::text IN ('alert_submitted', 'alert_review') THEN $4::text ELSE o.email END,
+     SELECT 'email', o.id, $2::text, CASE WHEN $2::text IN ('alert_submitted', 'alert_review', 'alert_payment') THEN $4::text ELSE o.email END,
             $3::jsonb, $5::timestamptz, $5::timestamptz, $5::timestamptz
        FROM orders o WHERE o.id = $1::uuid`,
     [orderId, template, JSON.stringify(payload), ALERT_TO, now],

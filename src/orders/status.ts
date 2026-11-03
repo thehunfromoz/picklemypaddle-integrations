@@ -51,6 +51,9 @@ export interface StatusView {
   payment: { amountCents: number; canPay: boolean; paidAt: string | null } | null;
 }
 
+/** SCRUM-83: what the status page says for an order that lapsed unpaid. */
+export const UNPAID_LAPSED_LABEL = 'Closed: not paid within 30 days of acceptance';
+
 /** Every bad link (unknown, malformed, revoked, expired) gets exactly this, by design. */
 export const INVALID_LINK = { error: 'invalid_link', message: 'This link isn’t valid or has expired.' } as const;
 
@@ -107,11 +110,15 @@ export async function lookupStatus(db: Db, token: unknown, now: Date, opts: { pa
     db.query<{ status: OrderStatus; at: Date }>('SELECT status, at FROM status_history WHERE order_id = $1 ORDER BY at, id', [order.id]),
     db.query<{ brand: string; model: string | null }>('SELECT brand, model FROM paddles WHERE order_id = $1 ORDER BY position', [order.id]),
   ]);
+  // SCRUM-83: an order that lapsed unpaid says so (Lapsed after Questions means no reply).
+  const label = (status: OrderStatus, previous: OrderStatus | undefined) =>
+    status === 'lapsed' && previous === 'accepted' ? UNPAID_LAPSED_LABEL : STATUS_LABELS[status];
+  const labelled = history.rows.map((h, i) => ({ status: h.status, label: label(h.status, history.rows[i - 1]?.status), at: new Date(h.at).toISOString() }));
   return {
     reference: order.reference,
     status: order.status,
-    statusLabel: STATUS_LABELS[order.status],
-    history: history.rows.map((h) => ({ status: h.status, label: STATUS_LABELS[h.status], at: new Date(h.at).toISOString() })),
+    statusLabel: labelled.at(-1)?.status === order.status ? labelled.at(-1)!.label : STATUS_LABELS[order.status],
+    history: labelled,
     paddles: paddles.rows.map((p) => ({ brand: p.brand, model: p.model })),
     trackingNumber: order.status === 'posted_back' || order.status === 'completed' ? order.tracking_number : null,
     backInPostBy: order.status === 'in_queue' || order.status === 'regritted' ? promiseOf(order) : null,

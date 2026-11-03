@@ -15,7 +15,8 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { Db, Queryable } from '../db/db.js';
 import { log } from '../log.js';
-import { transitionWith } from '../orders/transitions.js';
+import { TransitionError, transitionWith } from '../orders/transitions.js';
+import { enqueueOrderEmail } from '../email/outbox.js';
 import type { OrderStatus } from '../orders/model.js';
 import type { Charge, CheckoutSession, FormValue, StripeApi, StripeEvent } from './stripe.js';
 
@@ -203,8 +204,12 @@ export async function applySession(deps: PaymentDeps, session: CheckoutSession, 
       if (order) {
         await q.query('INSERT INTO order_notes (order_id, at, author, note) VALUES ($1, $2, $3, $4)', [
           order.id, now, 'stripe',
-          `Stripe payment ${pi.id} of ${dollars(amount)} wasn’t applied (${problem.replace('_', ' ')}). Check it in the Stripe dashboard; refund it there if needed.`,
+          `Stripe payment ${pi.id} of ${dollars(amount)} wasn’t applied: ${problemText(problem)}. ${
+            REINSTATABLE.has(problem) ? 'Reinstate the order as paid, or refund it in Stripe.' : 'Check it in the Stripe dashboard; refund it there if needed.'
+          }`,
         ]);
+        // SCRUM-83: Attila hears about it (reference and admin link only).
+        await enqueueOrderEmail(q, order.id, 'alert_payment', now, { problem: problemText(problem) });
       }
       return 'flagged';
     }
@@ -252,6 +257,51 @@ export async function applyEvent(deps: PaymentDeps, event: StripeEvent, source: 
     event.id, event.type, source, deps.now(),
   ]);
   return outcome;
+}
+
+/** Why a payment wasn't applied, in plain words (admin, notes, Attila's alert). */
+export const PROBLEM_TEXT: Record<string, string> = {
+  amount_mismatch: 'the amount paid isn’t the order’s total',
+  order_missing: 'there is no such order',
+  order_lapsed: 'it arrived after the order lapsed',
+  order_withdrawn: 'it arrived after the order was withdrawn',
+  order_paid: 'the order was already paid (a second payment)',
+};
+export const problemText = (problem: string) => PROBLEM_TEXT[problem] ?? `the order was ${problem.replace(/^order_/, '').replace('_', ' ')}`;
+
+/** SCRUM-83: late payments Attila may reinstate (the order moves to Paid). */
+export const REINSTATABLE: ReadonlySet<string> = new Set(['order_lapsed', 'order_withdrawn']);
+
+/**
+ * SCRUM-83: Attila accepts a late payment: the Lapsed or Withdrawn order moves to Paid (admin,
+ * with his note), the payment is marked reinstated, and a discount code use given back at the
+ * lapse is taken again. Refused unless a late payment, not refunded in full, is on the order.
+ */
+export async function reinstateLatePayment(db: Db, reference: string, by: string, note: string, deps: { isProduction: boolean; now: Date }): Promise<void> {
+  const text = note.trim();
+  if (!text) throw new TransitionError(400, 'note_required', 'Say why you’re reinstating it (kept in the history).');
+  if (text.length > 2000) throw new TransitionError(400, 'reason_too_long', 'Keep the note under 2000 characters.');
+  await db.tx(async (q) => {
+    const { rows } = await q.query<{ id: string; status: OrderStatus }>('SELECT id, status FROM orders WHERE reference = $1 FOR UPDATE', [reference]);
+    const order = rows[0];
+    if (!order) throw new TransitionError(404, 'not_found', 'No such order.');
+    const { rows: late } = await q.query<{ id: string; payment_intent_id: string | null; amount_cents: number }>(
+      `SELECT id, payment_intent_id, amount_cents FROM payments
+        WHERE order_id = $1 AND problem = ANY($2::text[]) AND refunded_cents < amount_cents ORDER BY paid_at LIMIT 1`,
+      [order.id, [...REINSTATABLE]],
+    );
+    const payment = late[0];
+    if (!payment || (order.status !== 'lapsed' && order.status !== 'withdrawn')) {
+      throw new TransitionError(409, 'nothing_to_reinstate', 'Only a Lapsed or Withdrawn order with a late payment (not refunded) can be reinstated.');
+    }
+    await transitionWith(q, { isProduction: deps.isProduction, now: deps.now }, {
+      reference, to: 'paid', actor: 'admin', reinstate: true,
+      note: `Reinstated as paid by ${by} (Stripe ${payment.payment_intent_id ?? 'payment'}, ${dollars(Number(payment.amount_cents))}): ${text}`,
+    });
+    await q.query('UPDATE payments SET problem = NULL, reinstated_at = $2, reinstated_by = $3 WHERE id = $1', [payment.id, deps.now, by]);
+    await q.query(`UPDATE discount_uses SET state = 'consumed', settled_at = $2 WHERE order_id = $1 AND state = 'released'`, [order.id, deps.now]);
+  });
+  log('payment_reinstated', { reference });
 }
 
 // ── Events poller ─────────────────────────────────────────────────────────────
@@ -344,14 +394,18 @@ export interface PaymentRecord {
   problem: string | null;
   refundedCents: number;
   refundedAt: Date | null;
+  reinstatedAt: Date | null;
+  reinstatedBy: string | null;
 }
 
 export async function paymentsOf(q: Queryable, orderId: string): Promise<PaymentRecord[]> {
   const { rows } = await q.query<{
     checkout_session_id: string; payment_intent_id: string | null; amount_cents: number; fee_cents: number | null; paid_at: Date;
     source: PaymentSource; livemode: boolean; problem: string | null; refunded_cents: number; refunded_at: Date | null;
+    reinstated_at: Date | null; reinstated_by: string | null;
   }>(
-    `SELECT checkout_session_id, payment_intent_id, amount_cents, fee_cents, paid_at, source, livemode, problem, refunded_cents, refunded_at
+    `SELECT checkout_session_id, payment_intent_id, amount_cents, fee_cents, paid_at, source, livemode, problem, refunded_cents, refunded_at,
+            reinstated_at, reinstated_by
        FROM payments WHERE order_id = $1 ORDER BY paid_at`,
     [orderId],
   );
@@ -366,6 +420,8 @@ export async function paymentsOf(q: Queryable, orderId: string): Promise<Payment
     problem: r.problem,
     refundedCents: Number(r.refunded_cents),
     refundedAt: r.refunded_at ? new Date(r.refunded_at) : null,
+    reinstatedAt: r.reinstated_at ? new Date(r.reinstated_at) : null,
+    reinstatedBy: r.reinstated_by,
   }));
 }
 

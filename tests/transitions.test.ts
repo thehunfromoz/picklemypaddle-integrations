@@ -20,6 +20,8 @@ describe('transition table', () => {
     ['in_queue', 'regritted', 'admin'],
     ['regritted', 'posted_back', 'admin'],
     ['posted_back', 'completed', 'admin'], ['posted_back', 'completed', 'system'],
+    // SCRUM-83: "Reinstate as paid", only through reinstateLatePayment (it checks for a late payment).
+    ['withdrawn', 'paid', 'admin'], ['lapsed', 'paid', 'admin'],
   ];
   const key = (f: string, to: string, a: string) => `${f}>${to}>${a}`;
   const allowedKeys = new Set(allowed.map(([f, to, a]) => key(f, to, a)));
@@ -36,8 +38,9 @@ describe('transition table', () => {
     }
   });
 
-  it('leaves the end states with nowhere to go', () => {
-    for (const s of ['completed', 'rejected', 'withdrawn', 'lapsed'] as const) expect(TRANSITIONS[s]).toEqual({});
+  it('leaves the end states with nowhere to go, except reinstating a late payment (SCRUM-83)', () => {
+    for (const s of ['completed', 'rejected'] as const) expect(TRANSITIONS[s]).toEqual({});
+    for (const s of ['withdrawn', 'lapsed'] as const) expect(TRANSITIONS[s]).toEqual({ paid: ['admin'] });
   });
 
   it('emails the customer at the key moments only', () => {

@@ -80,14 +80,14 @@ describe('automatic status changes', () => {
     expect(await count()).toBe(before);
   });
 
-  it('leaves other statuses alone however old they are (Accepted lapsing is Stripe’s job, SCRUM-9)', async () => {
+  it('leaves Submitted alone however old; lapses Accepted only when unpaid 30 days (SCRUM-83)', async () => {
     t = await makeApp();
     const submitted = await placeOrder('d@test.picklemypaddle.com');
     const accepted = await placeOrder('e@test.picklemypaddle.com');
     await walk(accepted, ['accepted']);
-    expect(await runAutoTransitions(t.db, new Date(t.clock.now.getTime() + 400 * DAY), true)).toEqual({ completed: 0, lapsed: 0 });
+    expect(await runAutoTransitions(t.db, new Date(t.clock.now.getTime() + 400 * DAY), true)).toEqual({ completed: 0, lapsed: 1 });
     expect(await statusOf(submitted)).toBe('submitted');
-    expect(await statusOf(accepted)).toBe('accepted');
+    expect(await statusOf(accepted)).toBe('lapsed');
   });
 
   it('counts each order from when it entered Questions, not from when it was placed', async () => {
