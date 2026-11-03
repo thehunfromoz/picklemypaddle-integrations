@@ -291,6 +291,22 @@ describe('paying for an order', () => {
     expect(page).toContain('Open in Stripe');
   });
 
+  it('a fee Stripe hasn’t worked out by the return is filled in by the next poll (seen 3 Nov 2026)', async () => {
+    await setup();
+    const { token, reference } = await accepted();
+    const s = await startPay(token);
+    stripe.pay(s.id);
+    stripe.feePending = true;
+    await api('orders/paid', { sessionId: s.id });
+    expect((await payRows())[0]).toMatchObject({ fee_cents: null });
+    const admin = await makeAdmin(t, { paymentsConfigured: true });
+    expect(await (await admin.get(`/admin/orders/${reference}`)).text()).toContain('Stripe fee not known yet');
+    stripe.feePending = false;
+    await pollEvents(t.payments!);
+    expect((await payRows())[0]).toMatchObject({ fee_cents: stripe.feeFor(7170) });
+    expect(await (await admin.get(`/admin/orders/${reference}`)).text()).toContain(`net A$${((7170 - stripe.feeFor(7170)) / 100).toFixed(2)}`);
+  });
+
   it('a Stripe outage on Pay now is a plain 502, and the order stays Accepted', async () => {
     await setup();
     const { token, reference } = await accepted();

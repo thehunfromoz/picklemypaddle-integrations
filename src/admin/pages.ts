@@ -213,7 +213,7 @@ function paymentSection(o: OrderDetail): Html | string {
 <ul class="notes">${o.payments.map((p) => {
     const url = dashboardUrl(p);
     return html`<li><strong>${dollars(p.amountCents)}</strong> by card · ${when(p.paidAt)}${
-      p.feeCents !== null ? ` · Stripe fee ${dollars(p.feeCents)}` : ''
+      p.feeCents !== null ? ` · Stripe fee ${dollars(p.feeCents)}, net ${dollars(p.amountCents - p.feeCents)}` : ' · Stripe fee not known yet (filled in within a few minutes)'
     } · via ${p.source}${p.livemode ? '' : ' · TEST mode'}
   ${p.problem ? html`<div class="flash error" role="alert">Not applied: ${problemText(p.problem)}. Check it in Stripe and refund it there if needed.</div>` : ''}
   ${p.reinstatedAt ? html`<div class="small">Reinstated ${when(p.reinstatedAt)} by ${p.reinstatedBy ?? 'admin'}</div>` : ''}
