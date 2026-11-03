@@ -157,6 +157,8 @@ export const STAGES: Readonly<Record<OrderStatus, { label: string; probability: 
   rejected: { label: 'Rejected', probability: 0 },
   withdrawn: { label: 'Withdrawn', probability: 0 },
   lapsed: { label: 'Lapsed', probability: 0 },
+  // SCRUM-84: refunded in full. hubspot-setup creates the stage.
+  refunded: { label: 'Refunded', probability: 0 },
 };
 
 /** Stages in display order. */

@@ -36,6 +36,10 @@ import { queueReviewReminder } from '../orders/review-reminder.js';
 import { TransitionError, transitionOrder, type TransitionRequest } from '../orders/transitions.js';
 import { codePage, codesPage } from './codes-pages.js';
 import { reinstateLatePayment } from '../payments/payments.js';
+import { DEFAULT_SELLER, documentByNumber, documentsOf, listDocuments, type Seller } from '../documents/documents.js';
+import { DOCUMENT_NUMBER_RE } from '../orders/status.js';
+import { documentListPage, documentPage, documentsSection } from './document-pages.js';
+import { html } from './html.js';
 import { CODE_STATES, codePrefixes, createCodes, DiscountCodeError, findCode, listCodes, setCodeActive, setCodeNote, usesOf, type CodeState } from '../orders/discounts.js';
 import type { DiscountKind } from '../orders/rules.js';
 import { sydneyDate } from '../orders/dates.js';
@@ -63,6 +67,8 @@ export interface AdminDeps {
   tax?: TaxSettings;
   /** SCRUM-82: whether a Stripe key is set here (otherwise "Payments not configured"). */
   paymentsConfigured?: boolean;
+  /** SCRUM-84: who issues receipts (a reinstated late payment issues one). */
+  seller?: Seller;
 }
 
 type Env = { Variables: { admin: AdminIdentity } };
@@ -140,7 +146,8 @@ export function createAdminApp(deps: AdminDeps) {
   const showOrder = async (c: Context<Env>, reference: string, flash?: Flash, status: 200 | 400 | 404 | 409 = 200) => {
     const order = REFERENCE_RE.test(reference) ? await loadOrder(deps.db, reference, now()) : null;
     if (!order) return c.html(notFoundPage(ctx(c), `No order ${reference}.`), 404);
-    return c.html(detailPage(ctx(c), order, flash, orderRetentionSection(ctx(c), order)), status);
+    const docs = await documentsOf(deps.db, order.id);
+    return c.html(detailPage(ctx(c), order, flash, html`${documentsSection(docs)}${orderRetentionSection(ctx(c), order)}`), status);
   };
 
   app.get('/admin/orders/:ref', async (c) => {
@@ -201,7 +208,9 @@ export function createAdminApp(deps: AdminDeps) {
     const reference = c.req.param('ref');
     if (!REFERENCE_RE.test(reference)) return showOrder(c, reference);
     try {
-      await reinstateLatePayment(deps.db, reference, c.get('admin').login, field(await c.req.parseBody(), 'note') ?? '', { isProduction: deps.isProduction, now: now() });
+      await reinstateLatePayment(deps.db, reference, c.get('admin').login, field(await c.req.parseBody(), 'note') ?? '', {
+        isProduction: deps.isProduction, now: now(), seller: deps.seller ?? DEFAULT_SELLER,
+      });
     } catch (err) {
       if (err instanceof TransitionError) {
         if (err.httpStatus === 404) return showOrder(c, reference);
@@ -211,6 +220,14 @@ export function createAdminApp(deps: AdminDeps) {
     }
     log('admin_payment_reinstated', { reference });
     return back(c, reference, 'reinstated');
+  });
+
+  // ── Documents (SCRUM-84) ──────────────────────────────────────────────────
+  app.get('/admin/documents', async (c) => c.html(documentListPage(ctx(c), await listDocuments(deps.db))));
+  app.get('/admin/documents/:number', async (c) => {
+    const number = c.req.param('number');
+    const doc = DOCUMENT_NUMBER_RE.test(number) ? await documentByNumber(deps.db, number) : null;
+    return doc ? c.html(documentPage(ctx(c), doc)) : c.html(notFoundPage(ctx(c), `No document ${number}.`), 404);
   });
 
   // SCRUM-82 removed "Mark paid (test)": Stripe test cards pay staging orders.

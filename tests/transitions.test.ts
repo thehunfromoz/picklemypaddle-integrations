@@ -22,6 +22,8 @@ describe('transition table', () => {
     ['posted_back', 'completed', 'admin'], ['posted_back', 'completed', 'system'],
     // SCRUM-83: "Reinstate as paid", only through reinstateLatePayment (it checks for a late payment).
     ['withdrawn', 'paid', 'admin'], ['lapsed', 'paid', 'admin'],
+    // SCRUM-84: a refund in full in Stripe of a paid order (recordRefund checks there is a receipt).
+    ...(['paid', 'in_queue', 'regritted', 'posted_back', 'completed', 'withdrawn'] as const).map((f): [OrderStatus, OrderStatus, Actor] => [f, 'refunded', 'stripe']),
   ];
   const key = (f: string, to: string, a: string) => `${f}>${to}>${a}`;
   const allowedKeys = new Set(allowed.map(([f, to, a]) => key(f, to, a)));
@@ -38,9 +40,11 @@ describe('transition table', () => {
     }
   });
 
-  it('leaves the end states with nowhere to go, except reinstating a late payment (SCRUM-83)', () => {
-    for (const s of ['completed', 'rejected'] as const) expect(TRANSITIONS[s]).toEqual({});
-    for (const s of ['withdrawn', 'lapsed'] as const) expect(TRANSITIONS[s]).toEqual({ paid: ['admin'] });
+  it('leaves the end states with nowhere to go, except reinstating a late payment (SCRUM-83) or a refund (SCRUM-84)', () => {
+    for (const s of ['rejected', 'refunded'] as const) expect(TRANSITIONS[s]).toEqual({});
+    expect(TRANSITIONS.completed).toEqual({ refunded: ['stripe'] });
+    expect(TRANSITIONS.withdrawn).toEqual({ paid: ['admin'], refunded: ['stripe'] });
+    expect(TRANSITIONS.lapsed).toEqual({ paid: ['admin'] });
   });
 
   it('emails the customer at the key moments only', () => {

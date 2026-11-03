@@ -395,6 +395,60 @@ export const MIGRATIONS: readonly Migration[] = [
       ALTER TABLE payments ADD COLUMN reinstated_by text;
     `,
   },
+  {
+    version: 13,
+    name: 'documents: receipts, invoices, credit notes',
+    sql: `
+      -- SCRUM-84. One gapless sequence per series: INV for receipts and invoices, CN for credit
+      -- notes. A number is taken by UPDATE … RETURNING inside the transaction that issues the
+      -- document, so the row lock serialises issuers and a rollback gives the number back.
+      CREATE TABLE document_counters (
+        series text PRIMARY KEY CHECK (series IN ('INV', 'CN')),
+        last   integer NOT NULL CHECK (last >= 0)
+      );
+      INSERT INTO document_counters (series, last) VALUES ('INV', 0), ('CN', 0);
+
+      -- A document is a frozen snapshot: snapshot is canonical JSON text (byte-for-byte what was
+      -- issued) and snapshot_sha256 its hash. Only the paid state may be added later, once.
+      CREATE TABLE documents (
+        id              bigserial PRIMARY KEY,
+        number          text NOT NULL UNIQUE CHECK (number ~ '^PMP-(INV|CN)-[0-9]{4,}$'),
+        kind            text NOT NULL CHECK (kind IN ('receipt', 'invoice', 'credit_note')),
+        order_id        uuid REFERENCES orders(id) ON DELETE CASCADE,
+        payment_id      bigint REFERENCES payments(id) ON DELETE SET NULL,
+        refers_to       bigint REFERENCES documents(id) ON DELETE CASCADE,
+        issued_on       date NOT NULL,
+        issued_at       timestamptz NOT NULL,
+        total_cents     integer NOT NULL CHECK (total_cents >= 0),
+        gst_cents       integer NOT NULL CHECK (gst_cents >= 0),
+        snapshot        text NOT NULL,
+        snapshot_sha256 text NOT NULL,
+        paid_on         date,
+        paid_method     text,
+        CHECK ((paid_on IS NULL) = (paid_method IS NULL))
+      );
+      CREATE INDEX documents_order ON documents (order_id);
+      -- Exactly one receipt per payment, however many times Paid is recognised.
+      CREATE UNIQUE INDEX documents_one_receipt ON documents (payment_id) WHERE kind = 'receipt';
+
+      CREATE FUNCTION documents_frozen() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN
+        IF NEW.number IS DISTINCT FROM OLD.number OR NEW.kind IS DISTINCT FROM OLD.kind
+           OR NEW.issued_on IS DISTINCT FROM OLD.issued_on OR NEW.issued_at IS DISTINCT FROM OLD.issued_at
+           OR NEW.total_cents IS DISTINCT FROM OLD.total_cents OR NEW.gst_cents IS DISTINCT FROM OLD.gst_cents
+           OR NEW.snapshot IS DISTINCT FROM OLD.snapshot OR NEW.snapshot_sha256 IS DISTINCT FROM OLD.snapshot_sha256
+           OR NEW.refers_to IS DISTINCT FROM OLD.refers_to THEN
+          RAISE EXCEPTION 'documents are never edited after issue: issue a credit note instead';
+        END IF;
+        IF OLD.paid_on IS NOT NULL AND (NEW.paid_on IS DISTINCT FROM OLD.paid_on OR NEW.paid_method IS DISTINCT FROM OLD.paid_method) THEN
+          RAISE EXCEPTION 'a document''s paid state is set once';
+        END IF;
+        RETURN NEW;
+      END
+      $$;
+      CREATE TRIGGER documents_frozen BEFORE UPDATE ON documents FOR EACH ROW EXECUTE FUNCTION documents_frozen();
+    `,
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

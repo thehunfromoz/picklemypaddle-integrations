@@ -11,6 +11,8 @@
  *  - Paid is set through transitionWith (actor "stripe") in the same transaction as the payment
  *    row. A payment whose amount doesn't match the saved total, or that arrives for an order no
  *    longer Accepted, is recorded with a problem for Attila and the status doesn't move.
+ *  - SCRUM-84: Paid issues the order's receipt (and its email) in the same transaction; each
+ *    refund issues a credit note, and a refund in full moves the order to Refunded.
  */
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { Db, Queryable } from '../db/db.js';
@@ -18,6 +20,7 @@ import { log } from '../log.js';
 import { TransitionError, transitionWith } from '../orders/transitions.js';
 import { enqueueOrderEmail } from '../email/outbox.js';
 import type { OrderStatus } from '../orders/model.js';
+import { DEFAULT_SELLER, issueCreditNote, issueReceipt, type Seller } from '../documents/documents.js';
 import type { Charge, CheckoutSession, FormValue, StripeApi, StripeEvent } from './stripe.js';
 
 export interface PaymentDeps {
@@ -25,6 +28,8 @@ export interface PaymentDeps {
   stripe: StripeApi;
   isProduction: boolean;
   now: () => Date;
+  /** SCRUM-84: who issues receipts and credit notes. Default: DEFAULT_SELLER (no ABN yet). */
+  seller?: Seller;
 }
 
 export type PaymentSource = 'return' | 'webhook' | 'poller' | 'test';
@@ -189,7 +194,7 @@ export async function applySession(deps: PaymentDeps, session: CheckoutSession, 
         : order.status !== 'accepted'
           ? `order_${order.status}`
           : null;
-    const { rows: inserted } = await q.query(
+    const { rows: inserted } = await q.query<{ id: string }>(
       `INSERT INTO payments (order_id, checkout_session_id, payment_intent_id, amount_cents, currency, fee_cents, paid_at,
                              recorded_at, source, livemode, problem, refunded_cents)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
@@ -219,27 +224,54 @@ export async function applySession(deps: PaymentDeps, session: CheckoutSession, 
       actor: 'stripe',
       note: `Paid ${dollars(amount)} by card (Stripe ${pi.id}, via ${source}).`,
     });
+    // SCRUM-84: the receipt and its email, with the Paid.
+    await issueReceipt(q, { orderId: order!.id, paymentId: String(inserted[0]!.id), seller: deps.seller ?? DEFAULT_SELLER, now });
     log('payment_applied', { reference: order!.reference, source });
     return 'paid';
   });
 }
 
-/** charge.refunded: records the refunded total against the payment. Nothing else changes. */
+/** Statuses a refund in full moves to Refunded (an order with a receipt: it was paid). */
+const REFUNDABLE: ReadonlySet<OrderStatus> = new Set(['paid', 'in_queue', 'regritted', 'posted_back', 'completed', 'withdrawn']);
+
+/**
+ * charge.refunded: records the refunded total against the payment. SCRUM-84: the newly refunded
+ * part gets a credit note against the receipt (and the "Refund issued" email); refunded in full,
+ * the order moves to Refunded. A flagged payment that was never applied has no receipt, so only
+ * the amount is recorded.
+ */
 export async function recordRefund(deps: PaymentDeps, charge: Charge): Promise<boolean> {
   if (!charge.payment_intent) return false;
-  const { rows } = await deps.db.query<{ order_id: string | null; refunded_cents: number }>(
-    `UPDATE payments SET refunded_cents = $2, refunded_at = $3
-      WHERE payment_intent_id = $1 AND refunded_cents <> $2 RETURNING order_id, refunded_cents`,
-    [charge.payment_intent, charge.amount_refunded, deps.now()],
-  );
-  if (rows[0]?.order_id) {
-    await deps.db.query('INSERT INTO order_notes (order_id, at, author, note) VALUES ($1, $2, $3, $4)', [
-      rows[0].order_id, deps.now(), 'stripe',
-      `Refund recorded from Stripe: ${dollars(charge.amount_refunded)} refunded in total${charge.refunded ? ' (in full)' : ''}.`,
-    ]);
-    log('payment_refund_recorded', { full: charge.refunded });
-  }
-  return rows.length > 0;
+  const now = deps.now();
+  return deps.db.tx(async (q) => {
+    const { rows } = await q.query<{ id: string; order_id: string | null; amount_cents: number; refunded_cents: number }>(
+      'SELECT id, order_id, amount_cents, refunded_cents FROM payments WHERE payment_intent_id = $1 FOR UPDATE',
+      [charge.payment_intent],
+    );
+    const payment = rows[0];
+    if (!payment || Number(payment.refunded_cents) === charge.amount_refunded) return false;
+    const before = Number(payment.refunded_cents);
+    await q.query('UPDATE payments SET refunded_cents = $2, refunded_at = $3 WHERE id = $1', [payment.id, charge.amount_refunded, now]);
+    const full = charge.refunded || charge.amount_refunded >= Number(payment.amount_cents);
+    if (payment.order_id) {
+      await q.query('INSERT INTO order_notes (order_id, at, author, note) VALUES ($1, $2, $3, $4)', [
+        payment.order_id, now, 'stripe',
+        `Refund recorded from Stripe: ${dollars(charge.amount_refunded)} refunded in total${full ? ' (in full)' : ''}.`,
+      ]);
+    }
+    const added = charge.amount_refunded - before;
+    const note = added > 0 ? await issueCreditNote(q, { paymentId: String(payment.id), cents: added, full, seller: deps.seller ?? DEFAULT_SELLER, now }) : null;
+    if (note && full && payment.order_id) {
+      const { rows: o } = await q.query<{ reference: string; status: OrderStatus }>('SELECT reference, status FROM orders WHERE id = $1', [payment.order_id]);
+      if (o[0] && REFUNDABLE.has(o[0].status)) {
+        await transitionWith(q, { isProduction: deps.isProduction, now }, {
+          reference: o[0].reference, to: 'refunded', actor: 'stripe', note: `Refunded in full in Stripe (${dollars(charge.amount_refunded)}).`,
+        });
+      }
+    }
+    log('payment_refund_recorded', { full, creditNote: !!note });
+    return true;
+  });
 }
 
 /** One Stripe event (from the webhook or the poller), applied once. */
@@ -277,7 +309,9 @@ export const REINSTATABLE: ReadonlySet<string> = new Set(['order_lapsed', 'order
  * with his note), the payment is marked reinstated, and a discount code use given back at the
  * lapse is taken again. Refused unless a late payment, not refunded in full, is on the order.
  */
-export async function reinstateLatePayment(db: Db, reference: string, by: string, note: string, deps: { isProduction: boolean; now: Date }): Promise<void> {
+export async function reinstateLatePayment(
+  db: Db, reference: string, by: string, note: string, deps: { isProduction: boolean; now: Date; seller?: Seller },
+): Promise<void> {
   const text = note.trim();
   if (!text) throw new TransitionError(400, 'note_required', 'Say why you’re reinstating it (kept in the history).');
   if (text.length > 2000) throw new TransitionError(400, 'reason_too_long', 'Keep the note under 2000 characters.');
@@ -300,6 +334,8 @@ export async function reinstateLatePayment(db: Db, reference: string, by: string
     });
     await q.query('UPDATE payments SET problem = NULL, reinstated_at = $2, reinstated_by = $3 WHERE id = $1', [payment.id, deps.now, by]);
     await q.query(`UPDATE discount_uses SET state = 'consumed', settled_at = $2 WHERE order_id = $1 AND state = 'released'`, [order.id, deps.now]);
+    // SCRUM-84: the receipt and its email, as for any Paid.
+    await issueReceipt(q, { orderId: order.id, paymentId: String(payment.id), seller: deps.seller ?? DEFAULT_SELLER, now: deps.now });
   });
   log('payment_reinstated', { reference });
 }

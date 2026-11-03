@@ -17,6 +17,7 @@ import {
 import { paddlesAhead, promiseOf } from './queue.js';
 import { describeDiscount, discountCents, type DiscountKind } from './rules.js';
 import { PRICE_PER_PADDLE_CENTS } from './model.js';
+import { documentsOf, KIND_TITLE, orderDocument, type DocumentView } from '../documents/documents.js';
 
 export interface StatusView {
   reference: string;
@@ -48,7 +49,12 @@ export interface StatusView {
    * SCRUM-82: what to pay and whether Pay now shows (Accepted, with payments set up here), and
    * when it was paid. Null before Accept.
    */
-  payment: { amountCents: number; canPay: boolean; paidAt: string | null } | null;
+  payment: { amountCents: number; canPay: boolean; paidAt: string | null; refundedCents: number } | null;
+  /**
+   * SCRUM-84: the order's receipts and credit notes, oldest first. The site links each to its
+   * printable page, /order/document?n=NUMBER#<this status token>.
+   */
+  documents: { number: string; title: string; issuedOn: string }[];
 }
 
 /** SCRUM-83: what the status page says for an order that lapsed unpaid. */
@@ -78,6 +84,7 @@ export interface TokenOrder {
   terms_date: string | null;
   amount_cents: number | null;
   paid_at: Date | null;
+  refunded_cents: number;
 }
 
 /** The order a live status link opens, or null for any bad link (all treated alike). */
@@ -89,6 +96,7 @@ export async function orderForToken(db: Db, token: unknown, now: Date): Promise<
             o.discount_code, o.discount_kind, o.discount_value, o.discount_cents, o.terms_date::text AS terms_date,
             o.amount_cents,
             (SELECT min(pm.paid_at) FROM payments pm WHERE pm.order_id = o.id AND pm.problem IS NULL) AS paid_at,
+            (SELECT coalesce(sum(pm.refunded_cents), 0)::int FROM payments pm WHERE pm.order_id = o.id AND pm.problem IS NULL) AS refunded_cents,
             EXISTS (SELECT 1 FROM reviews r WHERE r.order_id = o.id) AS has_review
        FROM status_tokens t JOIN orders o ON o.id = t.order_id
       WHERE t.token_hash = $1 AND t.revoked_at IS NULL`,
@@ -106,9 +114,10 @@ export async function lookupStatus(db: Db, token: unknown, now: Date, opts: { pa
   const order = await orderForToken(db, token, now);
   if (!order) return null;
 
-  const [history, paddles] = await Promise.all([
+  const [history, paddles, documents] = await Promise.all([
     db.query<{ status: OrderStatus; at: Date }>('SELECT status, at FROM status_history WHERE order_id = $1 ORDER BY at, id', [order.id]),
     db.query<{ brand: string; model: string | null }>('SELECT brand, model FROM paddles WHERE order_id = $1 ORDER BY position', [order.id]),
+    documentsOf(db, order.id),
   ]);
   // SCRUM-83: an order that lapsed unpaid says so (Lapsed after Questions means no reply).
   const label = (status: OrderStatus, previous: OrderStatus | undefined) =>
@@ -137,8 +146,19 @@ export async function lookupStatus(db: Db, token: unknown, now: Date, opts: { pa
             amountCents: Number(order.amount_cents),
             canPay: order.status === 'accepted' && !!opts.paymentsOn,
             paidAt: order.paid_at ? new Date(order.paid_at).toISOString() : null,
+            refundedCents: Number(order.refunded_cents),
           },
+    documents: documents.reverse().map((d) => ({ number: d.number, title: KIND_TITLE[d.kind], issuedOn: d.issuedOn })),
   };
+}
+
+export const DOCUMENT_NUMBER_RE = /^PMP-(INV|CN)-\d{4,}$/;
+
+/** SCRUM-84: one of the order's documents, opened with the order's live status link. */
+export async function lookupDocument(db: Db, token: unknown, number: unknown, now: Date): Promise<DocumentView | null> {
+  const order = await orderForToken(db, token, now);
+  if (!order || typeof number !== 'string' || !DOCUMENT_NUMBER_RE.test(number)) return null;
+  return orderDocument(db, order.id, number);
 }
 
 function discountView(o: TokenOrder, paddles: number): StatusView['discount'] {

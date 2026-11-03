@@ -8,8 +8,9 @@
  *   enquiries  12 months after Rejected, Withdrawn or Lapsed, for orders that were never paid:
  *              the whole order goes, with its HubSpot deal, and its contact if no other order of
  *              that customer is left.
- *   paid       5 years after a paid order's end status (Completed, or Withdrawn after paying): the
- *              whole order goes, the tax record included. The ATO's 5 years run from when the
+ *   paid       5 years after a paid order's end status (Completed, Refunded, or Withdrawn after
+ *              paying): the whole order goes, the tax record (its receipts and credit notes,
+ *              SCRUM-84) included. The ATO's 5 years run from when the
  *              record was made or the transaction completed, whichever is later (checked 30 Oct
  *              2026); not tied to the financial year.
  *
@@ -42,7 +43,7 @@ export const RULE_NAMES = Object.keys(RULES) as Rule[];
 export const HEADS_UP_DAYS = 14;
 
 /** Statuses an order ends in (nothing moves on from them). */
-export const END_STATUSES: ReadonlySet<OrderStatus> = new Set(['completed', 'rejected', 'withdrawn', 'lapsed']);
+export const END_STATUSES: ReadonlySet<OrderStatus> = new Set(['completed', 'rejected', 'withdrawn', 'lapsed', 'refunded']);
 const NOT_GONE_AHEAD: ReadonlySet<OrderStatus> = new Set(['rejected', 'withdrawn', 'lapsed']);
 
 /** YYYY-MM-DD plus whole calendar months (31 Jan + 1 month → 3 Mar, as Date.UTC rolls over). */
@@ -123,7 +124,7 @@ export async function retentionOrders(db: Db, where = 'TRUE', params: unknown[] 
               OR EXISTS (SELECT 1 FROM payments pm WHERE pm.order_id = o.id)) AS ever_paid,
             EXISTS (SELECT 1 FROM photos ph JOIN paddles p ON p.id = ph.paddle_id WHERE p.order_id = o.id) AS has_photos
        FROM orders o
-      WHERE NOT o.is_smoke AND o.status IN ('completed', 'rejected', 'withdrawn', 'lapsed') AND (${where})
+      WHERE NOT o.is_smoke AND o.status IN ('completed', 'rejected', 'withdrawn', 'lapsed', 'refunded') AND (${where})
       ORDER BY o.status_changed_at, o.reference`,
     params,
   );
