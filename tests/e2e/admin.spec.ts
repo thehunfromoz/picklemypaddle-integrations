@@ -93,7 +93,17 @@ test('creates a shared code and a batch of one-per-person codes, then filters th
   const run = Date.now().toString(36).toUpperCase().slice(-6);
   const create = page.locator('form', { has: page.getByRole('button', { name: 'Create codes' }) });
 
+  // Only the fields for the kind chosen show (3 Nov): one per person first, by default.
+  await expect(create.getByLabel(/^How many codes/)).toBeVisible();
+  await expect(create.getByLabel(/^Total uses/)).toBeHidden();
+  await expect(create.getByRole('checkbox', { name: /Once per email/ })).toBeHidden();
+  const radio = create.getByRole('radio', { name: /One per person/ });
+  const box = await radio.boundingBox();
+  const legend = await create.locator('legend').boundingBox();
+  expect(Math.abs(box!.x - legend!.x)).toBeLessThan(8); // left-aligned with its heading
   await create.getByRole('radio', { name: /Shared: one code/ }).check();
+  await expect(create.getByLabel(/^How many codes/)).toBeHidden();
+  await expect(create.getByLabel(/^Total uses/)).toBeVisible();
   await create.getByLabel(/^Prefix/).fill(`e2e${run}`);
   await create.getByLabel('What it gives').selectOption('amount');
   await create.getByLabel(/^How much/).fill('10');

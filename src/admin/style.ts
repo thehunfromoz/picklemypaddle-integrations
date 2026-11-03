@@ -53,7 +53,14 @@ details.action { background: #fff; border: 1px solid var(--line); border-radius:
 details.action summary { cursor: pointer; padding: .7rem .9rem; font-weight: 600; }
 details.action form { padding: 0 .9rem .9rem; display: grid; gap: .6rem; }
 label { display: grid; gap: .2rem; font-size: .95rem; }
-label.check { display: flex; gap: .4rem; align-items: center; }
+label.check { display: flex; gap: .5rem; align-items: center; justify-content: flex-start; }
+label.check input { width: auto; flex: none; margin: 0; }
+fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: .3rem; }
+legend { font-size: .95rem; padding: 0; margin-bottom: .2rem; }
+/* SCRUM-63 (3 Nov): the codes form shows only the fields for the kind of code chosen. No script:
+   the admin's CSP allows none, so :has() does it; the server ignores the hidden fields anyway. */
+form:has(input[name="mode"][value="shared"]:checked) .personal-only,
+form:has(input[name="mode"][value="personal"]:checked) .shared-only { display: none; }
 input, textarea, select { font: inherit; padding: .5rem .6rem; border: 1px solid #b8bfcc; border-radius: .35rem; width: 100%; background: #fff; color: inherit; }
 textarea { min-height: 5rem; }
 button { font: inherit; font-weight: 600; padding: .6rem 1rem; border: 0; border-radius: .4rem; background: var(--blue); color: #fff; cursor: pointer; justify-self: start; min-height: 2.75rem; }
