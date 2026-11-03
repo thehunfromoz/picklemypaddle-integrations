@@ -56,7 +56,7 @@ ${flashBox(flash)}
   <label>Prefix (letters and digits, up to 20)
     <input name="prefix" required maxlength="20" pattern="[A-Za-z0-9]{1,20}" autocomplete="off" autocapitalize="characters"></label>
   <p class="small">One per person: <strong>PREFIX-XXXXXXXX</strong> (8 random characters added), one use each, once per email. Shared: the code is <strong>exactly the prefix</strong> (at least 3 characters).</p>
-  <label>How many codes (one per person only; 1 to ${MAX_BATCH})
+  <label class="personal-only">How many codes (1 to ${MAX_BATCH})
     <input name="count" inputmode="numeric" pattern="\\d{1,3}" value="1"></label>
   <label>What it gives
     <select name="kind" required>
@@ -66,9 +66,10 @@ ${flashBox(flash)}
     </select></label>
   <label>How much: paddles (free re-grit), dollars (A$ off) or per cent (% off)
     <input name="value" required inputmode="decimal" pattern="\\d{1,5}(\\.\\d{1,2})?"></label>
-  <label>Total uses (shared only; one-per-person codes are always 1)
+  <label class="shared-only">Total uses
     <input name="maxUses" inputmode="numeric" pattern="\\d{1,5}" value="10"></label>
-  <label class="check"><input type="checkbox" name="onePerEmail" value="yes" checked> Once per email (shared only; one-per-person codes always are)</label>
+  <label class="check shared-only"><input type="checkbox" name="onePerEmail" value="yes" checked> Once per email</label>
+  <p class="small personal-only">Each one-per-person code can be used once, by one email address.</p>
   <label>Last day valid (optional)<input type="date" name="expiresOn" min="${today}"></label>
   <label>Note (optional, only you see it), e.g. “Launch offer”<input name="note" maxlength="${MAX_CODE_NOTE}"></label>
   <button type="submit">Create codes</button>
