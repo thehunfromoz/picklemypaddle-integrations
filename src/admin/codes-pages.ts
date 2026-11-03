@@ -3,7 +3,7 @@
  * one-person code), a one-click "free re-grit for one person", deactivate/reactivate, and each
  * code's uses by order reference only.
  */
-import { GENERATED_PREFIX, MAX_BATCH, MAX_CODE_NOTE, type CodeUse, type DiscountCode } from '../orders/discounts.js';
+import { CODE_STATES, MAX_BATCH, MAX_CODE_NOTE, stateOf, type CodeState, type CodeUse, type DiscountCode } from '../orders/discounts.js';
 import { describeDiscount } from '../orders/rules.js';
 import { calendarDay, html, type Html, when } from './html.js';
 import { layout, type Flash, type PageContext } from './pages.js';
@@ -12,19 +12,32 @@ const csrfField = (ctx: PageContext) => html`<input type="hidden" name="_csrf" v
 const flashBox = (flash?: Flash) =>
   flash ? html`<p class="flash ${flash.kind}" role="${flash.kind === 'error' ? 'alert' : 'status'}">${flash.text}</p>` : '';
 
-function state(c: DiscountCode, today: string): Html {
-  if (!c.active) return html`<span class="badge">Inactive</span>`;
-  if (c.expiresOn !== null && today > c.expiresOn) return html`<span class="badge overdue">Expired</span>`;
-  if (c.used >= c.maxUses) return html`<span class="badge due">Used up</span>`;
-  return html`<span class="badge">Active</span>`;
-}
+const STATE_LABELS: Record<CodeState, string> = { active: 'Active', used_up: 'Used up', expired: 'Expired', inactive: 'Inactive' };
+const STATE_BADGE: Record<CodeState, string> = { active: '', used_up: 'due', expired: 'overdue', inactive: '' };
+const state = (c: DiscountCode, today: string): Html => {
+  const s = stateOf(c, today);
+  return html`<span class="badge${STATE_BADGE[s] ? ` ${STATE_BADGE[s]}` : ''}">${STATE_LABELS[s]}</span>`;
+};
 
 const facts = (c: DiscountCode) =>
   html`${describeDiscount(c)} · ${c.used} of ${c.maxUses} used${c.expiresOn ? ` · until ${calendarDay(c.expiresOn)}` : ''}${
-    c.onePerEmail ? ' · once per email' : ''
+    c.onePerEmail && c.maxUses > 1 ? ' · once per email' : ''
   }`;
 
-export function codesPage(ctx: PageContext, codes: DiscountCode[], today: string, flash?: Flash): string {
+export interface CodesFilter {
+  prefix: string;
+  state: CodeState | '';
+}
+
+export function codesPage(
+  ctx: PageContext,
+  codes: DiscountCode[],
+  today: string,
+  filter: CodesFilter,
+  prefixes: string[],
+  flash?: Flash,
+): string {
+  const opt = (value: string, label: string, current: string) => html`<option value="${value}"${value === current ? html` selected` : ''}>${label}</option>`;
   return layout(
     ctx,
     'Discount codes',
@@ -33,26 +46,18 @@ ${flashBox(flash)}
 <h1>Discount codes</h1>
 <p class="small">Direct orders only. A code always comes off the re-grit, never off return postage. A use is held when the order is placed, used up when it’s paid, and given back if the order is rejected, withdrawn or lapses unpaid.</p>
 
-<details class="action" open><summary>Free re-grit codes, one per person</summary>
+<details class="action" open><summary>Create codes</summary>
 <form method="post" action="/admin/codes">
   ${csrfField(ctx)}
-  <input type="hidden" name="kind" value="free">
-  <input type="hidden" name="value" value="1">
-  <input type="hidden" name="maxUses" value="1">
-  <input type="hidden" name="onePerEmail" value="yes">
-  <p class="small">Each is a random, unguessable ${GENERATED_PREFIX}XXXXXXXX code: one paddle free, one use; return postage is still paid. Send each to one person from info@, and note on the code who it went to.</p>
-  <label>How many codes (1 to ${MAX_BATCH})<input name="count" required inputmode="numeric" pattern="\\d{1,2}" value="1"></label>
-  <label>Note (optional, only you see it), e.g. “Launch offer”<input name="note" maxlength="500"></label>
-  <label>Last day they can be used (optional)<input type="date" name="expiresOn" min="${today}"></label>
-  <button type="submit">Generate codes</button>
-</form></details>
-
-<details class="action"><summary>Create a code</summary>
-<p class="small">For marketing campaigns: a shared code such as SPRING10, capped at a number of uses.</p>
-<form method="post" action="/admin/codes">
-  ${csrfField(ctx)}
-  <label>Code (leave blank to generate a random ${GENERATED_PREFIX}XXXXXXXX one; letters, digits and hyphens)
-    <input name="code" maxlength="32" pattern="[A-Za-z0-9][A-Za-z0-9\\-]{1,30}[A-Za-z0-9]" autocomplete="off"></label>
+  <fieldset><legend>Kind of code</legend>
+    <label class="check"><input type="radio" name="mode" value="personal" checked> One per person: unique codes, each used once</label>
+    <label class="check"><input type="radio" name="mode" value="shared"> Shared: one code, used by many people</label>
+  </fieldset>
+  <label>Prefix (letters and digits, up to 20)
+    <input name="prefix" required maxlength="20" pattern="[A-Za-z0-9]{1,20}" autocomplete="off" autocapitalize="characters"></label>
+  <p class="small">One per person: <strong>PREFIX-XXXXXXXX</strong> (8 random characters added), one use each, once per email. Shared: the code is <strong>exactly the prefix</strong> (at least 3 characters).</p>
+  <label>How many codes (one per person only; 1 to ${MAX_BATCH})
+    <input name="count" inputmode="numeric" pattern="\\d{1,3}" value="1"></label>
   <label>What it gives
     <select name="kind" required>
       <option value="free">Free re-grit for up to N paddles</option>
@@ -61,14 +66,20 @@ ${flashBox(flash)}
     </select></label>
   <label>How much: paddles (free re-grit), dollars (A$ off) or per cent (% off)
     <input name="value" required inputmode="decimal" pattern="\\d{1,5}(\\.\\d{1,2})?"></label>
-  <label>Total uses<input name="maxUses" required inputmode="numeric" pattern="\\d{1,5}" value="1"></label>
-  <label>Last day it can be used (optional)<input type="date" name="expiresOn" min="${today}"></label>
-  <label class="check"><input type="checkbox" name="onePerEmail" value="yes" checked> Once per email address</label>
-  <label>Note (optional, only you see it)<input name="note" maxlength="500"></label>
-  <button type="submit">Create code</button>
+  <label>Total uses (shared only; one-per-person codes are always 1)
+    <input name="maxUses" inputmode="numeric" pattern="\\d{1,5}" value="10"></label>
+  <label class="check"><input type="checkbox" name="onePerEmail" value="yes" checked> Once per email (shared only; one-per-person codes always are)</label>
+  <label>Last day valid (optional)<input type="date" name="expiresOn" min="${today}"></label>
+  <label>Note (optional, only you see it), e.g. “Launch offer”<input name="note" maxlength="${MAX_CODE_NOTE}"></label>
+  <button type="submit">Create codes</button>
 </form></details>
 
-<h2>Codes</h2>
+<h2>Codes <span class="small">(${codes.length})</span></h2>
+<form class="inline" method="get" action="/admin/codes">
+  <label>Prefix <select name="prefix">${opt('', 'All', filter.prefix)}${prefixes.map((p) => opt(p, p, filter.prefix))}</select></label>
+  <label>State <select name="state">${opt('', 'All', filter.state)}${CODE_STATES.map((s) => opt(s, STATE_LABELS[s], filter.state))}</select></label>
+  <button type="submit" class="secondary">Show</button>
+</form>
 ${
   codes.length
     ? html`<ul class="orders">${codes.map(
@@ -76,7 +87,7 @@ ${
           c.note ? html` · ${c.note}` : ''
         }</span></span>${state(c, today)}</a></li>`,
       )}</ul>`
-    : html`<p class="empty">No codes yet.</p>`
+    : html`<p class="empty">No codes${filter.prefix || filter.state ? ' match' : ' yet'}.</p>`
 }`,
   );
 }

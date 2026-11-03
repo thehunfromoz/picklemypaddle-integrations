@@ -212,14 +212,18 @@ admin and HubSpot all show the saved figures.
 
 ## Discount codes (SCRUM-63, decided 30 Oct and 2 Nov 2026)
 
-Codes are managed in admin (**Discount codes** in the bar). **Launch offer (decided 2 Nov 2026):**
-unique, unguessable one-person codes, `FREE-` plus 8 easy-read characters, generated up to 20 at a
-time ("Free re-grit codes, one per person"); note on each code who it went to. **Shared codes**
-such as `SPRING10` with a cap on total uses are for later marketing campaigns. A code gives a **free re-grit for up to
+Codes are managed in admin (**Discount codes** in the bar), with **one form** (redesigned 3 Nov
+2026): a prefix (1 to 20 letters and digits), what the code gives, and the kind of code:
+**one per person**, 1 to 100 unique codes `PREFIX-XXXXXXXX` (8 easy-read random characters), each
+used once and once per email (the launch offer: 10 of them), or **shared**, one code that is
+exactly the prefix (e.g. `SPRING10`) with its own total uses and once-per-email choice (marketing
+campaigns). Either kind can give any benefit. Each code's note (who it went to) is editable; the
+list filters by prefix and state (active, used up, expired, inactive). A code gives a **free re-grit for up to
 N paddles**, **A$x off** or **x% off** the order's re-grit, never return postage, so every order
 still pays something (Accept refuses an A$0 total). Direct orders only.
 
-- **Format:** 3 to 32 letters, digits and hyphens; matched ignoring case and spaces.
+- **Format:** letters and digits, plus the hyphen in generated codes (3 to 32 long); matched ignoring
+  case and spaces.
 - **`POST /api/discount-codes/check`** `{ code, email? }` → `{ valid: true, code, kind, value,
   label }` or `{ valid: false, message }`. Every refusal (unknown, inactive, expired, used up,
   already used by this email) gets the same message. Rate-limited per IP; refusals are logged as

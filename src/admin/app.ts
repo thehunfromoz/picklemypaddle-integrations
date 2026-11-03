@@ -36,7 +36,7 @@ import { queueReviewReminder } from '../orders/review-reminder.js';
 import { TransitionError, transitionOrder, type TransitionRequest } from '../orders/transitions.js';
 import { codePage, codesPage } from './codes-pages.js';
 import { reinstateLatePayment } from '../payments/payments.js';
-import { createCode, DiscountCodeError, findCode, generateCodes, listCodes, setCodeActive, setCodeNote, usesOf } from '../orders/discounts.js';
+import { CODE_STATES, codePrefixes, createCodes, DiscountCodeError, findCode, listCodes, setCodeActive, setCodeNote, usesOf, type CodeState } from '../orders/discounts.js';
 import type { DiscountKind } from '../orders/rules.js';
 import { sydneyDate } from '../orders/dates.js';
 import { addNote, listOrders, loadOrder, MAX_NOTE, outboxRow, photoPath } from './data.js';
@@ -85,7 +85,7 @@ const DONE: Record<string, string> = {
   created: 'Code created. Copy it from the heading.',
   deactivated: 'Deactivated: new orders can’t use it.',
   reactivated: 'Reactivated.',
-  generated: 'Codes generated: they’re at the top of the list.',
+  generated: 'Codes created: the list shows just this prefix.',
   noted: 'Note saved.',
   reinstated: 'Reinstated: the order is Paid, with the late payment as its payment.',
 };
@@ -316,16 +316,24 @@ export function createAdminApp(deps: AdminDeps) {
   });
 
   // ── Discount codes (SCRUM-63) ─────────────────────────────────────────────
-  const codesList = async (c: Context<Env>, flash?: Flash, status: 200 | 400 = 200) =>
-    c.html(codesPage(ctx(c), await listCodes(deps.db), sydneyDate(now()), flash), status);
+  const codesList = async (c: Context<Env>, flash?: Flash, status: 200 | 400 = 200) => {
+    const today = sydneyDate(now());
+    const prefix = (c.req.query('prefix') ?? '').toUpperCase();
+    const st = c.req.query('state') ?? '';
+    const filter = { prefix: /^[A-Z0-9]{1,20}$/.test(prefix) ? prefix : '', state: (CODE_STATES as readonly string[]).includes(st) ? (st as CodeState) : ('' as const) };
+    const codes = await listCodes(deps.db, { prefix: filter.prefix, state: filter.state || undefined, today });
+    return c.html(codesPage(ctx(c), codes, today, filter, await codePrefixes(deps.db), flash), status);
+  };
 
   app.get('/admin/codes', (c) => {
     const done = DONE[c.req.query('done') ?? ''];
     return codesList(c, done ? { kind: 'done', text: done } : undefined);
   });
 
+  // SCRUM-63, redesigned 3 Nov 2026: one form for one-per-person batches and shared codes.
   app.post('/admin/codes', async (c) => {
     const body = await c.req.parseBody();
+    const mode = field(body, 'mode') === 'shared' ? 'shared' : 'personal';
     const kind = field(body, 'kind');
     if (kind !== 'free' && kind !== 'amount' && kind !== 'percent') return codesList(c, { kind: 'error', text: 'Choose what the code gives.' }, 400);
     const rawValue = field(body, 'value') ?? '';
@@ -333,44 +341,31 @@ export function createAdminApp(deps: AdminDeps) {
     if (value === undefined) {
       return codesList(c, { kind: 'error', text: kind === 'amount' ? 'The amount must be dollars, like 10 or 12.50.' : 'How much must be a whole number.' }, 400);
     }
-    const maxUses = /^\d{1,5}$/.test(field(body, 'maxUses') ?? '') ? Number(field(body, 'maxUses')) : NaN;
-    const count = field(body, 'count');
+    const whole = (name: string, fallback: number) => {
+      const v = field(body, name);
+      return v === undefined ? fallback : /^\d{1,5}$/.test(v) ? Number(v) : NaN;
+    };
     try {
-      if (count !== undefined && count !== '1') {
-        if (field(body, 'code')) return codesList(c, { kind: 'error', text: 'Several codes are always generated: leave the code blank.' }, 400);
-        const made = await generateCodes(
-          deps.db,
-          {
-            kind: kind as DiscountKind,
-            value,
-            maxUses: /^\d{1,5}$/.test(field(body, 'maxUses') ?? '') ? Number(field(body, 'maxUses')) : NaN,
-            expiresOn: field(body, 'expiresOn') ?? null,
-            onePerEmail: field(body, 'onePerEmail') === 'yes',
-            note: field(body, 'note') ?? null,
-          },
-          /^\d{1,2}$/.test(count) ? Number(count) : NaN,
-          c.get('admin').login,
-          now(),
-        );
-        log('admin_discount_codes_generated', { count: made.length, kind });
-        return c.redirect('/admin/codes?done=generated', 303);
-      }
-      const created = await createCode(
+      const made = await createCodes(
         deps.db,
         {
-          code: field(body, 'code'),
-          kind: kind as DiscountKind,
+          mode,
+          prefix: field(body, 'prefix') ?? '',
+          count: whole('count', 1),
+          kind,
           value,
-          maxUses,
-          expiresOn: field(body, 'expiresOn') ?? null,
+          maxUses: whole('maxUses', 1),
           onePerEmail: field(body, 'onePerEmail') === 'yes',
+          expiresOn: field(body, 'expiresOn') ?? null,
           note: field(body, 'note') ?? null,
         },
         c.get('admin').login,
         now(),
       );
-      log('admin_discount_code_created', { id: Number(created.id), kind: created.kind });
-      return c.redirect(`/admin/codes/${created.id}?done=created`, 303);
+      log('admin_discount_codes_created', { mode, count: made.length, kind });
+      if (made.length === 1) return c.redirect(`/admin/codes/${made[0]!.id}?done=created`, 303);
+      const prefix = made[0]!.code.split('-')[0]!;
+      return c.redirect(`/admin/codes?prefix=${encodeURIComponent(prefix)}&done=generated`, 303);
     } catch (err) {
       if (err instanceof DiscountCodeError) return codesList(c, { kind: 'error', text: err.message }, 400);
       throw err;
