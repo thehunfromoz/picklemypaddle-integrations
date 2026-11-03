@@ -58,8 +58,8 @@ describe('discount rules (shared with the site)', () => {
     expect(describeDiscount({ kind: 'percent', value: 20 })).toBe('20% off the re-grit');
   });
 
-  it('generates FREE- plus 8 easy-read characters', () => {
-    for (let i = 0; i < 50; i++) expect(generateCode()).toMatch(/^FREE-[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}$/);
+  it('generates PREFIX- plus 8 easy-read characters', () => {
+    for (let i = 0; i < 50; i++) expect(generateCode('LAUNCH')).toMatch(/^LAUNCH-[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}$/);
   });
 });
 
@@ -298,68 +298,85 @@ describe('discount codes in the service', () => {
   });
 });
 
-describe('discount codes admin page', () => {
+describe('discount codes admin page (one form, decided 3 Nov 2026)', () => {
   let t: TestApp;
   afterEach(async () => t?.close());
 
-  it('creates a typed code, generates a one-person one, deactivates, and lists uses by reference', async () => {
+  const form = (f: Record<string, string>) => ({ kind: 'free', value: '1', ...f });
+
+  it('makes one-per-person codes with any benefit, in batches up to 100, with the prefix', async () => {
     t = await makeApp();
     const admin = await makeAdmin(t);
     expect((await admin.get('/admin/codes')).status).toBe(200);
 
-    let r = await admin.post('/admin/codes', { code: 'launch10', kind: 'free', value: '1', maxUses: '10', onePerEmail: 'yes', expiresOn: '' });
+    const r = await admin.post('/admin/codes', form({ mode: 'personal', prefix: 'launch', count: '10', note: 'Launch offer' }));
     expect(r.status).toBe(303);
-    const launch = r.headers.get('location')!;
-    expect(launch).toMatch(/^\/admin\/codes\/\d+\?done=created$/);
+    expect(r.headers.get('location')).toBe('/admin/codes?prefix=LAUNCH&done=generated');
+    let codes = await listCodes(t.db);
+    expect(codes).toHaveLength(10);
+    expect(new Set(codes.map((c) => c.code)).size).toBe(10);
+    for (const c of codes) {
+      expect(c.code).toMatch(/^LAUNCH-[A-Z2-9]{8}$/);
+      expect(c).toMatchObject({ kind: 'free', value: 1, maxUses: 1, onePerEmail: true, note: 'Launch offer' });
+    }
 
-    r = await admin.post('/admin/codes', { kind: 'free', value: '1', maxUses: '1', onePerEmail: 'yes', note: 'Sam from the club' });
+    // Not only free: A$15 off, one per person; maxUses and once-per-email from the form are ignored.
+    await admin.post('/admin/codes', form({ mode: 'personal', prefix: 'VIP', count: '3', kind: 'amount', value: '15', maxUses: '50', onePerEmail: '' }));
+    codes = await listCodes(t.db, { prefix: 'VIP' });
+    expect(codes).toHaveLength(3);
+    for (const c of codes) expect(c).toMatchObject({ kind: 'amount', value: 1500, maxUses: 1, onePerEmail: true });
+
+    expect((await admin.post('/admin/codes', form({ mode: 'personal', prefix: 'BIG', count: '100' }))).status).toBe(303);
+    expect(await listCodes(t.db, { prefix: 'BIG' })).toHaveLength(100);
+    expect((await admin.post('/admin/codes', form({ mode: 'personal', prefix: 'BIG', count: '101' }))).status).toBe(400);
+  });
+
+  it('makes a shared code that is exactly the prefix, with its uses and once-per-email setting', async () => {
+    t = await makeApp();
+    const admin = await makeAdmin(t);
+    const r = await admin.post('/admin/codes', form({ mode: 'shared', prefix: 'spring10', kind: 'percent', value: '10', maxUses: '25', onePerEmail: '' }));
     expect(r.status).toBe(303);
-    const codes = await listCodes(t.db);
-    expect(codes.map((c) => c.code)).toContain('LAUNCH10');
-    expect(codes.find((c) => c.code.startsWith('FREE-'))).toMatchObject({ maxUses: 1, note: 'Sam from the club' });
+    expect(r.headers.get('location')).toMatch(/^\/admin\/codes\/\d+\?done=created$/);
+    expect((await listCodes(t.db))[0]).toMatchObject({ code: 'SPRING10', kind: 'percent', value: 10, maxUses: 25, onePerEmail: false });
 
-    // Refused: duplicate, bad amount, bad code.
     for (const bad of [
-      { code: 'LAUNCH10', kind: 'free', value: '1', maxUses: '1' },
-      { kind: 'amount', value: 'ten', maxUses: '1' },
-      { code: '-X-', kind: 'percent', value: '10', maxUses: '1' },
-      { kind: 'percent', value: '150', maxUses: '1' },
-    ] as Record<string, string>[]) expect((await admin.post('/admin/codes', bad)).status, JSON.stringify(bad)).toBe(400);
+      form({ mode: 'shared', prefix: 'SPRING10', maxUses: '5' }), // exists
+      form({ mode: 'shared', prefix: 'AB', maxUses: '5' }), // too short to share
+      form({ mode: 'personal', prefix: 'HAS-HYPHEN' }),
+      form({ mode: 'personal', prefix: 'A'.repeat(21) }),
+      form({ mode: 'personal', prefix: 'OK', kind: 'amount', value: 'ten' }),
+      form({ mode: 'personal', prefix: 'OK', kind: 'percent', value: '150' }),
+    ]) expect((await admin.post('/admin/codes', bad)).status, JSON.stringify(bad)).toBe(400);
+  });
+
+  it('filters the list by prefix and state, lists uses by reference, edits notes and deactivates', async () => {
+    t = await makeApp();
+    const admin = await makeAdmin(t);
+    await admin.post('/admin/codes', form({ mode: 'shared', prefix: 'LAUNCH10', maxUses: '10' }));
+    await admin.post('/admin/codes', form({ mode: 'personal', prefix: 'FREE', count: '2' }));
+    const [shared] = await listCodes(t.db, { prefix: 'LAUNCH10' });
 
     const { reference } = (await (await post(t, await orderForm(t, { overrides: { discountCode: 'LAUNCH10' } }))).json()) as { reference: string };
-    const page = await (await admin.get(launch.split('?')[0]!)).text();
+    const page = await (await admin.get(`/admin/codes/${shared!.id}`)).text();
     expect(page).toContain(reference);
     expect(page).toContain('Held (not paid yet)');
     expect(page).not.toContain('player@test.picklemypaddle.com');
 
-    r = await admin.post(`${launch.split('?')[0]}/active`, { active: 'no' });
-    expect(r.status).toBe(303);
-    expect((await checkCode(t.db, 'LAUNCH10', { now: t.clock.now })).ok).toBe(false);
+    const free = await listCodes(t.db, { prefix: 'FREE' });
+    expect((await admin.post(`/admin/codes/${free[0]!.id}/note`, { note: 'Sam, Olympic Park club' })).status).toBe(303);
+    expect(await (await admin.get(`/admin/codes/${free[0]!.id}`)).text()).toContain('value="Sam, Olympic Park club"');
+    expect((await admin.post(`/admin/codes/${free[1]!.id}/active`, { active: 'no' })).status).toBe(303);
+    expect((await checkCode(t.db, free[1]!.code, { now: t.clock.now })).ok).toBe(false);
 
-    let order = await (await admin.get(`/admin/orders/${reference}`)).text();
-    expect(order).toContain('LAUNCH10: Free re-grit for 1 paddle');
-    expect(order).toContain('about −A$60; fixed at Accept');
+    const list = async (q: string) => [...(await (await admin.get(`/admin/codes${q}`)).text()).matchAll(/<span class="ref">([A-Z0-9-]+)<\/span>/g)].map((m) => m[1]);
+    expect(await list('?prefix=FREE')).toHaveLength(2);
+    expect(await list('?state=inactive')).toEqual([free[1]!.code]);
+    expect((await list('?prefix=FREE&state=active'))).toEqual([free[0]!.code]);
+    expect(await list('?prefix=LAUNCH10')).toEqual(['LAUNCH10']);
+    expect(await (await admin.get('/admin/codes')).text()).toContain('<option value="FREE">FREE</option>');
+
     await transitionOrder({ db: t.db, isProduction: false, now: t.clock.now }, { reference, to: 'accepted', actor: 'admin' });
-    order = await (await admin.get(`/admin/orders/${reference}`)).text();
+    const order = await (await admin.get(`/admin/orders/${reference}`)).text();
     expect(order).toContain('LAUNCH10: Free re-grit for 1 paddle = <strong>−A$60</strong> off the re-grit');
-  });
-
-  it('generates 10 unique one-person launch codes at once, and notes who each went to', async () => {
-    t = await makeApp();
-    const admin = await makeAdmin(t);
-    const r = await admin.post('/admin/codes', { kind: 'free', value: '1', maxUses: '1', onePerEmail: 'yes', count: '10', note: 'Launch offer' });
-    expect(r.status).toBe(303);
-    expect(r.headers.get('location')).toBe('/admin/codes?done=generated');
-    const codes = await listCodes(t.db);
-    expect(codes).toHaveLength(10);
-    expect(new Set(codes.map((c) => c.code)).size).toBe(10);
-    for (const c of codes) expect(c).toMatchObject({ kind: 'free', value: 1, maxUses: 1, onePerEmail: true, note: 'Launch offer' });
-    expect((await admin.post('/admin/codes', { kind: 'free', value: '1', maxUses: '1', count: '21' })).status).toBe(400);
-    expect((await admin.post('/admin/codes', { code: 'TYPED', kind: 'free', value: '1', maxUses: '1', count: '2' })).status).toBe(400);
-
-    const id = codes[0]!.id;
-    expect((await admin.post(`/admin/codes/${id}/note`, { note: 'Sam, Olympic Park club' })).status).toBe(303);
-    expect((await listCodes(t.db)).find((c) => c.id === id)!.note).toBe('Sam, Olympic Park club');
-    expect(await (await admin.get(`/admin/codes/${id}`)).text()).toContain('value="Sam, Olympic Park club"');
   });
 });

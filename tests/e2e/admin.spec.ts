@@ -85,39 +85,45 @@ test('refuses a rejection without a reason, in the browser and on the server', a
   await expect(page.getByRole('alert')).toContainText('Give the customer a reason');
 });
 
-// SCRUM-63: discount codes, as Attila makes them when someone emails for the launch offer.
-test('creates a shared code and generates a one-person code', async ({ page }) => {
+// SCRUM-63 (one form, decided 3 Nov 2026): a shared code, then a batch of one-per-person codes.
+test('creates a shared code and a batch of one-per-person codes, then filters the list', async ({ page }) => {
   await page.goto('/admin/orders');
   await page.getByRole('link', { name: 'Discount codes' }).click();
   await expect(page.locator('h1')).toHaveText('Discount codes');
+  const run = Date.now().toString(36).toUpperCase().slice(-6);
+  const create = page.locator('form', { has: page.getByRole('button', { name: 'Create codes' }) });
 
-  await summary(page, 'Create a code').click();
-  const create = page.locator('form', { has: page.getByRole('button', { name: 'Create code' }) });
-  const shared = `E2E${Date.now().toString(36).toUpperCase()}`;
-  await create.getByLabel(/^Code/).fill(shared.toLowerCase());
-  await create.getByLabel('What it gives').selectOption('free');
-  await create.getByLabel(/^How much/).fill('1');
-  await create.getByLabel('Total uses').fill('10');
-  await create.getByRole('button', { name: 'Create code' }).click();
+  await create.getByRole('radio', { name: /Shared: one code/ }).check();
+  await create.getByLabel(/^Prefix/).fill(`e2e${run}`);
+  await create.getByLabel('What it gives').selectOption('amount');
+  await create.getByLabel(/^How much/).fill('10');
+  await create.getByLabel(/^Total uses/).fill('25');
+  await page.getByRole('button', { name: 'Create codes' }).click();
   await expect(page.getByRole('status')).toHaveText('Code created. Copy it from the heading.');
-  await expect(page.locator('h1 .ref')).toHaveText(shared);
+  await expect(page.locator('h1 .ref')).toHaveText(`E2E${run}`);
+  await expect(page.getByText('A$10 off the re-grit · 0 of 25 used · once per email')).toBeVisible();
 
   await page.getByRole('link', { name: '← Discount codes' }).click();
-  const batch = `E2E launch ${Date.now().toString(36)}`;
-  await page.getByLabel(/^How many codes/).fill('2');
-  await page.getByLabel(/^Note \(optional/).first().fill(batch);
-  await page.getByRole('button', { name: 'Generate codes' }).click();
-  await expect(page.getByRole('status')).toHaveText('Codes generated: they’re at the top of the list.');
-  const generated = page.locator('ul.orders a', { hasText: batch });
-  await expect(generated).toHaveCount(2);
-  await generated.first().click();
-  await expect(page.locator('h1 .ref')).toHaveText(/^FREE-[A-Z2-9]{8}$/);
-  await expect(page.getByText('Free re-grit for 1 paddle · 0 of 1 used')).toBeVisible();
+  await create.getByRole('radio', { name: /One per person/ }).check();
+  await create.getByLabel(/^Prefix/).fill(`P${run}`);
+  await create.getByLabel(/^How many codes/).fill('3');
+  await create.getByLabel('What it gives').selectOption('percent');
+  await create.getByLabel(/^How much/).fill('20');
+  await create.getByLabel(/^Note/).fill('E2E batch');
+  await page.getByRole('button', { name: 'Create codes' }).click();
+  await expect(page.getByRole('status')).toHaveText('Codes created: the list shows just this prefix.');
+  const listed = page.locator('ul.orders a');
+  await expect(listed).toHaveCount(3);
+  await expect(listed.first().locator('.ref')).toHaveText(new RegExp(`^P${run}-[A-Z2-9]{8}$`));
+  await expect(listed.first()).toContainText('20% off the re-grit · 0 of 1 used');
+
+  await listed.first().click();
   await page.getByLabel(/^Note \(only you see it\)/).fill('E2E player');
   await page.getByRole('button', { name: 'Save note' }).click();
   await expect(page.getByRole('status')).toHaveText('Note saved.');
-
   await page.getByRole('button', { name: 'Deactivate' }).click();
-  await expect(page.getByRole('status')).toHaveText('Deactivated: new orders can’t use it.');
   await expect(page.locator('h1 .badge')).toHaveText('Inactive');
+
+  await page.goto(`/admin/codes?prefix=P${run}&state=inactive`);
+  await expect(page.locator('ul.orders a')).toHaveCount(1);
 });
