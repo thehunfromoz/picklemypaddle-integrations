@@ -198,6 +198,14 @@ const schema = z
     ),
     /** The business's ABN, shown on receipts and invoices (11 digits; spaces allowed). */
     BUSINESS_ABN: optional(z.string().refine(isValidAbn, { message: 'must be a valid 11-digit ABN' })),
+    /**
+     * SCRUM-84: the seller's name on receipts, invoices and credit notes (decided 3 Nov 2026: a
+     * setting, "PickleMyPaddle", registered as a business name with ASIC alongside the ABN). Each
+     * document keeps the name it was issued with.
+     */
+    BUSINESS_NAME: z
+      .preprocess((v) => (typeof v === 'string' && v.trim() ? v.trim() : 'PickleMyPaddle'), z.string().max(100, 'must be at most 100 characters'))
+      .refine((v) => !/\[To confirm/i.test(v), { message: 'still says [To confirm…]' }),
   })
   .superRefine((c, ctx) => {
     if (c.APP_ENV === 'production') {

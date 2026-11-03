@@ -71,4 +71,33 @@ form.inline { display: inline; }
 @media (min-width: 48rem) {
   .paddles { grid-template-columns: 1fr 1fr; }
 }
+/* SCRUM-84: document lists and the printable document. */
+table.list, table.doc-lines { width: 100%; border-collapse: collapse; background: #fff; }
+table.list th, table.list td, table.doc-lines th, table.doc-lines td { text-align: left; padding: .45rem .6rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+.num { text-align: right !important; white-space: nowrap; }
+article.doc { background: #fff; border: 1px solid var(--line); border-radius: .5rem; padding: 1.5rem; max-width: 46rem; color: #111; }
+.doc-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 1rem; }
+.doc-head h1 { margin: 0 0 .5rem; }
+.doc-meta { display: grid; grid-template-columns: max-content 1fr; gap: .1rem .8rem; margin: 0; }
+.doc-meta dt { color: var(--muted); }
+.doc-meta dd { margin: 0; }
+.doc-seller { text-align: right; }
+.doc-buyer { margin: 1.25rem 0; }
+table.doc-lines tfoot .total th, table.doc-lines tfoot .total td { font-weight: 700; border-bottom: 2px solid #111; }
+table.doc-lines td.gst { border-bottom: 0; }
+.doc-paid { font-weight: 600; }
+code { overflow-wrap: anywhere; word-break: break-all; }
+article.doc { overflow-wrap: anywhere; }
+@media (max-width: 30rem) {
+  table.list { display: block; overflow-x: auto; }
+  article.doc { padding: 1rem; }
+  table.list th, table.list td, table.doc-lines th, table.doc-lines td { padding: .35rem .3rem; font-size: .9rem; }
+  .doc-seller { text-align: left; }
+}
+.doc-test { background: var(--test-bg); color: var(--test); padding: .5rem .8rem; border-radius: .4rem; }
+@media print {
+  header.bar, .no-print { display: none !important; }
+  body, main { background: #fff; margin: 0; padding: 0; }
+  article.doc { border: 0; padding: 0; max-width: none; }
+}
 `;

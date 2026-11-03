@@ -60,7 +60,7 @@ describe(`POST /api/orders/status (${DB_BACKEND})`, () => {
     expect(res.headers.get('referrer-policy')).toBe('no-referrer');
     const view = (await res.json()) as Record<string, unknown>;
     expect(Object.keys(view).sort()).toEqual([
-      'backInPostBy', 'discount', 'history', 'paddles', 'paddlesAhead', 'payment', 'queuePosition', 'reference', 'review', 'status', 'statusLabel', 'test', 'trackingNumber',
+      'backInPostBy', 'discount', 'documents', 'history', 'paddles', 'paddlesAhead', 'payment', 'queuePosition', 'reference', 'review', 'status', 'statusLabel', 'test', 'trackingNumber',
     ]);
     expect(view).toMatchObject({
       reference: order.reference,

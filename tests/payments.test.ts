@@ -155,7 +155,7 @@ describe('paying for an order', () => {
     await setup();
     const { token, reference } = await accepted();
     let view = (await (await api('orders/status', { token })).json()) as { payment: { amountCents: number; canPay: boolean; paidAt: string | null } };
-    expect(view.payment).toEqual({ amountCents: 7170, canPay: true, paidAt: null });
+    expect(view.payment).toEqual({ amountCents: 7170, canPay: true, paidAt: null, refundedCents: 0 });
 
     const s = await startPay(token);
     stripe.pay(s.id);

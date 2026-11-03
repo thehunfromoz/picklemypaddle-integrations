@@ -15,6 +15,7 @@ import { loadAbuseKeys, serviceSecret, TrustedProxies } from './orders/abuse.js'
 import { fsPhotoStore, useImageEngine } from './orders/photos.js';
 import type { PaymentDeps } from './payments/payments.js';
 import { stripeClient } from './payments/stripe.js';
+import { DEFAULT_SELLER, type Seller } from './documents/documents.js';
 
 function configOrExit(): Readonly<Config> {
   try {
@@ -74,9 +75,16 @@ const outbox: OutboxDeps = {
   },
   now: () => new Date(),
 };
+// SCRUM-84: who issues receipts and credit notes. Each document keeps what it was issued with.
+const seller: Seller = {
+  ...DEFAULT_SELLER,
+  name: config.BUSINESS_NAME,
+  abn: config.BUSINESS_ABN ?? null,
+  gstRegisteredFrom: config.GST_REGISTERED_FROM ?? null,
+};
 // SCRUM-82: Stripe, only when a key is set. Outside production the settings refuse a live key.
 const payments: PaymentDeps | null = config.STRIPE_SECRET_KEY
-  ? { db, stripe: stripeClient(config.STRIPE_SECRET_KEY, config.STRIPE_API_BASE), isProduction: config.APP_ENV === 'production', now: () => new Date() }
+  ? { db, stripe: stripeClient(config.STRIPE_SECRET_KEY, config.STRIPE_API_BASE), isProduction: config.APP_ENV === 'production', now: () => new Date(), seller }
   : null;
 log('payments_ready', { stripe: payments ? (payments.stripe.livemode ? 'live' : 'test') : 'not configured' });
 
@@ -126,6 +134,7 @@ const admin = createAdminApp({
   tax: { gstRegisteredFrom: config.GST_REGISTERED_FROM ?? null },
   // SCRUM-82: shows "Payments not configured" without a key.
   paymentsConfigured: !!payments,
+  seller,
 });
 const adminServer = serve({ fetch: admin.fetch, port: config.ADMIN_PORT }, (info) => {
   log('admin_listening', { port: info.port, logins: config.ADMIN_LOGINS?.length ?? 0 });

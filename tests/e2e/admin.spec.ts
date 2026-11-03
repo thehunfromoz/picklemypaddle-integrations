@@ -54,6 +54,24 @@ test('walks an order from Submitted to Completed', async ({ page, request }) => 
   await expect(page.getByRole('heading', { name: 'Payment' })).toBeVisible();
   await expect(page.getByText('Open in Stripe')).toBeVisible();
 
+  // SCRUM-84: Paid issued the receipt; it opens as a printable page that fits a phone.
+  await expect(page.getByRole('heading', { name: 'Receipts and credit notes' })).toBeVisible();
+  await page.locator('table.list a', { hasText: /^PMP-INV-\d{4}$/ }).first().click();
+  await expect(page.locator('article.doc h1')).toHaveText('Invoice: paid');
+  await expect(page.getByText('No GST has been charged')).toBeVisible();
+  await expect(page.locator('article.doc')).toContainText('Total');
+  await expect(page.locator('article.doc')).toContainText('Return postage1A$15.00A$15.00');
+  const docOverflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(docOverflow).toBeLessThanOrEqual(0);
+  // Printed, the admin's header and links are hidden: only the document is on paper.
+  await page.emulateMedia({ media: 'print' });
+  await expect(page.locator('header.bar')).toBeHidden();
+  await page.emulateMedia({ media: 'screen' });
+  await page.getByRole('link', { name: '← Documents' }).click();
+  await expect(page.getByRole('heading', { name: 'Receipts, invoices and credit notes' })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+  await page.locator('table.list a', { hasText: reference }).first().click();
+
   await moveTo(page, 'In queue'); // the arrival date defaults to today
   await moveTo(page, 'Re-gritted');
   await moveTo(page, 'Posted back', (p) => p.getByLabel(/Tracking number/).fill('AP 0000 1111'));
@@ -63,7 +81,7 @@ test('walks an order from Submitted to Completed', async ({ page, request }) => 
   const history = page.locator('ol.history li strong');
   await expect(history).toHaveText(['Submitted', 'Questions', 'Accepted', 'Paid', 'In queue', 'Re-gritted', 'Posted back', 'Completed']);
   // The key-moment emails were queued (they are suppressed here: no email provider).
-  for (const template of ['accepted', 'in_queue', 'posted_back']) {
+  for (const template of ['accepted', 'payment_received', 'in_queue', 'posted_back']) {
     await expect(page.locator('ul.outbox li', { hasText: template })).toHaveCount(1);
   }
 

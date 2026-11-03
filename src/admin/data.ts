@@ -31,6 +31,7 @@ export const ADMIN_LABELS: Record<OrderStatus, string> = {
   rejected: 'Rejected',
   withdrawn: 'Withdrawn',
   lapsed: 'Lapsed',
+  refunded: 'Refunded',
 };
 
 const DAY = 24 * 60 * 60 * 1000;

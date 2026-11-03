@@ -22,7 +22,7 @@ describe('mapping', () => {
     expect([...STAGE_ORDER]).toEqual([...STATUSES]);
     expect(new Set(STATUSES.map((s) => STAGES[s].label)).size).toBe(STATUSES.length);
     expect(STATUSES.filter((s) => STAGES[s].probability === 1)).toEqual(['completed']);
-    expect(STATUSES.filter((s) => STAGES[s].probability === 0)).toEqual(['rejected', 'withdrawn', 'lapsed']);
+    expect(STATUSES.filter((s) => STAGES[s].probability === 0)).toEqual(['rejected', 'withdrawn', 'lapsed', 'refunded']);
   });
 
   it('splits names into first and last', () => {

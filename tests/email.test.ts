@@ -92,6 +92,7 @@ describe('email templates', () => {
     // A new [To confirm: …] has to be added here on purpose, so none slips through unnoticed.
     expect(placeholdersIn()).toEqual([
       { template: 'accepted', placeholder: '[To confirm: postal address and packing tips]' },
+      { template: 'payment_received', placeholder: '[To confirm: postal address and packing tips]' },
     ]);
   });
 });

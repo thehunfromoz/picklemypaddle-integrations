@@ -5,6 +5,7 @@
  *   GET  /api/orders/form    a signed "form loaded at" token; also tells the site ordering is open
  *   POST /api/orders         submit an order (multipart)  → 201 { reference, statusToken, test? }
  *   POST /api/orders/status  { token }                    → the minimal status view, or 404
+ *   POST /api/orders/document { token, number }          → a receipt or credit note (SCRUM-84), or 404
  *   POST /api/orders/links   { email }                    → 202, always the same answer
  *   POST /api/orders/review  { token, quote, firstName, suburb, permission } → 201 (SCRUM-33)
  *   POST /api/orders/pay     { token }                    → { url } of a fresh Stripe Checkout page (SCRUM-82)
@@ -32,7 +33,7 @@ import { normaliseEmail } from './model.js';
 import type { PhotoStore } from './photos.js';
 import { describeDiscount, DISCOUNT_REFUSED, MAX_REQUEST_BYTES } from './rules.js';
 import { submitReview } from './reviews.js';
-import { INVALID_LINK, lookupStatus, orderForToken, requestLinks, type LinksMailer } from './status.js';
+import { INVALID_LINK, lookupDocument, lookupStatus, orderForToken, requestLinks, type LinksMailer } from './status.js';
 import { applyEvent, applySession, PaymentError, startPayment, verifyWebhook, type PaymentDeps } from '../payments/payments.js';
 import { StripeError, type StripeEvent } from '../payments/stripe.js';
 
@@ -200,6 +201,13 @@ export function orderRoutes(deps: OrderRouteDeps) {
     const body = (await c.req.json().catch(() => null)) as { token?: unknown } | null;
     const view = await lookupStatus(deps.db, body?.token, now(), { paymentsOn: !!deps.payments });
     return view ? c.json(view) : c.json(INVALID_LINK, 404);
+  });
+
+  // SCRUM-84: a receipt or credit note, for its printable page on the site.
+  app.post('/document', async (c) => {
+    const body = (await c.req.json().catch(() => null)) as { token?: unknown; number?: unknown } | null;
+    const doc = await lookupDocument(deps.db, body?.token, body?.number, now());
+    return doc ? c.json(doc) : c.json(INVALID_LINK, 404);
   });
 
   app.post('/links', async (c) => {

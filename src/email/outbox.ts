@@ -33,7 +33,16 @@ export interface MailSettings {
 }
 
 /** Templates that carry the order's private status link. */
-const NEEDS_STATUS_LINK: ReadonlySet<TemplateName> = new Set(['customer_submitted', 'accepted', 'in_queue', 'posted_back', 'review_reminder', 'payment_reminder']);
+const NEEDS_STATUS_LINK: ReadonlySet<TemplateName> = new Set([
+  'customer_submitted', 'accepted', 'in_queue', 'posted_back', 'review_reminder', 'payment_reminder', 'payment_received', 'refund_issued',
+]);
+
+/**
+ * SCRUM-84: templates that link a document. The link opens the printable page with the same
+ * fresh status token, so it works as long as the order's status links do (and "Email me my links"
+ * renews it). The payload names the document; In queue links the order's latest receipt.
+ */
+const NEEDS_DOCUMENT: ReadonlySet<TemplateName> = new Set(['payment_received', 'refund_issued', 'in_queue']);
 
 /** Minutes to wait after each failed attempt; after the last one the email is marked failed. */
 export const BACKOFF_MINUTES = [1, 5, 15, 60, 180, 360, 720] as const;
@@ -61,6 +70,11 @@ export interface EmailPayload {
   problem?: string;
   /** Review alert: whether the customer allowed quoting (SCRUM-33). */
   permission?: boolean;
+  /** SCRUM-84: the receipt or credit note the email links (documents.id). */
+  documentId?: string;
+  /** Refund issued (SCRUM-84): the amount of this refund, and whether the payment is now refunded in full. */
+  refundCents?: number;
+  refundFull?: boolean;
 }
 
 // ── Allow-list ────────────────────────────────────────────────────────────────
@@ -206,11 +220,12 @@ async function sendOne(deps: OutboxDeps, row: OutboxRow, now: Date): Promise<key
   );
   const payload: EmailPayload = typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload;
   // `permission` is bookkeeping for the review alert; the template reads it from the review itself.
-  const { permission: _permission, ...extras } = payload;
+  const { permission: _permission, documentId: _documentId, ...extras } = payload;
 
   let tokenId: string | null = null;
   let statusUrl: string | undefined;
   let reviewUrl: string | undefined;
+  let document: TemplateContext['document'];
   if (NEEDS_STATUS_LINK.has(row.template)) {
     const token = newStatusToken();
     const { rows: t } = await db.query<{ id: string }>(
@@ -220,6 +235,15 @@ async function sendOne(deps: OutboxDeps, row: OutboxRow, now: Date): Promise<key
     tokenId = String(t[0]!.id);
     statusUrl = `${settings.siteUrl}/order/status#${token}`;
     reviewUrl = `${settings.siteUrl}/order/status?review=1#${token}`;
+    if (NEEDS_DOCUMENT.has(row.template)) {
+      const { rows: docs } = await db.query<{ number: string }>(
+        payload.documentId
+          ? 'SELECT number FROM documents WHERE id = $2 AND order_id = $1'
+          : `SELECT number FROM documents WHERE order_id = $1 AND kind = 'receipt' ORDER BY issued_at DESC, id DESC LIMIT 1`,
+        payload.documentId ? [order.id, payload.documentId] : [order.id],
+      );
+      if (docs[0]) document = { number: docs[0].number, url: `${settings.siteUrl}/order/document?n=${docs[0].number}#${token}` };
+    }
   }
   let review: TemplateContext['review'];
   if (row.template === 'alert_review') {
@@ -239,6 +263,7 @@ async function sendOne(deps: OutboxDeps, row: OutboxRow, now: Date): Promise<key
     statusUrl,
     reviewUrl,
     review,
+    document,
     adminUrl: settings.adminUrl ? `${settings.adminUrl}/admin/orders/${order.reference}` : null,
     trackingNumber: order.tracking_number ?? undefined,
     arrivedOn: order.arrived_on ?? undefined,

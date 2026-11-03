@@ -37,6 +37,7 @@ export function layout(ctx: PageContext, title: string, body: Html): string {
 <header class="bar">
   <a href="/admin/orders">PickleMyPaddle orders${ctx.isProduction ? '' : ' (TEST)'}</a>
   <a href="/admin/codes">Discount codes</a>
+  <a href="/admin/documents">Documents</a>
   <a href="/admin/retention">Retention</a>
   <span class="who">Signed in through Tailscale as ${ctx.admin.name ?? ctx.admin.login}</span>
 </header>

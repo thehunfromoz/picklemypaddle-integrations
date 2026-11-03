@@ -26,6 +26,8 @@ export const TEMPLATES = [
   'review_reminder',
   'payment_reminder',
   'alert_payment',
+  'payment_received',
+  'refund_issued',
 ] as const;
 export type TemplateName = (typeof TEMPLATES)[number];
 
@@ -76,6 +78,11 @@ export interface TemplateContext {
   links?: { reference: string; url: string }[];
   /** Posted back: the status page's review form (SCRUM-33). */
   reviewUrl?: string;
+  /** SCRUM-84: the receipt or credit note this email links (its printable page). */
+  document?: { number: string; url: string };
+  /** Refund issued (SCRUM-84): this refund, and whether the payment is now refunded in full. */
+  refundCents?: number;
+  refundFull?: boolean;
   /** Review alert: the review, shown only when the customer gave permission to quote it. */
   review?: { quote: string; firstName: string; suburb: string; permission: boolean };
 }
@@ -263,6 +270,50 @@ function build(name: TemplateName, ctx: TemplateContext): { subject: string; blo
       };
     }
 
+    case 'payment_received': {
+      // SCRUM-84: at Paid. The receipt's number and link, and where to post the paddles.
+      const ref = need(ctx, 'reference', name);
+      const n = need(ctx, 'paddles', name).length;
+      const doc = need(ctx, 'document', name);
+      return {
+        customer: true,
+        subject: `Payment received for ${ref}: now post your ${paddleWord(n)}`,
+        blocks: [
+          { p: `Hi ${need(ctx, 'firstName', name)},` },
+          { p: `Thanks: we’ve received your payment${ctx.amountCents !== undefined ? ` of ${money(ctx.amountCents)}` : ''} for order ${ref}.` },
+          { kv: [['Receipt', doc.number], ...(ctx.amountCents !== undefined ? [['Paid', money(ctx.amountCents)] as [string, string]] : [])] },
+          { button: { label: 'View or print your receipt', url: doc.url } },
+          { h: 'Now post your ' + paddleWord(n) },
+          { p: '[To confirm: postal address and packing tips]' },
+          { p: `We’ll email you when ${plural(n, 'it arrives', 'they arrive')}, and ${plural(n, 'it’ll', 'they’ll')} be back in the post within 10 business days of arriving.` },
+          ...statusBlocks(need(ctx, 'statusUrl', name)),
+          { p: 'Thanks,\nPickleMyPaddle' },
+        ],
+      };
+    }
+
+    case 'refund_issued': {
+      // SCRUM-84: every refund, full or partial, with its credit note.
+      const ref = need(ctx, 'reference', name);
+      const doc = need(ctx, 'document', name);
+      const cents = need(ctx, 'refundCents', name);
+      return {
+        customer: true,
+        subject: `Refund for ${ref}`,
+        blocks: [
+          { p: `Hi ${need(ctx, 'firstName', name)},` },
+          { p: ctx.refundFull
+            ? `We’ve refunded ${money(cents)} for order ${ref} to the card you paid with. Your payment has now been refunded in full.`
+            : `We’ve refunded ${money(cents)} of your payment for order ${ref} to the card you paid with.` },
+          { kv: [['Credit note', doc.number], ['Refunded', money(cents)]] },
+          { button: { label: 'View or print your credit note', url: doc.url } },
+          { p: 'Refunds usually take 5 to 10 business days to show on your statement, depending on your bank.' },
+          statusBlocks(need(ctx, 'statusUrl', name))[1]!,
+          { p: 'Thanks,\nPickleMyPaddle' },
+        ],
+      };
+    }
+
     case 'alert_submitted': {
       // Reference, count and admin link only: no customer details or photos (SCRUM-69 AC4).
       const ref = need(ctx, 'reference', name);
@@ -327,6 +378,8 @@ function build(name: TemplateName, ctx: TemplateContext): { subject: string; blo
           { kv: [['Back in the post by', longDate(need(ctx, 'backInPostBy', name))]] },
           { p: `Your status page shows how many paddles are ahead of yours while ${plural(n, 'it waits', 'they wait')}, and we’ll email you again with a tracking number when we post ${plural(n, 'it', 'them')} back.` },
           ...statusBlocks(need(ctx, 'statusUrl', name)),
+          // SCRUM-84: the receipt, again, for anyone who missed the payment email.
+          ...(ctx.document ? [{ button: { label: `Your receipt (${ctx.document.number})`, url: ctx.document.url } }] : []),
           { p: 'Thanks,\nPickleMyPaddle' },
         ],
       };
@@ -462,6 +515,12 @@ export function sampleContext(name: TemplateName, test: boolean): TemplateContex
     reviewUrl: `${site}/order/status?review=1#${'T'.repeat(43)}`,
     // SCRUM-83: accepted 2 Nov 2026, lapses 30 days later.
     lapsesOn: '2026-12-02',
+    // SCRUM-84: the receipt (or, for the refund email, a credit note) and a partial refund.
+    document: name === 'refund_issued'
+      ? { number: 'PMP-CN-0001', url: `${site}/order/document?n=PMP-CN-0001#${'T'.repeat(43)}` }
+      : { number: 'PMP-INV-0001', url: `${site}/order/document?n=PMP-INV-0001#${'T'.repeat(43)}` },
+    refundCents: 1800,
+    refundFull: false,
     problem: 'it arrived after the order lapsed',
     review: { quote: 'Feels brand new: the spin is back. Quick turnaround too.', firstName: 'Sam', suburb: 'Newtown', permission: true },
     ...(name === 'links' ? { reference: undefined } : {}),

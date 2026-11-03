@@ -32,15 +32,17 @@ export const TRANSITIONS: Readonly<Record<OrderStatus, Readonly<Partial<Record<O
   questions: { accepted: ['admin'], rejected: ['admin'], withdrawn: ['admin'], lapsed: ['system'] },
   // Paid is set by Stripe only (SCRUM-82).
   accepted: { paid: ['stripe'], withdrawn: ['admin'], lapsed: ['system'] },
-  paid: { in_queue: ['admin'], withdrawn: ['admin'] },
-  in_queue: { regritted: ['admin'] },
-  regritted: { posted_back: ['admin'] },
-  posted_back: { completed: ['admin', 'system'] },
-  completed: {},
+  paid: { in_queue: ['admin'], withdrawn: ['admin'], refunded: ['stripe'] },
+  in_queue: { regritted: ['admin'], refunded: ['stripe'] },
+  regritted: { posted_back: ['admin'], refunded: ['stripe'] },
+  posted_back: { completed: ['admin', 'system'], refunded: ['stripe'] },
+  completed: { refunded: ['stripe'] },
   rejected: {},
   // SCRUM-83: "Reinstate as paid" when a late payment arrives (admin, with a note; see reinstateLatePayment).
-  withdrawn: { paid: ['admin'] },
+  // SCRUM-84: Refunded follows a full refund in Stripe of an order that has a receipt (recordRefund).
+  withdrawn: { paid: ['admin'], refunded: ['stripe'] },
   lapsed: { paid: ['admin'] },
+  refunded: {},
 };
 
 /** The customer's email for each status that has one (SCRUM-69 AC5; Questions sends nothing). */

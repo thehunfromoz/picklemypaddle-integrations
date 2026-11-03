@@ -16,6 +16,8 @@ export const STATUSES = [
   'rejected',
   'withdrawn',
   'lapsed',
+  // SCRUM-84: refunded in full in Stripe (actor stripe). A partial refund keeps the status.
+  'refunded',
 ] as const;
 export type OrderStatus = (typeof STATUSES)[number];
 
@@ -32,6 +34,7 @@ export const STATUS_LABELS: Record<OrderStatus, string> = {
   rejected: 'Not accepted: see our email for why',
   withdrawn: 'Withdrawn',
   lapsed: 'Closed: no reply received',
+  refunded: 'Refunded: see our email for details',
 };
 
 // ── References ────────────────────────────────────────────────────────────────
@@ -69,6 +72,8 @@ export const LINK_GRACE_DAYS: Partial<Record<OrderStatus, number>> = {
   rejected: 30,
   lapsed: 30,
   withdrawn: 0,
+  // SCRUM-84: long enough to open the credit note from the refund email.
+  refunded: 90,
 };
 
 /**

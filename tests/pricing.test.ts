@@ -169,4 +169,10 @@ describe('pricing settings', () => {
     expect(prod.some((p) => p.startsWith('BUSINESS_ABN is required in production once STRIPE_SECRET_KEY'))).toBe(true);
     expect(problems({ APP_ENV: 'production', RESEND_API_KEY: 're_x', STRIPE_SECRET_KEY: key, STRIPE_WEBHOOK_SECRET: secret, BUSINESS_ABN: '51824753556' })).toEqual([]);
   });
+
+  it('names the seller PickleMyPaddle unless BUSINESS_NAME says otherwise, and refuses a placeholder (SCRUM-84)', () => {
+    expect(loadConfig(base).BUSINESS_NAME).toBe('PickleMyPaddle');
+    expect(loadConfig({ ...base, BUSINESS_NAME: '  Pickle My Paddle  ' }).BUSINESS_NAME).toBe('Pickle My Paddle');
+    expect(problems({ BUSINESS_NAME: '[To confirm: name]' })).toEqual(['BUSINESS_NAME still says [To confirm…]']);
+  });
 });
