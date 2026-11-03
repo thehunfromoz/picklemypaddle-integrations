@@ -13,6 +13,8 @@ import { log, logError } from './log.js';
 import { createAdminApp } from './admin/app.js';
 import { loadAbuseKeys, serviceSecret, TrustedProxies } from './orders/abuse.js';
 import { fsPhotoStore, useImageEngine } from './orders/photos.js';
+import type { PaymentDeps } from './payments/payments.js';
+import { stripeClient } from './payments/stripe.js';
 
 function configOrExit(): Readonly<Config> {
   try {
@@ -72,6 +74,12 @@ const outbox: OutboxDeps = {
   },
   now: () => new Date(),
 };
+// SCRUM-82: Stripe, only when a key is set. Outside production the settings refuse a live key.
+const payments: PaymentDeps | null = config.STRIPE_SECRET_KEY
+  ? { db, stripe: stripeClient(config.STRIPE_SECRET_KEY, config.STRIPE_API_BASE), isProduction: config.APP_ENV === 'production', now: () => new Date() }
+  : null;
+log('payments_ready', { stripe: payments ? (payments.stripe.livemode ? 'live' : 'test') : 'not configured' });
+
 const app = createApp(config, {
   db,
   photos,
@@ -80,6 +88,7 @@ const app = createApp(config, {
   mailer: linksMailer(outbox),
   emailProvider: outbox.sender?.name ?? null,
   imageEngine,
+  payments,
 });
 
 const server = serve({ fetch: app.fetch, port: config.PORT }, (info) => {
@@ -115,6 +124,8 @@ const admin = createAdminApp({
   crm: crm.adapter ? crm : null,
   // SCRUM-81: from this Sydney day, newly accepted orders include GST.
   tax: { gstRegisteredFrom: config.GST_REGISTERED_FROM ?? null },
+  // SCRUM-82: shows "Payments not configured" without a key.
+  paymentsConfigured: !!payments,
 });
 const adminServer = serve({ fetch: admin.fetch, port: config.ADMIN_PORT }, (info) => {
   log('admin_listening', { port: info.port, logins: config.ADMIN_LOGINS?.length ?? 0 });
@@ -123,7 +134,7 @@ const adminHttp = adminServer as unknown as { requestTimeout: number; headersTim
 adminHttp.requestTimeout = 30_000;
 adminHttp.headersTimeout = 15_000;
 
-const stopJobs = startJobs(db, photos, outbox, crm, () => new Date(), config.APP_ENV === 'production');
+const stopJobs = startJobs(db, photos, outbox, crm, () => new Date(), config.APP_ENV === 'production', payments);
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => {

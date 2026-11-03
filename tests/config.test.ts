@@ -6,6 +6,7 @@ const base = { APP_ENV: 'staging', PUBLIC_SITE_ORIGIN: 'http://home-server:8088'
 const resendKey = 're_' + 'd'.repeat(30);
 const testKey = 'sk_test_' + 'a'.repeat(24);
 const liveKey = 'sk_live_' + 'b'.repeat(24);
+const ABN = '51 824 753 556';
 const whsec = 'whsec_' + 'c'.repeat(24);
 const hubspotKey = 'pat-ap1-' + 'a'.repeat(36);
 const hubspot = { HUBSPOT_ACCESS_TOKEN: hubspotKey, HUBSPOT_PORTAL_ID: '111', HUBSPOT_TEST_PORTAL_ID: '111' };
@@ -139,9 +140,11 @@ describe('loadConfig', () => {
       .toEqual(['STRIPE_SECRET_KEY is a test-mode key, but APP_ENV is production']);
   });
 
-  it('requires the webhook secret once Stripe is configured', () => {
-    expect(problems({ ...base, STRIPE_SECRET_KEY: testKey })).toEqual([
-      'STRIPE_WEBHOOK_SECRET is required when STRIPE_SECRET_KEY is set',
+  it('requires the webhook secret in production only (SCRUM-82: staging uses the poller)', () => {
+    expect(problems({ ...base, STRIPE_SECRET_KEY: testKey })).toEqual([]);
+    expect(problems({ ...base, APP_ENV: 'staging', STRIPE_SECRET_KEY: testKey.replace(/^sk_/, 'rk_') })).toEqual([]);
+    expect(problems({ ...base, APP_ENV: 'production', RESEND_API_KEY: resendKey, STRIPE_SECRET_KEY: liveKey, BUSINESS_ABN: ABN })).toEqual([
+      'STRIPE_WEBHOOK_SECRET is required in production when STRIPE_SECRET_KEY is set',
     ]);
   });
 

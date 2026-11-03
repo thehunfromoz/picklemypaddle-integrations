@@ -9,7 +9,7 @@ Planned responsibilities:
 - Private status links for customers and clubs.
 - Adapters, so each vendor can be swapped without touching the site:
   - CRM: HubSpot first
-  - Payments: Stripe (payment links, invoices, webhooks)
+  - Payments: Stripe Checkout (SCRUM-82): Pay now on the status page; return, events poller, webhook
   - Scheduling: HubSpot Meetings
 - HubSpot properties/pipelines and Stripe products kept as configuration-as-code.
 
@@ -155,14 +155,14 @@ Submitted → Questions → Accepted → Paid → In queue → Re-gritted → Po
 end states Rejected, Withdrawn and Lapsed. `src/orders/transitions.ts` holds the only allowed moves
 and who may make each (admin, Stripe, or the automatic jobs); anything else is refused with 409.
 Rejected needs a reason (sent to the customer) and Posted back a tracking number (400 without).
-Outside production, admin may also mark an Accepted order paid ("Mark paid (test)"). Every change
+Only Stripe sets Paid (SCRUM-82 removed staging's "Mark paid (test)"). Every change
 writes a history row with who made it, and queues its email in the same transaction.
 
 | From | To (by) | Email to the customer |
 | --- | --- | --- |
 | Submitted | Questions, Accepted, Rejected, Withdrawn (admin) | Accepted (re-grit, postage, total, GST line), Rejected (reason) |
 | Questions | Accepted, Rejected, Withdrawn (admin); Lapsed (automatic, 30 days) | as above |
-| Accepted | Paid (Stripe, SCRUM-9; "Mark paid (test)" outside production); Withdrawn (admin); Lapsed (SCRUM-9) | |
+| Accepted | Paid (Stripe only, SCRUM-82); Withdrawn (admin); Lapsed (SCRUM-83) | |
 | Paid | In queue (admin, records the arrival day); Withdrawn (admin) | In queue ("back in the post by") |
 | In queue | Re-gritted (admin) | |
 | Re-gritted | Posted back (admin, tracking number required) | Posted back (tracking, review link) |
@@ -239,6 +239,40 @@ still pays something (Accept refuses an A$0 total). Direct orders only.
   saved total after). The receipt follows with SCRUM-84.
 - The shared helpers (`discountCents`, `describeDiscount`, the code format) are in
   `src/orders/rules.ts`, so the website's estimate uses the same arithmetic.
+
+## Payments (SCRUM-82, decided 30 Oct and 2 Nov 2026)
+
+Cards are entered only on Stripe's own Checkout pages (PCI SAQ A); no card details reach us.
+
+- **Pay now** is on the private status page, only while the order is Accepted. It posts the status
+  token to **`POST /api/orders/pay`**, which makes a fresh Checkout Session for the total saved at
+  Accept (expiring the order's earlier open ones) and returns Stripe's page. Emails never carry a
+  Stripe link (they expire); the Accepted email's button opens the status page. The token never
+  goes to Stripe: the site keeps it in the tab's sessionStorage for the return.
+- **Line items:** "Re-grit, N paddles, both faces" and "Return postage", in AUD, adding up to the
+  saved total. A discount code makes the re-grit line net, e.g. "… (code FREE-…: A$60 off)" at A$0
+  (Checkout can't show a negative line; no Stripe coupons). Session metadata: the order id
+  (`client_reference_id`) and reference; the customer's email is filled in.
+- **Recognising a payment**, all through `applySession` (`src/payments/payments.ts`), idempotent on
+  the session id, with the payment row and Paid (actor `stripe`) in one transaction:
+  1. **Return:** Stripe sends the customer to `/order/paid?session_id=…`; the site posts it to
+     **`POST /api/orders/paid`**, and the service fetches the session from Stripe and applies it.
+  2. **Webhook `POST /api/stripe/webhook`**, production only (404 elsewhere): raw body, signature
+     checked with `STRIPE_WEBHOOK_SECRET` (5-minute tolerance). Events: `checkout.session.completed`,
+     `checkout.session.async_payment_succeeded`, `charge.refunded`.
+  3. **Events poller** every 2 minutes (`GET /v1/events` for the same types since the last one seen;
+     cursor in `job_state`): staging's only feed (Stripe can't reach home-server) and production's
+     backstop. Each event is applied once (`stripe_events`).
+- **Saved per payment** (`payments`): payment intent, amount, Stripe fee (from the balance
+  transaction), paid at, how it arrived. An amount that isn't the saved total, or a payment for an
+  order no longer Accepted, is saved with a `problem`, noted on the order and shown in admin; the
+  status doesn't move. **Refunds** are made in the Stripe dashboard; `charge.refunded` records the
+  refunded total and a note. Nothing refunds or changes status automatically.
+- **Admin** shows the payment (amount, fee, time, refunds, problems) with an "Open in Stripe" link,
+  or "Payments not configured" without a key.
+- **The key** is a **restricted key** with only: Checkout Sessions **Write**; PaymentIntents,
+  Charges, Balance and Events **Read**. Live keys are refused outside production, test keys in
+  production. `STRIPE_WEBHOOK_SECRET` is required in production only.
 
 ## Order admin (SCRUM-71/72)
 
@@ -402,7 +436,7 @@ All settings come from environment variables; see `.env.example` for the full li
 
 - **Refuses to start** if a required setting is missing or invalid. The error names every
   problem setting, never its value, and the exit code is 78.
-- **Stripe keys must be test-mode (`sk_test_…`) outside production.** A live key on dev or
+- **Stripe keys must be test-mode (`rk_test_…`/`sk_test_…`) outside production.** A live key on dev or
   staging stops the service, so staging can never charge a real card. A test key in production
   stops it too.
 - **HubSpot** uses a separate test portal outside production.

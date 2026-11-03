@@ -29,7 +29,7 @@ async function walk(reference: string, ...steps: string[]) {
   for (const to of steps) {
     await transitionOrder(
       { db: t.db, isProduction: false, now: t.clock.now },
-      { reference, to: to as never, actor: 'admin', ...(to === 'posted_back' ? { trackingNumber: 'AP1' } : {}) },
+      { reference, to: to as never, actor: to === 'paid' ? 'stripe' : 'admin', ...(to === 'posted_back' ? { trackingNumber: 'AP1' } : {}) },
     );
   }
 }

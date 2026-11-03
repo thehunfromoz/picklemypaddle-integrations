@@ -8,7 +8,8 @@ import { logError } from './log.js';
 import type { AbuseKeys, TrustedProxies } from './orders/abuse.js';
 import type { PhotoStore } from './orders/photos.js';
 import { sydneyDate } from './orders/dates.js';
-import { discountRoutes, orderRoutes } from './orders/routes.js';
+import { discountRoutes, orderRoutes, stripeWebhookRoutes } from './orders/routes.js';
+import type { PaymentDeps } from './payments/payments.js';
 import { postageGuide, postageTableOn } from './pricing/postage.js';
 import { priceNote, termsOn } from './pricing/terms.js';
 import type { LinksMailer } from './orders/status.js';
@@ -25,6 +26,8 @@ export interface AppDeps {
   emailProvider?: string | null;
   /** Which photo engine runs (SCRUM-66), for /api/status. */
   imageEngine?: string;
+  /** SCRUM-82: Stripe, when STRIPE_SECRET_KEY is set; null = payments not configured. */
+  payments?: PaymentDeps | null;
 }
 
 /** The HTTP app. CRM and payment routes are added by their own stories. */
@@ -86,6 +89,8 @@ export function createApp(config: Config, deps: AppDeps) {
       trusted: deps.trusted,
       mailer: deps.mailer ?? null,
       isProduction: config.APP_ENV === 'production',
+      payments: deps.payments ?? null,
+      siteOrigins: config.PUBLIC_SITE_ORIGIN,
       limits: {
         orderPerIpHour: config.ORDER_LIMIT_PER_IP_HOUR,
         orderPerEmailDay: config.ORDER_LIMIT_PER_EMAIL_DAY,
@@ -110,6 +115,11 @@ export function createApp(config: Config, deps: AppDeps) {
       peer: deps.peer,
     }),
   );
+
+  // SCRUM-82: Stripe's webhook exists only in production (Stripe can't reach staging): 404 elsewhere.
+  if (config.APP_ENV === 'production' && deps.payments && config.STRIPE_WEBHOOK_SECRET) {
+    app.route('/api/stripe', stripeWebhookRoutes({ payments: deps.payments, secret: config.STRIPE_WEBHOOK_SECRET }));
+  }
 
   app.notFound((c) => c.json({ error: 'not found' }, 404));
   app.onError((err, c) => {

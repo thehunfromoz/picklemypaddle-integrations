@@ -19,7 +19,7 @@ const json = (path: string, body: unknown) =>
 async function postedBackOrder(): Promise<{ reference: string; token: string }> {
   const { reference, statusToken } = (await (await post(t, await orderForm(t, { email: EMAIL }))).json()) as { reference: string; statusToken: string };
   const d = { db: t.db, isProduction: false, now: t.clock.now };
-  for (const to of ['accepted', 'paid', 'in_queue', 'regritted'] as const) await transitionOrder(d, { reference, to, actor: 'admin' });
+  for (const to of ['accepted', 'paid', 'in_queue', 'regritted'] as const) await transitionOrder(d, { reference, to, actor: to === 'paid' ? 'stripe' : 'admin' });
   await transitionOrder(d, { reference, to: 'posted_back', actor: 'admin', trackingNumber: '33XYZ0123456789' });
   return { reference, token: statusToken };
 }

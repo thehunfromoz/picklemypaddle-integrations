@@ -2,6 +2,7 @@
  * What the admin pages read (SCRUM-72). Smoke-test orders (SCRUM-68) never appear: they are the
  * staging updater's, and are deleted within a day.
  */
+import { paymentsOf, type PaymentRecord } from '../payments/payments.js';
 import type { DiscountKind } from '../orders/rules.js';
 import type { TaxTreatment } from '../pricing/terms.js';
 import type { Db } from '../db/db.js';
@@ -149,6 +150,8 @@ export interface OrderDetail {
     taxTreatment: TaxTreatment;
     termsVersion: string;
   } | null;
+  /** SCRUM-82: Stripe payments recorded for the order (normally one). */
+  payments: PaymentRecord[];
   /** SCRUM-63: the discount code on the order and what it gives (saved at submit). */
   discount: { code: string; kind: DiscountKind; value: number } | null;
   retainUntil: string | null;
@@ -306,6 +309,7 @@ export async function loadOrder(db: Db, reference: string, now: Date = new Date(
             taxTreatment: o.tax_treatment,
             termsVersion: o.terms_version ?? '',
           },
+    payments: await paymentsOf(db, o.id),
     discount:
       o.discount_code && o.discount_kind && o.discount_value !== null
         ? { code: o.discount_code, kind: o.discount_kind, value: Number(o.discount_value) }

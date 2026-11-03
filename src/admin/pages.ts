@@ -7,6 +7,7 @@ import { quotePostage } from '../pricing/postage.js';
 import { taxWording, termsOn, type TaxSettings } from '../pricing/terms.js';
 import { STATUSES, type OrderStatus, PRICE_PER_PADDLE_CENTS } from '../orders/model.js';
 import { canTransition, EMAIL_ON, TRANSITIONS } from '../orders/transitions.js';
+import { dashboardUrl } from '../payments/payments.js';
 import { describeDiscount, discountCents } from '../orders/rules.js';
 import { ADMIN_LABELS, WAITING, type ListedOrder, type OrderDetail } from './data.js';
 import type { AdminIdentity } from './guard.js';
@@ -18,6 +19,8 @@ export interface PageContext {
   now: Date;
   /** SCRUM-81: GST_REGISTERED_FROM, for the terms an Accept would use today. */
   tax?: TaxSettings;
+  /** SCRUM-82: whether a Stripe key is set here. */
+  paymentsConfigured?: boolean;
 }
 
 export function layout(ctx: PageContext, title: string, body: Html): string {
@@ -170,25 +173,42 @@ function actionForm(ctx: PageContext, o: OrderDetail, to: OrderStatus): Html {
 }
 
 function actions(ctx: PageContext, o: OrderDetail): Html {
-  const moves = (Object.keys(TRANSITIONS[o.status]) as OrderStatus[]).filter((to) => to !== 'paid' && canTransition(o.status, to, 'admin', ctx.isProduction));
-  // Staging only (AC6): the Stripe webhook (SCRUM-9) sets Paid for real.
-  const markPaid =
-    !ctx.isProduction && o.status === 'accepted'
-      ? html`<details class="action"><summary>Mark paid (test)</summary>
-<form method="post" action="/admin/orders/${o.reference}/mark-paid-test">
-  ${csrfField(ctx)}
-  <p class="test-note">Test only: stands in for the Stripe payment. Not available in production.</p>
-  <button type="submit">Mark paid (test)</button>
-</form></details>`
-      : '';
-  if (moves.length === 0 && !markPaid) {
-    const why = o.status === 'accepted' ? 'Waiting for the customer to pay (Stripe sets Paid).' : 'This order is closed.';
-    return html`<p class="empty">${why}</p>`;
-  }
-  return html`${markPaid}${moves.map((to) => actionForm(ctx, o, to))}${
-    o.status === 'accepted' && ctx.isProduction ? html`<p class="small">Paid is set by Stripe when the customer pays.</p>` : ''
-  }`;
+  const moves = (Object.keys(TRANSITIONS[o.status]) as OrderStatus[]).filter((to) => canTransition(o.status, to, 'admin', ctx.isProduction));
+  // SCRUM-82: only Stripe sets Paid, when the customer pays from the status page.
+  const waiting =
+    o.status !== 'accepted'
+      ? ''
+      : ctx.paymentsConfigured
+        ? html`<p class="small">Waiting for the customer to pay: Stripe sets Paid when they do.${
+            ctx.isProduction ? '' : ' On staging, pay from the status page with Stripe test card 4242 4242 4242 4242.'
+          }</p>`
+        : html`<p class="flash error" role="alert">Payments not configured: no Stripe key is set here, so the customer can’t pay online.</p>`;
+  if (moves.length === 0) return html`${waiting || html`<p class="empty">This order is closed.</p>`}`;
+  return html`${waiting}${moves.map((to) => actionForm(ctx, o, to))}`;
 }
+
+/** SCRUM-82: the Stripe payment(s) and any refunds. */
+function paymentSection(o: OrderDetail): Html | string {
+  if (o.payments.length === 0) return '';
+  return html`<h2>Payment</h2>
+<ul class="notes">${o.payments.map((p) => {
+    const url = dashboardUrl(p);
+    return html`<li><strong>${dollars(p.amountCents)}</strong> by card · ${when(p.paidAt)}${
+      p.feeCents !== null ? ` · Stripe fee ${dollars(p.feeCents)}` : ''
+    } · via ${p.source}${p.livemode ? '' : ' · TEST mode'}
+  ${p.problem ? html`<div class="flash error" role="alert">Not applied: ${PROBLEMS[p.problem] ?? p.problem}. Check it in Stripe and refund it there if needed.</div>` : ''}
+  ${p.refundedCents ? html`<div>Refunded ${dollars(p.refundedCents)}${p.refundedAt ? ` (recorded ${when(p.refundedAt)})` : ''}</div>` : ''}
+  <div class="small">${p.paymentIntentId ?? p.checkoutSessionId}${url ? html` · <a href="${url}" target="_blank" rel="noopener noreferrer">Open in Stripe</a>` : ''}</div></li>`;
+  })}</ul>`;
+}
+
+const PROBLEMS: Record<string, string> = {
+  amount_mismatch: 'the amount paid isn’t the order’s total',
+  order_missing: 'no such order',
+  order_lapsed: 'the order had lapsed',
+  order_withdrawn: 'the order had been withdrawn',
+  order_paid: 'the order was already paid (a second payment)',
+};
 
 /** SCRUM-33/80: the review, or where the one reminder stands; staging can send it now. */
 function reviewSection(ctx: PageContext, o: OrderDetail): Html | string {
@@ -307,6 +327,8 @@ ${
       )}</ul>`
     : html`<p class="empty">Nothing sent for this order.</p>`
 }
+
+${paymentSection(o)}
 
 ${reviewSection(ctx, o)}
 

@@ -53,7 +53,6 @@ export interface EmailPayload {
   postageCents?: number;
   gstCents?: number;
   taxTreatment?: TaxTreatment;
-  paymentUrl?: string;
   backInPostBy?: string;
   reason?: string;
   /** Review alert: whether the customer allowed quoting (SCRUM-33). */

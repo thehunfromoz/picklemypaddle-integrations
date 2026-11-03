@@ -12,11 +12,11 @@ exports[`email templates > accepted (production) renders the same text and HTML 
 <p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Hi Sam,</p>
 <p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Good news: we’ve checked your photos and we can re-grit your paddles.</p>
 <table role="presentation" style="margin:0 0 16px;border-collapse:collapse"><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Re-grit</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">2 × A$60 (both faces)</td></tr><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Return postage</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">A$18</td></tr><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Total</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">A$138</td></tr><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">GST</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">No GST has been charged</td></tr></table>
-<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">[To confirm: payment link and how return postage is shown, added by SCRUM-9]</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Pay by card on your private order page: card details go straight to Stripe, our payment provider, and never to us.</p>
+<p style="margin:8px 0 24px"><a href="https://www.picklemypaddle.com/order/status#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT" style="display:inline-block;background:#4565A6;color:#ffffff;text-decoration:none;font-weight:600;font-size:16px;padding:12px 20px;border-radius:8px">Pay now on your order page</a></p>
 <h2 style="margin:24px 0 8px;font-size:17px;color:#1E2E52">Then post your paddles</h2>
 <p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">[To confirm: postal address and packing tips]</p>
 <p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">We’ll email you when they arrive, and they’ll be back in the post within 10 business days of arriving.</p>
-<p style="margin:8px 0 24px"><a href="https://www.picklemypaddle.com/order/status#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT" style="display:inline-block;background:#4565A6;color:#ffffff;text-decoration:none;font-weight:600;font-size:16px;padding:12px 20px;border-radius:8px">See your order’s progress</a></p>
 <p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">This link is private to you: anyone who has it can see your order’s progress, but not your name or address. If you lose it, use “Email me my links” on the status page.</p>
 <p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Thanks,<br>PickleMyPaddle</p>
 <p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.<br>https://www.picklemypaddle.com<br>Questions? Just reply to this email.<br>You’re getting this because an order was placed with this email address.</p>
@@ -34,16 +34,16 @@ Good news: we’ve checked your photos and we can re-grit your paddles.
   Total: A$138
   GST: No GST has been charged
 
-[To confirm: payment link and how return postage is shown, added by SCRUM-9]
+Pay by card on your private order page: card details go straight to Stripe, our payment provider, and never to us.
+
+Pay now on your order page:
+https://www.picklemypaddle.com/order/status#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT
 
 THEN POST YOUR PADDLES
 
 [To confirm: postal address and packing tips]
 
 We’ll email you when they arrive, and they’ll be back in the post within 10 business days of arriving.
-
-See your order’s progress:
-https://www.picklemypaddle.com/order/status#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT
 
 This link is private to you: anyone who has it can see your order’s progress, but not your name or address. If you lose it, use “Email me my links” on the status page.
 
@@ -71,11 +71,11 @@ exports[`email templates > accepted (staging) renders the same text and HTML as 
 <p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Hi Sam,</p>
 <p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Good news: we’ve checked your photos and we can re-grit your paddles.</p>
 <table role="presentation" style="margin:0 0 16px;border-collapse:collapse"><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Re-grit</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">2 × A$60 (both faces)</td></tr><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Return postage</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">A$18</td></tr><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Total</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">A$138</td></tr><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">GST</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">No GST has been charged</td></tr></table>
-<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">[To confirm: payment link and how return postage is shown, added by SCRUM-9]</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Pay by card on your private order page: card details go straight to Stripe, our payment provider, and never to us.</p>
+<p style="margin:8px 0 24px"><a href="http://home-server:8088/order/status#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT" style="display:inline-block;background:#4565A6;color:#ffffff;text-decoration:none;font-weight:600;font-size:16px;padding:12px 20px;border-radius:8px">Pay now on your order page</a></p>
 <h2 style="margin:24px 0 8px;font-size:17px;color:#1E2E52">Then post your paddles</h2>
 <p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">[To confirm: postal address and packing tips]</p>
 <p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">We’ll email you when they arrive, and they’ll be back in the post within 10 business days of arriving.</p>
-<p style="margin:8px 0 24px"><a href="http://home-server:8088/order/status#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT" style="display:inline-block;background:#4565A6;color:#ffffff;text-decoration:none;font-weight:600;font-size:16px;padding:12px 20px;border-radius:8px">See your order’s progress</a></p>
 <p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">This link is private to you: anyone who has it can see your order’s progress, but not your name or address. If you lose it, use “Email me my links” on the status page.</p>
 <p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Thanks,<br>PickleMyPaddle</p>
 <p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.<br>http://home-server:8088<br>Questions? Just reply to this email.<br>You’re getting this because an order was placed with this email address.</p>
@@ -95,16 +95,16 @@ Good news: we’ve checked your photos and we can re-grit your paddles.
   Total: A$138
   GST: No GST has been charged
 
-[To confirm: payment link and how return postage is shown, added by SCRUM-9]
+Pay by card on your private order page: card details go straight to Stripe, our payment provider, and never to us.
+
+Pay now on your order page:
+http://home-server:8088/order/status#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT
 
 THEN POST YOUR PADDLES
 
 [To confirm: postal address and packing tips]
 
 We’ll email you when they arrive, and they’ll be back in the post within 10 business days of arriving.
-
-See your order’s progress:
-http://home-server:8088/order/status#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT
 
 This link is private to you: anyone who has it can see your order’s progress, but not your name or address. If you lose it, use “Email me my links” on the status page.
 

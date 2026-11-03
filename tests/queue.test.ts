@@ -25,7 +25,7 @@ async function place(paddles = 1, env: 'test' | 'real' = 'test'): Promise<{ refe
 /** Accepted → Paid → In queue, arriving on `arrivedOn`. */
 async function queue(reference: string, arrivedOn: string) {
   for (const [to, extra] of [['accepted', {}], ['paid', {}], ['in_queue', { arrivedOn }]] as const) {
-    await transitionOrder({ db: t.db, isProduction: false, now: t.clock.now }, { reference, to, actor: 'admin', ...extra });
+    await transitionOrder({ db: t.db, isProduction: false, now: t.clock.now }, { reference, to, actor: to === 'paid' ? 'stripe' : 'admin', ...extra });
   }
 }
 
@@ -114,7 +114,7 @@ describe('what the status API shows when (AC3)', () => {
     t.clock.now = new Date('2026-11-10T01:00:00Z');
     const o = await place();
     const step = (to: string, extra: Record<string, string> = {}) =>
-      transitionOrder({ db: t.db, isProduction: false, now: t.clock.now }, { reference: o.reference, to: to as never, actor: 'admin', ...extra });
+      transitionOrder({ db: t.db, isProduction: false, now: t.clock.now }, { reference: o.reference, to: to as never, actor: to === 'paid' ? 'stripe' : 'admin', ...extra });
 
     for (const to of ['submitted', 'accepted', 'paid'] as const) {
       if (to !== 'submitted') await step(to);

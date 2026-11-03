@@ -43,7 +43,7 @@ async function walk(reference: string, ...steps: OrderStatus[]) {
   for (const to of steps) {
     await transitionOrder(
       { db: t.db, isProduction: false, now: t.clock.now },
-      { reference, to, actor: 'admin', note: 'Spoke to Erin on the phone', ...(to === 'posted_back' ? { trackingNumber: 'AP999' } : {}), ...(to === 'rejected' ? { reason: 'Erin’s paddle is cracked.' } : {}), ...(to === 'accepted' ? { postageCents: 0, postageReason: 'Collected in person' } : {}) },
+      { reference, to, actor: to === 'paid' ? 'stripe' : 'admin', note: 'Spoke to Erin on the phone', ...(to === 'posted_back' ? { trackingNumber: 'AP999' } : {}), ...(to === 'rejected' ? { reason: 'Erin’s paddle is cracked.' } : {}), ...(to === 'accepted' ? { postageCents: 0, postageReason: 'Collected in person' } : {}) },
     );
   }
 }

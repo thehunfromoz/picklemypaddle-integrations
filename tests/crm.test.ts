@@ -72,7 +72,7 @@ describe(`HubSpot sync (${DB_BACKEND})`, () => {
     const deps = await setup();
     const first = await order('reviewer@test.picklemypaddle.com');
     for (const [to, extra] of [['accepted', {}], ['paid', {}], ['in_queue', {}], ['regritted', {}], ['posted_back', { trackingNumber: 'AP1' }]] as const) {
-      await transitionOrder({ db: t.db, isProduction: false, now: t.clock.now }, { reference: first.reference, to, actor: 'admin', ...extra });
+      await transitionOrder({ db: t.db, isProduction: false, now: t.clock.now }, { reference: first.reference, to, actor: to === 'paid' ? 'stripe' : 'admin', ...extra });
     }
     const review = await submitReview(t.db, { token: first.statusToken, quote: 'Plays like new again.', firstName: 'Sam', suburb: 'Newtown', permission: true }, t.clock.now);
     expect(review.ok).toBe(true);
@@ -126,7 +126,7 @@ describe(`HubSpot sync (${DB_BACKEND})`, () => {
     const { reference } = await order();
     await processCrm(deps);
     await transitionOrder({ db: t.db, isProduction: false, now: t.clock.now }, { reference, to: 'accepted', actor: 'admin' });
-    await transitionOrder({ db: t.db, isProduction: false, now: t.clock.now }, { reference, to: 'paid', actor: 'admin' });
+    await transitionOrder({ db: t.db, isProduction: false, now: t.clock.now }, { reference, to: 'paid', actor: 'stripe' });
     // Two changes before the worker ran: one job, carrying the latest state.
     expect((await jobs()).filter((j) => j.state === 'pending')).toHaveLength(1);
     await processCrm(deps);
@@ -172,7 +172,7 @@ describe(`HubSpot sync (${DB_BACKEND})`, () => {
 
     // A crash after creating the deal but before saving its ID: the next sync finds it by reference.
     await t.db.query('UPDATE orders SET crm_deal_id = NULL');
-    await transitionOrder({ db: t.db, isProduction: false, now: t.clock.now }, { reference, to: 'paid', actor: 'admin' });
+    await transitionOrder({ db: t.db, isProduction: false, now: t.clock.now }, { reference, to: 'paid', actor: 'stripe' });
     await processCrm(deps);
     expect(hs.deals.size).toBe(1);
   });

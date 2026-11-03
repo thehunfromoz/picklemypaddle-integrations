@@ -162,11 +162,14 @@ const schema = z
       .preprocess((v) => (typeof v === 'string' && v.trim() ? v : '127.0.0.1,::1'), z.string())
       .transform((v) => v.split(',').map((s) => s.trim()).filter(Boolean)),
 
-    // ── Stripe (SCRUM-9). Optional until payments are built. ──────────────────
+    // ── Stripe (SCRUM-82). Optional: without a key, Pay now is hidden. A restricted key (rk_…) is
+    //    expected: Checkout Sessions write; PaymentIntents, Charges, Balance and Events read. ──
     STRIPE_SECRET_KEY: optional(
       z.string().regex(/^(sk|rk)_(test|live)_[A-Za-z0-9]+$/, 'must be a Stripe secret or restricted key'),
     ),
     STRIPE_WEBHOOK_SECRET: optional(z.string().regex(/^whsec_[A-Za-z0-9]+$/, 'must start with whsec_')),
+    /** Stripe's API address; tests only. */
+    STRIPE_API_BASE: z.string().url().default('https://api.stripe.com'),
 
     // ── HubSpot (SCRUM-74): a one-way mirror of orders. Optional: without it, nothing syncs. ──
     /**
@@ -258,11 +261,12 @@ const schema = z
     if (c.APP_ENV === 'production' && c.GST_REGISTERED_FROM && !c.BUSINESS_ABN) {
       ctx.addIssue({ code: 'custom', path: ['BUSINESS_ABN'], message: 'is required in production when GST_REGISTERED_FROM is set (tax invoices show the ABN)' });
     }
-    if (c.STRIPE_SECRET_KEY && !c.STRIPE_WEBHOOK_SECRET) {
+    // SCRUM-82: only production has a webhook (Stripe can't reach staging, which uses the poller).
+    if (c.APP_ENV === 'production' && c.STRIPE_SECRET_KEY && !c.STRIPE_WEBHOOK_SECRET) {
       ctx.addIssue({
         code: 'custom',
         path: ['STRIPE_WEBHOOK_SECRET'],
-        message: 'is required when STRIPE_SECRET_KEY is set',
+        message: 'is required in production when STRIPE_SECRET_KEY is set',
       });
     }
   });
