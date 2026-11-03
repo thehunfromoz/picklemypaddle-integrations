@@ -362,8 +362,11 @@ interface (`src/crm/crm.ts`), with the HubSpot implementation in `src/crm/hubspo
 
 - **What goes across:** a contact (by email: first and last name, email, phone, suburb, state,
   postcode) and one deal per order (name = reference, `[TEST] ` prefixed outside production;
-  amount = paddles × A$60; properties `pmp_reference`, `pmp_paddle_count`, `pmp_is_test`,
-  `pmp_reviewed`), whose stage mirrors the order status 1:1 in the default pipeline. The contact
+  amount = the total fixed at Accept, before that the re-grit estimate less any code's discount,
+  always sent with two decimals; properties `pmp_reference`, `pmp_paddle_count`, `pmp_is_test`,
+  `pmp_reviewed`, and how the amount is made up (3 Nov 2026): `pmp_regrit_aud` (before discount),
+  `pmp_discount_code`, `pmp_discount_aud`, `pmp_postage_aud` and `pmp_gst_aud` (the last two empty
+  until Accept)), whose stage mirrors the order status 1:1 in the default pipeline. The contact
   also gets `pmp_has_reviewed`: yes once any of that customer's orders has a review (SCRUM-80; a
   later discount for reviewers can key on it). A review queues a sync, so both flags follow. **Never** the street address,
   photos, paddle details or a status-link token; a test checks every request.
@@ -376,7 +379,9 @@ interface (`src/crm/crm.ts`), with the HubSpot implementation in `src/crm/hubspo
   belongs to that portal (`portal_mismatch` otherwise, and nothing is written).
 - **Setup as code:** `node dist/cli/hubspot-setup.js --dry-run` shows what it would change (the
   property group and properties on deals and contacts, and the 11 stages); without `--dry-run` it
-  applies them, idempotently. Stages that aren't ours are listed and left alone.
+  applies them, idempotently. Stages that aren't ours are listed and left alone. **Run it after
+  any change that adds a property** (before the syncs that write it: HubSpot refuses unknown
+  properties, and those syncs fail until it has run; retry them, or run `crm-resync.js`).
 - **Resync:** `node dist/cli/crm-resync.js` queues every order (after an outage, or when
   production moves to its own portal).
 

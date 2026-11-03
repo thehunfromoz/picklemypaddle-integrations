@@ -27,6 +27,13 @@ export interface CrmDeal {
   /** `[TEST] PMP-…` for TEST orders (AC8). */
   name: string;
   amountCents: number;
+  /** SCRUM-63 follow-up: how the amount is made up (fixed at Accept; the estimate before). */
+  regritCents: number;
+  discountCode: string | null;
+  discountCents: number;
+  /** Null before Accept (return postage isn't known until then). */
+  postageCents: number | null;
+  gstCents: number | null;
   paddleCount: number;
   isTest: boolean;
   status: OrderStatus;
@@ -51,6 +58,12 @@ export interface OrderForCrm {
   /** SCRUM-63: the code's benefit, saved at submit; taken off the estimate before Accept. */
   discount_kind?: DiscountKind | null;
   discount_value?: number | null;
+  discount_code?: string | null;
+  /** Fixed at Accept (SCRUM-81); null (or 0 for the discount) before. */
+  subtotal_cents?: number | null;
+  discount_cents?: number | null;
+  postage_cents?: number | null;
+  gst_cents?: number | null;
   /** SCRUM-80: this order has a review; any order with this email has one. */
   has_review: boolean;
   contact_has_review: boolean;
@@ -83,6 +96,25 @@ export function splitName(name: string): { firstName: string; lastName: string }
   return { firstName: parts[0] ?? '', lastName: parts.slice(1).join(' ') };
 }
 
+function dealAmounts(o: OrderForCrm): Pick<CrmDeal, 'amountCents' | 'regritCents' | 'discountCode' | 'discountCents' | 'postageCents' | 'gstCents'> {
+  const code = o.discount_code ?? null;
+  if (o.amount_cents != null) {
+    return {
+      amountCents: Number(o.amount_cents),
+      regritCents: Number(o.subtotal_cents ?? o.amount_cents),
+      discountCode: Number(o.discount_cents ?? 0) > 0 ? code : null,
+      discountCents: Number(o.discount_cents ?? 0),
+      postageCents: o.postage_cents != null ? Number(o.postage_cents) : null,
+      gstCents: o.gst_cents != null ? Number(o.gst_cents) : null,
+    };
+  }
+  const regrit = o.paddle_count * PRICE_PER_PADDLE_CENTS;
+  const discount = o.discount_kind && o.discount_value != null
+    ? discountCents({ kind: o.discount_kind, value: Number(o.discount_value) }, o.paddle_count, PRICE_PER_PADDLE_CENTS)
+    : 0;
+  return { amountCents: regrit - discount, regritCents: regrit, discountCode: code, discountCents: discount, postageCents: null, gstCents: null };
+}
+
 export function mapOrder(o: OrderForCrm): { contact: CrmContact; deal: CrmDeal } {
   return {
     contact: {
@@ -98,16 +130,9 @@ export function mapOrder(o: OrderForCrm): { contact: CrmContact; deal: CrmDeal }
     deal: {
       reference: o.reference,
       name: o.is_test ? `[TEST] ${o.reference}` : o.reference,
-      // SCRUM-81: the total the customer was asked to pay (re-grit and postage) once accepted;
-      // before that, the re-grit estimate.
-      // SCRUM-63: a code's discount comes off the estimate too.
-      amountCents:
-        o.amount_cents != null
-          ? Number(o.amount_cents)
-          : o.paddle_count * PRICE_PER_PADDLE_CENTS -
-            (o.discount_kind && o.discount_value != null
-              ? discountCents({ kind: o.discount_kind, value: Number(o.discount_value) }, o.paddle_count, PRICE_PER_PADDLE_CENTS)
-              : 0),
+      // SCRUM-81/63: once accepted, the total and its parts as fixed at Accept; before that, the
+      // re-grit estimate with any code's discount taken off (postage isn't known yet).
+      ...dealAmounts(o),
       paddleCount: o.paddle_count,
       isTest: o.is_test,
       status: o.status,

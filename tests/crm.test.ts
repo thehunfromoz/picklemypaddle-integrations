@@ -8,6 +8,7 @@ import { applySetup, CONTACT_PROPERTIES, DEAL_PROPERTIES, describeChange, hubspo
 import { processCrm, resyncAll, retryCrmJob, type CrmDeps } from '../src/crm/sync.js';
 import { BACKOFF_MINUTES } from '../src/email/outbox.js';
 import { STATUSES } from '../src/orders/model.js';
+import { createCode } from '../src/orders/discounts.js';
 import { transitionOrder } from '../src/orders/transitions.js';
 import { fakeHubSpot, type FakeHubSpot } from './helpers/fake-hubspot.js';
 import { DB_BACKEND } from './helpers/db.js';
@@ -34,7 +35,21 @@ describe('mapping', () => {
       reference: 'PMP-7K3QX', status: 'accepted', is_test: true, name: 'Sam Lee', email: 'sam@example.org', phone: null,
       suburb: 'Newtown', state: 'NSW', postcode: '2042', paddle_count: 3, has_review: false, contact_has_review: false, crm_contact_id: null, crm_deal_id: null,
     });
-    expect(deal).toEqual({ reference: 'PMP-7K3QX', name: '[TEST] PMP-7K3QX', amountCents: 18000, paddleCount: 3, isTest: true, status: 'accepted', reviewed: false });
+    expect(deal).toEqual({
+      reference: 'PMP-7K3QX', name: '[TEST] PMP-7K3QX', amountCents: 18000, paddleCount: 3, isTest: true, status: 'accepted', reviewed: false,
+      regritCents: 18000, discountCode: null, discountCents: 0, postageCents: null, gstCents: null,
+    });
+  });
+
+  it('carries the discount code and how the amount is made up, before and after Accept (SCRUM-63 follow-up)', () => {
+    const base = {
+      reference: 'PMP-7K3QX', is_test: true, name: 'Sam Lee', email: 'sam@example.org', phone: null,
+      suburb: 'Newtown', state: 'NSW', postcode: '2042', paddle_count: 2, has_review: false, contact_has_review: false, crm_contact_id: null, crm_deal_id: null,
+      discount_code: 'TEST10', discount_kind: 'amount', discount_value: 1000,
+    } as const;
+    expect(mapOrder({ ...base, status: 'submitted' }).deal).toMatchObject({ amountCents: 11000, regritCents: 12000, discountCode: 'TEST10', discountCents: 1000, postageCents: null, gstCents: null });
+    expect(mapOrder({ ...base, status: 'accepted', amount_cents: 12800, subtotal_cents: 12000, discount_cents: 1000, postage_cents: 1800, gst_cents: 0 }).deal)
+      .toMatchObject({ amountCents: 12800, regritCents: 12000, discountCode: 'TEST10', discountCents: 1000, postageCents: 1800, gstCents: 0 });
   });
 
   it('carries the "reviewed" flags: the order’s own on the deal, any order’s on the contact (SCRUM-80)', () => {
@@ -110,6 +125,19 @@ describe(`HubSpot sync (${DB_BACKEND})`, () => {
 
     const { rows } = await t.db.query<{ crm_contact_id: string; crm_deal_id: string }>('SELECT crm_contact_id, crm_deal_id FROM orders');
     expect(rows[0]).toEqual({ crm_contact_id: contact.id, crm_deal_id: dealId });
+  });
+
+  it('the deal carries the amount to the cent, the discount code and how the amount is made up (SCRUM-63 follow-up)', async () => {
+    const deps = await setup();
+    await createCode(t.db, { code: 'TEST10', kind: 'amount', value: 1000, maxUses: 5, expiresOn: null, onePerEmail: true, note: null }, 'test', t.clock.now);
+    const placed = await post(t, await orderForm(t, { email: 'coded@test.picklemypaddle.com', overrides: { discountCode: 'TEST10' } }));
+    const { reference } = (await placed.json()) as { reference: string };
+    await processCrm(deps);
+    const deal = () => [...hs.deals.values()].find((d) => d.properties.pmp_reference === reference)!.properties;
+    expect(deal()).toMatchObject({ amount: '50.00', pmp_regrit_aud: '60.00', pmp_discount_code: 'TEST10', pmp_discount_aud: '10.00', pmp_postage_aud: '', pmp_gst_aud: '' });
+    await transitionOrder({ db: t.db, isProduction: false, now: t.clock.now }, { reference, to: 'accepted', actor: 'admin' });
+    await processCrm(deps);
+    expect(deal()).toMatchObject({ amount: '61.70', pmp_regrit_aud: '60.00', pmp_discount_code: 'TEST10', pmp_discount_aud: '10.00', pmp_postage_aud: '11.70', pmp_gst_aud: '0.00' });
   });
 
   it('a second order from the same email reuses the contact', async () => {

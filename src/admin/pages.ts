@@ -289,7 +289,9 @@ ${o.suburb} ${o.state} ${o.postcode}</dd>
   ${
     o.discount
       ? html`<dt>Discount code</dt><dd>${o.discount.code}: ${describeDiscount(o.discount)}${
-          o.price ? '' : html` <span class="small">(about −${dollars(discountCents(o.discount, o.paddles.length, PRICE_PER_PADDLE_CENTS))}; fixed at Accept, never off postage)</span>`
+          o.price
+            ? html` = <strong>−${dollars(o.price.discountCents)}</strong> off the re-grit <span class="small">(fixed at Accept)</span>`
+            : html` <span class="small">(about −${dollars(discountCents(o.discount, o.paddles.length, PRICE_PER_PADDLE_CENTS))}; fixed at Accept, never off postage)</span>`
         }</dd>`
       : ''
   }
