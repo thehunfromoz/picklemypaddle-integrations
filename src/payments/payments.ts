@@ -348,7 +348,38 @@ export async function pollEvents(deps: PaymentDeps): Promise<{ events: number; a
       [CURSOR, event.id, deps.now()],
     );
   }
+  await fillMissingFees(deps);
   return { events: batch.length, applied };
+}
+
+/** How long after a payment to keep asking Stripe for its fee. */
+export const FEE_BACKFILL_DAYS = 7;
+
+/**
+ * Stripe may not have made a charge's balance transaction (which carries the fee) when the
+ * customer comes straight back from Checkout, so the payment is saved without a fee. Each poll
+ * asks again for recent payments still missing one (found 3 Nov 2026 on staging).
+ */
+export async function fillMissingFees(deps: PaymentDeps): Promise<number> {
+  const since = new Date(deps.now().getTime() - FEE_BACKFILL_DAYS * 24 * 60 * 60 * 1000);
+  const { rows } = await deps.db.query<{ id: string; payment_intent_id: string }>(
+    'SELECT id, payment_intent_id FROM payments WHERE fee_cents IS NULL AND payment_intent_id IS NOT NULL AND recorded_at > $1 ORDER BY id LIMIT 20',
+    [since],
+  );
+  let filled = 0;
+  for (const p of rows) {
+    try {
+      const fee = (await deps.stripe.getPaymentIntent(p.payment_intent_id)).latest_charge?.balance_transaction?.fee;
+      if (typeof fee === 'number') {
+        await deps.db.query('UPDATE payments SET fee_cents = $2 WHERE id = $1 AND fee_cents IS NULL', [p.id, fee]);
+        filled++;
+      }
+    } catch {
+      log('payment_fee_lookup_failed', { payment: Number(p.id) });
+    }
+  }
+  if (filled) log('payment_fees_filled', { payments: filled });
+  return filled;
 }
 
 // ── Webhook signature ─────────────────────────────────────────────────────────

@@ -17,6 +17,8 @@ export interface FakeStripe {
   failNext: number[];
   /** Fee Stripe takes on a charge. */
   feeFor(amount: number): number;
+  /** While true, charges have no balance transaction yet (as right after Checkout, sometimes). */
+  feePending: boolean;
 }
 
 export function fakeStripe(opts: { livemode?: boolean; clock?: { now: Date } } = {}): FakeStripe {
@@ -33,6 +35,7 @@ export function fakeStripe(opts: { livemode?: boolean; clock?: { now: Date } } =
     sessions: new Map(),
     events: [],
     failNext: [],
+    feePending: false,
     feeFor: (amount) => Math.round(amount * 0.0165) + 30,
     pay(sessionId, o = {}) {
       const s = fs.sessions.get(sessionId);
@@ -108,7 +111,7 @@ export function fakeStripe(opts: { livemode?: boolean; clock?: { now: Date } } =
       return json(200, {
         id: pi.id, amount_received: pi.amount, currency: 'aud', created: pi.created,
         latest_charge: { id: pi.charge.id, created: pi.charge.created, amount_refunded: pi.charge.amount_refunded,
-          balance_transaction: expanded ? { id: id('txn'), fee: pi.charge.fee } : 'txn_unexpanded' },
+          balance_transaction: fs.feePending ? null : expanded ? { id: id('txn'), fee: pi.charge.fee } : 'txn_unexpanded' },
       });
     }
     if (method === 'GET' && url.pathname === '/v1/events') {
