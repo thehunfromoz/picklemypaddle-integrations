@@ -13,7 +13,7 @@
  *    submit, so changing or deactivating the code afterwards never changes the order.
  */
 import { randomInt } from 'node:crypto';
-import type { Queryable } from '../db/db.js';
+import type { Db, Queryable } from '../db/db.js';
 import { isUniqueViolation } from '../db/db.js';
 import { sydneyDate } from './dates.js';
 import { REFERENCE_ALPHABET, type OrderStatus } from './model.js';
@@ -151,29 +151,50 @@ export class DiscountCodeError extends Error {
   }
 }
 
-export interface NewCode {
-  /** Empty or missing: generate a one-person code. */
-  code?: string;
+/** Letters and digits, up to 20 (decided 3 Nov 2026): a shared code is exactly this; personal codes start with it. */
+export const PREFIX_RE = /^[A-Z0-9]{1,20}$/;
+/** Shared codes are at least 3 characters (the code format's minimum). */
+export const SHARED_MIN = 3;
+export const GENERATED_LENGTH = 8;
+export const MAX_CODE_NOTE = 500;
+export const MAX_BATCH = 100;
+
+export type CodeMode = 'personal' | 'shared';
+
+/**
+ * One form for every code (decided 3 Nov 2026):
+ *  - personal: `count` unique codes PREFIX-XXXXXXXX (8 easy-read random characters), each one use,
+ *    once per email, giving whatever the form says (not only free re-grits);
+ *  - shared: one code, exactly the prefix, with total uses and "once per email" as chosen.
+ */
+export interface NewCodes {
+  mode: CodeMode;
+  prefix: string;
+  /** Personal only: 1 to 100. */
+  count: number;
   kind: DiscountKind;
   value: number;
+  /** Shared only; personal codes are always 1. */
   maxUses: number;
-  expiresOn: string | null;
+  /** Shared only; personal codes always are. */
   onePerEmail: boolean;
+  expiresOn: string | null;
   note: string | null;
 }
 
-export const GENERATED_PREFIX = 'FREE-';
-export const GENERATED_LENGTH = 8;
-export const MAX_CODE_NOTE = 500;
-
-/** FREE- plus 8 characters from the reference alphabet (no 0/O, 1/I/L): about 40 bits. */
-export function generateCode(): string {
-  let out = GENERATED_PREFIX;
+/** PREFIX- plus 8 characters from the reference alphabet (no 0/O, 1/I/L): about 40 bits. */
+export function generateCode(prefix: string): string {
+  let out = `${prefix}-`;
   for (let i = 0; i < GENERATED_LENGTH; i++) out += REFERENCE_ALPHABET[randomInt(REFERENCE_ALPHABET.length)];
   return out;
 }
 
-function validateNew(c: NewCode, today: string): void {
+function validateNew(c: NewCodes, today: string): void {
+  if (!PREFIX_RE.test(c.prefix)) throw new DiscountCodeError('The prefix is 1 to 20 letters and digits (no spaces or hyphens).');
+  if (c.mode === 'shared' && c.prefix.length < SHARED_MIN) throw new DiscountCodeError(`A shared code is at least ${SHARED_MIN} letters and digits.`);
+  if (c.mode === 'personal' && (!Number.isInteger(c.count) || c.count < 1 || c.count > MAX_BATCH)) {
+    throw new DiscountCodeError(`Make 1 to ${MAX_BATCH} codes at a time.`);
+  }
   if (c.kind === 'free' && (!Number.isInteger(c.value) || c.value < 1 || c.value > 10)) {
     throw new DiscountCodeError('A free re-grit covers 1 to 10 paddles.');
   }
@@ -183,52 +204,71 @@ function validateNew(c: NewCode, today: string): void {
   if (c.kind === 'percent' && (!Number.isInteger(c.value) || c.value < 1 || c.value > 100)) {
     throw new DiscountCodeError('The percentage must be a whole number from 1 to 100.');
   }
-  if (!Number.isInteger(c.maxUses) || c.maxUses < 1 || c.maxUses > 10_000) throw new DiscountCodeError('Total uses must be 1 to 10,000.');
+  if (c.mode === 'shared' && (!Number.isInteger(c.maxUses) || c.maxUses < 1 || c.maxUses > 10_000)) throw new DiscountCodeError('Total uses must be 1 to 10,000.');
   if (c.expiresOn !== null && (!/^\d{4}-\d{2}-\d{2}$/.test(c.expiresOn) || c.expiresOn < today)) {
-    throw new DiscountCodeError('The expiry date must be today or later.');
+    throw new DiscountCodeError('The last day must be today or later.');
   }
   if (c.note && c.note.length > MAX_CODE_NOTE) throw new DiscountCodeError(`Keep the note under ${MAX_CODE_NOTE} characters.`);
 }
 
-export async function createCode(q: Queryable, c: NewCode, by: string, now: Date): Promise<DiscountCode> {
+async function insertCode(q: Queryable, code: string, c: NewCodes, by: string, now: Date): Promise<string> {
+  const { rows } = await q.query<{ id: string }>(
+    `INSERT INTO discount_codes (code, kind, value, max_uses, expires_on, one_per_email, note, created_at, created_by)
+     VALUES ($1, $2, $3, $4, $5::date, $6, $7, $8, $9) RETURNING id`,
+    [code, c.kind, c.value, c.mode === 'personal' ? 1 : c.maxUses, c.expiresOn, c.mode === 'personal' ? true : c.onePerEmail, c.note?.trim() || null, now, by],
+  );
+  return String(rows[0]!.id);
+}
+
+/** Creates the codes the form asked for, all or nothing. Returns them. */
+export async function createCodes(db: Db, input: NewCodes, by: string, now: Date): Promise<DiscountCode[]> {
+  const c = { ...input, prefix: normaliseDiscountCode(input.prefix) };
   validateNew(c, sydneyDate(now));
-  const typed = c.code?.trim() ? normaliseDiscountCode(c.code) : null;
-  if (typed !== null && !DISCOUNT_CODE_RE.test(typed)) {
-    throw new DiscountCodeError('Codes are 3 to 32 letters, digits and hyphens, starting and ending with a letter or digit.');
-  }
-  for (let attempt = 1; ; attempt++) {
-    const code = typed ?? generateCode();
+  const ids = await db.tx(async (q) => {
+    if (c.mode === 'shared') {
+      const { rows } = await q.query('SELECT 1 FROM discount_codes WHERE code = $1', [c.prefix]);
+      if (rows.length) throw new DiscountCodeError(`There is already a code ${c.prefix}.`);
+      return [await insertCode(q, c.prefix, c, by, now)];
+    }
+    const out: string[] = [];
+    const taken = new Set<string>();
+    while (out.length < c.count) {
+      const code = generateCode(c.prefix);
+      if (taken.has(code)) continue;
+      const { rows } = await q.query('SELECT 1 FROM discount_codes WHERE code = $1', [code]);
+      if (rows.length) continue; // a clash with an older code: draw again
+      taken.add(code);
+      out.push(await insertCode(q, code, c, by, now));
+    }
+    return out;
+  });
+  return Promise.all(ids.map(async (id) => (await findCode(db, id))!));
+}
+
+/** Kept for tests and scripts: one code, typed (shared) or generated (personal). */
+export interface NewCode {
+  code?: string;
+  kind: DiscountKind;
+  value: number;
+  maxUses: number;
+  expiresOn: string | null;
+  onePerEmail: boolean;
+  note: string | null;
+}
+export async function createCode(db: Db, c: NewCode, by: string, now: Date): Promise<DiscountCode> {
+  if (c.code?.trim()) {
+    // Typed codes from tests may contain hyphens: insert directly after the shape check.
+    const code = normaliseDiscountCode(c.code);
+    if (!DISCOUNT_CODE_RE.test(code)) throw new DiscountCodeError('Codes are 3 to 32 letters, digits and hyphens.');
+    const settings: NewCodes = { mode: 'shared', prefix: 'X', count: 1, ...c };
     try {
-      const { rows } = await q.query<{ id: string }>(
-        `INSERT INTO discount_codes (code, kind, value, max_uses, expires_on, one_per_email, note, created_at, created_by)
-         VALUES ($1, $2, $3, $4, $5::date, $6, $7, $8, $9) RETURNING id`,
-        [code, c.kind, c.value, c.maxUses, c.expiresOn, c.onePerEmail, c.note?.trim() || null, now, by],
-      );
-      return (await findCode(q, rows[0]!.id))!;
+      return (await findCode(db, await insertCode(db, code, settings, by, now)))!;
     } catch (err) {
-      if (!isUniqueViolation(err)) throw err;
-      if (typed !== null) throw new DiscountCodeError(`There is already a code ${typed}.`);
-      if (attempt >= 5) throw err;
+      if (isUniqueViolation(err)) throw new DiscountCodeError(`There is already a code ${code}.`);
+      throw err;
     }
   }
-}
-
-/** Generates `count` one-person codes with the same settings (e.g. the 10 launch codes). */
-export async function generateCodes(q: Queryable, c: Omit<NewCode, 'code'>, count: number, by: string, now: Date): Promise<DiscountCode[]> {
-  if (!Number.isInteger(count) || count < 1 || count > MAX_BATCH) throw new DiscountCodeError(`Generate 1 to ${MAX_BATCH} codes at a time.`);
-  const out: DiscountCode[] = [];
-  for (let i = 0; i < count; i++) out.push(await createCode(q, { ...c, code: undefined }, by, now));
-  return out;
-}
-
-export const MAX_BATCH = 20;
-
-/** Attila's note on a code, e.g. who it was sent to. Empty clears it. */
-export async function setCodeNote(q: Queryable, id: string, note: string | null): Promise<boolean> {
-  if (!/^\d{1,18}$/.test(id)) return false;
-  if (note && note.length > MAX_CODE_NOTE) throw new DiscountCodeError(`Keep the note under ${MAX_CODE_NOTE} characters.`);
-  const { rows } = await q.query('UPDATE discount_codes SET note = $2 WHERE id = $1 RETURNING id', [id, note?.trim() || null]);
-  return rows.length > 0;
+  return (await createCodes(db, { mode: 'personal', prefix: 'FREE', count: 1, ...c }, by, now))[0]!;
 }
 
 export async function findCode(q: Queryable, id: string): Promise<DiscountCode | null> {
@@ -237,9 +277,39 @@ export async function findCode(q: Queryable, id: string): Promise<DiscountCode |
   return rows[0] ? toCode(rows[0]) : null;
 }
 
-export async function listCodes(q: Queryable): Promise<DiscountCode[]> {
-  const { rows } = await q.query<CodeRow>(`${SELECT_CODES} ORDER BY c.active DESC, c.created_at DESC`);
-  return rows.map(toCode);
+/** The list's filters: codes starting with a prefix, and/or in one state. */
+export type CodeState = 'active' | 'used_up' | 'expired' | 'inactive';
+export const CODE_STATES: readonly CodeState[] = ['active', 'used_up', 'expired', 'inactive'];
+
+export function stateOf(c: DiscountCode, today: string): CodeState {
+  if (!c.active) return 'inactive';
+  if (c.expiresOn !== null && today > c.expiresOn) return 'expired';
+  if (c.used >= c.maxUses) return 'used_up';
+  return 'active';
+}
+
+export async function listCodes(q: Queryable, filter: { prefix?: string; state?: CodeState; today?: string } = {}): Promise<DiscountCode[]> {
+  const prefix = filter.prefix ? normaliseDiscountCode(filter.prefix) : '';
+  const { rows } = await q.query<CodeRow>(
+    `${SELECT_CODES} WHERE ($1 = '' OR c.code = $1 OR c.code LIKE $1 || '-%') ORDER BY c.active DESC, c.created_at DESC, c.code`,
+    [/^[A-Z0-9]{1,20}$/.test(prefix) ? prefix : ''],
+  );
+  const codes = rows.map(toCode);
+  return filter.state && filter.today ? codes.filter((c) => stateOf(c, filter.today!) === filter.state) : codes;
+}
+
+/** Every prefix in use (personal codes' part before the hyphen; shared codes whole), for the filter. */
+export async function codePrefixes(q: Queryable): Promise<string[]> {
+  const { rows } = await q.query<{ p: string }>(`SELECT DISTINCT split_part(code, '-', 1) AS p FROM discount_codes ORDER BY 1`);
+  return rows.map((r) => r.p);
+}
+
+/** Attila's note on a code, e.g. who it was sent to. Empty clears it. */
+export async function setCodeNote(q: Queryable, id: string, note: string | null): Promise<boolean> {
+  if (!/^\d{1,18}$/.test(id)) return false;
+  if (note && note.length > MAX_CODE_NOTE) throw new DiscountCodeError(`Keep the note under ${MAX_CODE_NOTE} characters.`);
+  const { rows } = await q.query('UPDATE discount_codes SET note = $2 WHERE id = $1 RETURNING id', [id, note?.trim() || null]);
+  return rows.length > 0;
 }
 
 export async function setCodeActive(q: Queryable, id: string, active: boolean): Promise<boolean> {
