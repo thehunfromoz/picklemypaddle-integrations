@@ -336,8 +336,12 @@ describe('discount codes admin page', () => {
     expect(r.status).toBe(303);
     expect((await checkCode(t.db, 'LAUNCH10', { now: t.clock.now })).ok).toBe(false);
 
-    const order = await (await admin.get(`/admin/orders/${reference}`)).text();
+    let order = await (await admin.get(`/admin/orders/${reference}`)).text();
     expect(order).toContain('LAUNCH10: Free re-grit for 1 paddle');
+    expect(order).toContain('about −A$60; fixed at Accept');
+    await transitionOrder({ db: t.db, isProduction: false, now: t.clock.now }, { reference, to: 'accepted', actor: 'admin' });
+    order = await (await admin.get(`/admin/orders/${reference}`)).text();
+    expect(order).toContain('LAUNCH10: Free re-grit for 1 paddle = <strong>−A$60</strong> off the re-grit');
   });
 
   it('generates 10 unique one-person launch codes at once, and notes who each went to', async () => {

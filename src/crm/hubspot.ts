@@ -98,6 +98,12 @@ export const DEAL_PROPERTIES: readonly PropertyDef[] = [
     description: 'A TEST order placed outside production. Set by the integrations service.',
     options: yesNo,
   },
+  // SCRUM-63 follow-up (3 Nov 2026): how the amount is made up, for sales figures by discount code.
+  { name: 'pmp_regrit_aud', label: 'Re-grit (A$)', type: 'number', fieldType: 'number', description: 'Re-grit price for all paddles before any discount, A$. Fixed at Accept (an estimate before). Set by the integrations service.' },
+  { name: 'pmp_discount_code', label: 'Discount code', type: 'string', fieldType: 'text', description: 'The discount code on the order, if any. Set by the integrations service.' },
+  { name: 'pmp_discount_aud', label: 'Discount (A$)', type: 'number', fieldType: 'number', description: 'Taken off the re-grit by the discount code, A$. Fixed at Accept (an estimate before). Set by the integrations service.' },
+  { name: 'pmp_postage_aud', label: 'Return postage (A$)', type: 'number', fieldType: 'number', description: 'Return postage charged, A$. Empty until Accept. Set by the integrations service.' },
+  { name: 'pmp_gst_aud', label: 'GST included (A$)', type: 'number', fieldType: 'number', description: 'GST included in the amount, A$ (0 while not GST-registered). Empty until Accept. Set by the integrations service.' },
   // SCRUM-80: whether the customer left a review for this order.
   {
     name: 'pmp_reviewed',
@@ -171,15 +177,22 @@ export function hubspotAdapter(client: HubSpotClient): CrmAdapter & { stageIds()
     pmp_has_reviewed: String(c.hasReviewed),
   });
 
+  /** Cents → "11.70": always two decimals, never rounded to whole dollars. */
+  const aud = (cents: number) => (cents / 100).toFixed(2);
   const dealProperties = (d: CrmDeal, stageId: string) => ({
     dealname: d.name,
-    amount: (d.amountCents / 100).toFixed(2),
+    amount: aud(d.amountCents),
     pipeline: PIPELINE_ID,
     dealstage: stageId,
     pmp_reference: d.reference,
     pmp_paddle_count: String(d.paddleCount),
     pmp_is_test: String(d.isTest),
     pmp_reviewed: String(d.reviewed),
+    pmp_regrit_aud: aud(d.regritCents),
+    pmp_discount_code: d.discountCode ?? '',
+    pmp_discount_aud: aud(d.discountCents),
+    pmp_postage_aud: d.postageCents === null ? '' : aud(d.postageCents),
+    pmp_gst_aud: d.gstCents === null ? '' : aud(d.gstCents),
   });
 
   async function upsertContact(c: CrmContact): Promise<string> {
