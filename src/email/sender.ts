@@ -9,6 +9,8 @@
 /** Automatic emails come from sales@ and replies go to info@ (decided 20 and 26 Oct 2026). */
 export const FROM = 'PickleMyPaddle <sales@picklemypaddle.com>';
 export const REPLY_TO = 'info@picklemypaddle.com';
+/** SCRUM-85: clubs reply to Attila directly. */
+export const CLUB_REPLY_TO = 'attila@picklemypaddle.com';
 /** Where Attila's new-order alert goes (forwarded to the business Gmail). */
 export const ALERT_TO = 'sales@picklemypaddle.com';
 
@@ -19,6 +21,8 @@ export interface EmailMessage {
   html: string;
   /** The provider drops a repeat with the same key (Resend keeps keys for 24 hours). */
   idempotencyKey: string;
+  /** Default REPLY_TO (info@); club emails use CLUB_REPLY_TO. */
+  replyTo?: string;
 }
 
 export interface EmailSender {
@@ -56,7 +60,7 @@ export function resendSender(apiKey: string, fetchImpl: typeof fetch = fetch, ti
             'Idempotency-Key': m.idempotencyKey,
             'User-Agent': 'picklemypaddle-integrations',
           },
-          body: JSON.stringify({ from: FROM, to: [m.to], reply_to: REPLY_TO, subject: m.subject, text: m.text, html: m.html }),
+          body: JSON.stringify({ from: FROM, to: [m.to], reply_to: m.replyTo ?? REPLY_TO, subject: m.subject, text: m.text, html: m.html }),
           signal: AbortSignal.timeout(timeoutMs),
         });
       } catch (err) {

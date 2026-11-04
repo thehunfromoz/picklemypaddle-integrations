@@ -16,6 +16,11 @@
  *   GET  /admin/erase · POST /admin/erase/preview · POST /admin/erase/confirm   erasure on request (SCRUM-75)
  *   GET  /admin/codes · POST /admin/codes       discount codes: list, create or generate (SCRUM-63)
  *   GET  /admin/codes/:id · POST /admin/codes/:id/active · POST /admin/codes/:id/note   one code: uses, (de)activate, note
+ *   GET  /admin/clubs · POST /admin/clubs      clubs: list, add (SCRUM-85)
+ *   GET  /admin/clubs/:id · POST /admin/clubs/:id · POST /admin/clubs/:id/active   one club: batches, edit, (de)activate
+ *   POST /admin/clubs/:id/batches             record a batch collected
+ *   GET  /admin/batches?all=1                 open (or all) batches
+ *   GET  /admin/batches/:ref · POST …/return · POST …/cancel · POST …/notes   one batch: return and invoice, cancel, notes
  *   GET  /admin/photos/:id                   a paddle photo (authorised, never cached)
  *   GET  /admin/admin.css
  */
@@ -47,6 +52,11 @@ import { addNote, listOrders, loadOrder, MAX_NOTE, outboxRow, photoPath } from '
 import { adminGuard, type AdminIdentity } from './guard.js';
 import { detailPage, filterStatuses, listPage, notFoundPage, parseFilter, type Flash, type PageContext } from './pages.js';
 import { ADMIN_CSS } from './style.js';
+import { batchesPage, batchPage, clubPage, clubsPage } from './club-pages.js';
+import {
+  batchEmails, cancelBatch, ClubError, createBatch, createClub, findBatch, findClub, listBatches, listClubs, returnBatch, setBatchNote, setClubActive, updateClub, validateClub,
+  type Club, type ClubInput,
+} from '../clubs/clubs.js';
 
 export interface AdminDeps {
   db: Db;
@@ -67,8 +77,10 @@ export interface AdminDeps {
   tax?: TaxSettings;
   /** SCRUM-82: whether a Stripe key is set here (otherwise "Payments not configured"). */
   paymentsConfigured?: boolean;
-  /** SCRUM-84: who issues receipts (a reinstated late payment issues one). */
+  /** SCRUM-84: who issues receipts (a reinstated late payment issues one), and SCRUM-85's club invoices. */
   seller?: Seller;
+  /** SCRUM-85: CLUB_PAYMENT_TERMS_DAYS, days a club has to pay an invoice. */
+  clubPaymentTermsDays?: number;
 }
 
 type Env = { Variables: { admin: AdminIdentity } };
@@ -94,6 +106,15 @@ const DONE: Record<string, string> = {
   generated: 'Codes created: the list shows just this prefix.',
   noted: 'Note saved.',
   reinstated: 'Reinstated: the order is Paid, with the late payment as its payment.',
+  club_created: 'Club added.',
+  club_saved: 'Club details saved.',
+  club_inactive: 'The club is now inactive.',
+  club_active: 'The club is active again.',
+  batch_created: 'Batch recorded.',
+  batch_returned: 'Returned: the invoice is issued and its email goes out within a minute.',
+  batch_returned_unchanged: 'Returned. Every paddle was unchanged, so nothing was invoiced.',
+  batch_cancelled: 'Batch cancelled.',
+  batch_noted: 'Notes saved.',
 };
 
 /** "60", "60.5", "60.50" → cents. Anything else → undefined (bad input). */
@@ -325,11 +346,13 @@ export function createAdminApp(deps: AdminDeps) {
     const row = await outboxRow(deps.db, c.req.param('id'));
     if (!row) return c.html(notFoundPage(ctx(c), 'No such email or sync.'), 404);
     const retried = row.kind === 'email' ? await retryEmail(deps.db, c.req.param('id'), now()) : await retryCrmJob(deps.db, c.req.param('id'), now());
+    const isBatch = row.reference.startsWith('PMPB-');
     if (!retried) {
-      return showOrder(c, row.reference, { kind: 'error', text: 'Only a failed email or sync can be retried (it may already be queued again).' }, 409);
+      const text = 'Only a failed email or sync can be retried (it may already be queued again).';
+      return isBatch ? batchPageFor(c, row.reference, { kind: 'error', text }, 409) : showOrder(c, row.reference, { kind: 'error', text }, 409);
     }
     log('admin_retry', { outbox: Number(c.req.param('id')), kind: row.kind });
-    return back(c, row.reference, 'retry');
+    return isBatch ? c.redirect(`/admin/batches/${row.reference}?done=retry`, 303) : back(c, row.reference, 'retry');
   });
 
   // ── Discount codes (SCRUM-63) ─────────────────────────────────────────────
@@ -415,6 +438,134 @@ export function createAdminApp(deps: AdminDeps) {
       return c.html(codePage(ctx(c), code, await usesOf(deps.db, code.id), sydneyDate(now()), { kind: 'error', text: err.message }), 400);
     }
     return c.redirect(`/admin/codes/${c.req.param('id')}?done=noted`, 303);
+  });
+
+  // ── Clubs and batches (SCRUM-85) ──────────────────────────────────────────
+  const flashOf = (c: Context<Env>): Flash | undefined => {
+    const done = DONE[c.req.query('done') ?? ''];
+    return done ? { kind: 'done', text: done } : undefined;
+  };
+  const clubForm = (body: Record<string, unknown>): Partial<Record<keyof ClubInput, string | null>> => ({
+    name: field(body, 'name') ?? '',
+    billingName: field(body, 'billingName') ?? '',
+    billingEmail: field(body, 'billingEmail') ?? '',
+    billingAddress: field(body, 'billingAddress') ?? '',
+    abn: field(body, 'abn') ?? null,
+    notes: field(body, 'notes') ?? null,
+  });
+  const clubPageFor = async (c: Context<Env>, club: Club, flash?: Flash, status: 200 | 400 = 200, form?: Partial<Club>) =>
+    c.html(clubPage(ctx(c), club, await listBatches(deps.db, { clubId: club.id }), sydneyDate(now()), flash, form), status);
+  const seller = deps.seller ?? DEFAULT_SELLER;
+
+  app.get('/admin/clubs', async (c) => c.html(clubsPage(ctx(c), await listClubs(deps.db), flashOf(c))));
+  app.post('/admin/clubs', async (c) => {
+    const raw = clubForm(await c.req.parseBody());
+    try {
+      const club = await createClub(deps.db, validateClub(raw), { isProduction: deps.isProduction, now: now() });
+      log('admin_club_created', { club: club.id });
+      return c.redirect(`/admin/clubs/${club.id}?done=club_created`, 303);
+    } catch (err) {
+      if (!(err instanceof ClubError)) throw err;
+      return c.html(clubsPage(ctx(c), await listClubs(deps.db), { kind: 'error', text: err.message }, raw as Partial<Club>), 400);
+    }
+  });
+  app.get('/admin/clubs/:id', async (c) => {
+    const club = await findClub(deps.db, c.req.param('id'));
+    if (!club) return c.html(notFoundPage(ctx(c), 'No such club.'), 404);
+    return clubPageFor(c, club, flashOf(c));
+  });
+  app.post('/admin/clubs/:id', async (c) => {
+    const club = await findClub(deps.db, c.req.param('id'));
+    if (!club) return c.html(notFoundPage(ctx(c), 'No such club.'), 404);
+    const raw = clubForm(await c.req.parseBody());
+    try {
+      await updateClub(deps.db, club.id, validateClub(raw), now());
+      log('admin_club_saved', { club: club.id });
+      return c.redirect(`/admin/clubs/${club.id}?done=club_saved`, 303);
+    } catch (err) {
+      if (!(err instanceof ClubError)) throw err;
+      return clubPageFor(c, club, { kind: 'error', text: err.message }, 400, raw as Partial<Club>);
+    }
+  });
+  app.post('/admin/clubs/:id/active', async (c) => {
+    const club = await findClub(deps.db, c.req.param('id'));
+    if (!club) return c.html(notFoundPage(ctx(c), 'No such club.'), 404);
+    const active = field(await c.req.parseBody(), 'active') === 'yes';
+    await setClubActive(deps.db, club.id, active, now());
+    log('admin_club_active', { club: club.id, active });
+    return c.redirect(`/admin/clubs/${club.id}?done=${active ? 'club_active' : 'club_inactive'}`, 303);
+  });
+  app.post('/admin/clubs/:id/batches', async (c) => {
+    const club = await findClub(deps.db, c.req.param('id'));
+    if (!club) return c.html(notFoundPage(ctx(c), 'No such club.'), 404);
+    const body = await c.req.parseBody();
+    const count = field(body, 'paddleCount') ?? '';
+    try {
+      const batch = await createBatch(deps.db, {
+        clubId: club.id,
+        collectedOn: field(body, 'collectedOn') ?? '',
+        paddleCount: /^\d{1,3}$/.test(count) ? Number(count) : NaN,
+        notes: field(body, 'notes') ?? null,
+        now: now(),
+      });
+      log('admin_batch_created', { batch: batch.reference, paddles: batch.paddleCount });
+      return c.redirect(`/admin/batches/${batch.reference}?done=batch_created`, 303);
+    } catch (err) {
+      if (!(err instanceof ClubError)) throw err;
+      return clubPageFor(c, club, { kind: 'error', text: err.message }, 400);
+    }
+  });
+
+  app.get('/admin/batches', async (c) => {
+    const all = c.req.query('all') === '1';
+    return c.html(batchesPage(ctx(c), await listBatches(deps.db, { open: !all }), all));
+  });
+  const batchPageFor = async (c: Context<Env>, reference: string, flash?: Flash, status: 200 | 400 | 409 = 200) => {
+    const batch = await findBatch(deps.db, reference);
+    if (!batch) return c.html(notFoundPage(ctx(c), 'No such batch.'), 404);
+    return c.html(batchPage(ctx(c), batch, sydneyDate(now()), flash, await batchEmails(deps.db, batch.id)), status);
+  };
+  app.get('/admin/batches/:ref', async (c) => batchPageFor(c, c.req.param('ref'), flashOf(c)));
+  app.post('/admin/batches/:ref/return', async (c) => {
+    const reference = c.req.param('ref');
+    if (!(await findBatch(deps.db, reference))) return c.html(notFoundPage(ctx(c), 'No such batch.'), 404);
+    const body = await c.req.parseBody();
+    const unchanged = field(body, 'unchangedCount') ?? '0';
+    try {
+      const { invoiceId } = await returnBatch(
+        { db: deps.db, seller, isProduction: deps.isProduction, paymentTermsDays: deps.clubPaymentTermsDays ?? 14, now: now() },
+        { reference, returnedOn: field(body, 'returnedOn') ?? '', unchangedCount: /^\d{1,3}$/.test(unchanged) ? Number(unchanged) : NaN },
+      );
+      log('admin_batch_returned', { batch: reference, invoiced: !!invoiceId });
+      return c.redirect(`/admin/batches/${reference}?done=${invoiceId ? 'batch_returned' : 'batch_returned_unchanged'}`, 303);
+    } catch (err) {
+      if (!(err instanceof ClubError)) throw err;
+      return batchPageFor(c, reference, { kind: 'error', text: err.message }, 400);
+    }
+  });
+  app.post('/admin/batches/:ref/cancel', async (c) => {
+    const reference = c.req.param('ref');
+    if (!(await findBatch(deps.db, reference))) return c.html(notFoundPage(ctx(c), 'No such batch.'), 404);
+    try {
+      await cancelBatch(deps.db, reference, now());
+    } catch (err) {
+      if (!(err instanceof ClubError)) throw err;
+      return batchPageFor(c, reference, { kind: 'error', text: err.message }, 400);
+    }
+    log('admin_batch_cancelled', { batch: reference });
+    return c.redirect(`/admin/batches/${reference}?done=batch_cancelled`, 303);
+  });
+  app.post('/admin/batches/:ref/notes', async (c) => {
+    const reference = c.req.param('ref');
+    try {
+      if (!(await setBatchNote(deps.db, reference, field(await c.req.parseBody(), 'notes') ?? null, now()))) {
+        return c.html(notFoundPage(ctx(c), 'No such batch.'), 404);
+      }
+    } catch (err) {
+      if (!(err instanceof ClubError)) throw err;
+      return batchPageFor(c, reference, { kind: 'error', text: err.message }, 400);
+    }
+    return c.redirect(`/admin/batches/${reference}?done=batch_noted`, 303);
   });
 
   app.get('/admin/photos/:id', async (c) => {

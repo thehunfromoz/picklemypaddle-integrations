@@ -437,6 +437,32 @@ Gmail and Resend are outside the service: infra `runbooks/deletion.md`.
 - `node dist/cli/backdate-order.js PMP-XXXXX 13` (**test only**: refused in production and for
   non-TEST orders) moves every date on a TEST order back 13 months, to see a rule work.
 
+## Clubs and batches (SCRUM-85, decided 30 Oct and 4 Nov 2026)
+
+Clubs collect paddles from their members and hand them over in batches; the club keeps its
+members' details, so only the club's name and billing details are held here.
+
+- **Admin → Clubs:** add a club (name, billing contact and email, billing address, optional ABN,
+  notes), edit it, make it inactive. **Record a batch collected** (date, paddle count).
+- **A batch:** Collected → Returned → Invoiced → Paid, or Cancelled before it's returned.
+  **Return and invoice** records the return date and any paddles returned unchanged (not
+  charged), issues the invoice and queues its email, in one transaction. A batch returned
+  entirely unchanged stays Returned, with nothing invoiced.
+- **The invoice:** in the shared `PMP-INV-` sequence, a frozen snapshot like receipts. The amount is
+  paddles re-gritted × the club price on the issue date (A$54, `src/pricing/terms.ts`). It's due
+  `CLUB_PAYMENT_TERMS_DAYS` after issue (14 until Attila confirms). **GST for clubs is added on
+  top** (decided 4 Nov 2026): before `GST_REGISTERED_FROM` it's an "Invoice" with no GST; from it,
+  a "Tax invoice" showing the subtotal excluding GST, GST at 10% as its own line, and the total.
+  Direct orders are unchanged: A$60 including GST.
+- **The email** goes to the club's billing email, From sales@, **Reply-To attila@**, with a
+  private link to the invoice's page (`/club/invoice?n=…#token`; a token per send, only its hash
+  kept, valid for a year). The page asks `POST /api/clubs/invoice { token, number }`.
+- **How to pay** (printed on the invoice): PayID to `BUSINESS_PAYID`, card from the invoice's
+  page, or cash. Until `BUSINESS_PAYID` is set, invoices show `[To confirm: PayID]`, and
+  production refuses to issue one.
+- Paying by card, recording PayID and cash payments, overdue flags and the HubSpot company and
+  deal come next (SCRUM-85, second part). Clubs never get discount codes.
+
 ## Database (SCRUM-64)
 
 PostgreSQL 18, one server per app, never shared. `DATABASE_URL` is required and secret. Versioned

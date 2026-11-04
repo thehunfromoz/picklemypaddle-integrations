@@ -155,3 +155,37 @@ test('creates a shared code and a batch of one-per-person codes, then filters th
   await page.goto(`/admin/codes?prefix=P${run}&state=inactive`);
   await expect(page.locator('ul.orders a')).toHaveCount(1);
 });
+
+// SCRUM-85: a club and its batch, returned and invoiced, as Attila would on staging.
+test('adds a club, records a batch, returns it and opens its invoice', async ({ page }, testInfo) => {
+  const name = `E2E Club ${testInfo.project.name} ${Date.now()}`;
+  await page.goto('/admin/clubs');
+  await summary(page, 'Add a club').click();
+  await page.getByLabel('Club name').fill(name);
+  await page.getByLabel('Billing contact’s name').fill('Jo Treasurer');
+  await page.getByLabel('Billing email (invoices go here)').fill('jo@test.picklemypaddle.com');
+  await page.getByLabel('Billing address').fill('1 Court St\nNewtown NSW 2042');
+  await page.getByRole('button', { name: 'Add club' }).click();
+  await expect(page.getByRole('status')).toHaveText('Club added.');
+  await expect(page.locator('h1')).toContainText(name);
+
+  await summary(page, 'Record a batch collected').click();
+  await page.getByLabel(/Number of paddles/).fill('6');
+  await page.getByRole('button', { name: 'Record batch' }).click();
+  await expect(page.getByRole('status')).toHaveText('Batch recorded.');
+  await expect(page.locator('h1 .badge')).toHaveText('Collected');
+
+  await page.getByLabel(/Paddles returned unchanged/).fill('1');
+  await page.getByRole('button', { name: 'Return and invoice' }).click();
+  await expect(page.getByRole('status')).toHaveText('Returned: the invoice is issued and its email goes out within a minute.');
+  await expect(page.locator('h1 .badge')).toHaveText('Invoiced');
+  await expect(page.getByText('Invoice email')).toBeVisible();
+
+  // 5 re-gritted × A$54, not GST-registered: "Invoice", the club as buyer, due date.
+  await page.locator('dl.facts a', { hasText: /^PMP-INV-\d{4}$/ }).click();
+  await expect(page.locator('article.doc h1')).toHaveText('Invoice');
+  await expect(page.locator('.doc-buyer')).toContainText(name);
+  await expect(page.locator('.doc-lines .total')).toContainText('A$270.00');
+  await expect(page.locator('.doc-meta')).toContainText('Club batch');
+  await expect(page.getByText('No GST has been charged')).toBeVisible();
+});

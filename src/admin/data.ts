@@ -358,14 +358,16 @@ export async function addNote(db: Db, reference: string, author: string, note: s
   return rows.length === 1;
 }
 
-/** Which order an outbox row belongs to, and what kind it is (the retry button). */
+/** Which order (or club batch, SCRUM-85) an outbox row belongs to, and what kind it is (the retry button). */
 export async function outboxRow(db: Db, id: string): Promise<{ kind: 'email' | 'crm'; reference: string } | null> {
   if (!/^\d{1,18}$/.test(id)) return null;
-  const { rows } = await db.query<{ kind: 'email' | 'crm'; reference: string }>(
-    'SELECT ob.kind, o.reference FROM outbox ob JOIN orders o ON o.id = ob.order_id WHERE ob.id = $1',
+  const { rows } = await db.query<{ kind: 'email' | 'crm'; reference: string | null }>(
+    `SELECT ob.kind, COALESCE(o.reference, b.reference) AS reference
+       FROM outbox ob LEFT JOIN orders o ON o.id = ob.order_id LEFT JOIN batches b ON b.id = ob.batch_id WHERE ob.id = $1`,
     [id],
   );
-  return rows[0] ?? null;
+  const r = rows[0];
+  return r?.reference ? { kind: r.kind, reference: r.reference } : null;
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;

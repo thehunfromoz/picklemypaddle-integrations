@@ -306,6 +306,129 @@ http://home-server:8088
 }
 `;
 
+exports[`email templates > club_invoice (production) renders the same text and HTML as approved 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="en-AU"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><title>Invoice PMP-INV-0042 for Inner West Pickleball Club: 23 paddles re-gritted</title></head>
+<body style="margin:0;padding:0;background:#FBFAF6;font-family:'Work Sans',Arial,Helvetica,sans-serif">
+<table role="presentation" width="100%" style="background:#FBFAF6;border-collapse:collapse"><tr><td style="padding:24px 12px">
+<table role="presentation" width="100%" style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;border-collapse:separate">
+<tr><td style="padding:20px 24px;border-bottom:4px solid #78A472"><span style="font-family:Sora,Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#4565A6">Pickle<span style="color:#3F6B3E">My</span>Paddle</span></td></tr>
+<tr><td style="padding:24px">
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Hi Jo,</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Your batch PMPB-4K7QX is back: 23 paddles re-gritted for Inner West Pickleball Club. Here’s the invoice.</p>
+<table role="presentation" style="margin:0 0 16px;border-collapse:collapse"><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Invoice</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">PMP-INV-0042</td></tr><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Batch</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">PMPB-4K7QX</td></tr><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Total</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">A$1242</td></tr><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Due by</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">Wednesday 18 November 2026</td></tr></table>
+<p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">No GST has been charged.</p>
+<p style="margin:8px 0 24px"><a href="https://www.picklemypaddle.com/club/invoice?n=PMP-INV-0042#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT" style="display:inline-block;background:#4565A6;color:#ffffff;text-decoration:none;font-weight:600;font-size:16px;padding:12px 20px;border-radius:8px">View, print or pay by card</a></p>
+<h2 style="margin:24px 0 8px;font-size:17px;color:#1E2E52">How to pay</h2>
+<ul style="margin:0 0 16px;padding-left:20px;color:#1E2E52"><li style="margin:0 0 4px;font-size:16px;line-height:1.5">PayID or bank transfer to payments@picklemypaddle.com, with PMP-INV-0042 as the reference</li><li style="margin:0 0 4px;font-size:16px;line-height:1.5">By card, with the button above</li><li style="margin:0 0 4px;font-size:16px;line-height:1.5">In cash, at your club’s next pickup or delivery</li></ul>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Part payments are fine: the invoice page shows what is still owing.</p>
+<p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">The invoice link is private to your club: anyone who has it can see and pay this invoice, so please don’t forward it outside your committee.</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Thanks for working with us,<br>Attila, PickleMyPaddle</p>
+<p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.<br>https://www.picklemypaddle.com<br>Questions? Just reply to this email.<br>You’re getting this as the billing contact for Inner West Pickleball Club.</p>
+</td></tr></table>
+</td></tr></table>
+</body></html>
+",
+  "subject": "Invoice PMP-INV-0042 for Inner West Pickleball Club: 23 paddles re-gritted",
+  "text": "Hi Jo,
+
+Your batch PMPB-4K7QX is back: 23 paddles re-gritted for Inner West Pickleball Club. Here’s the invoice.
+
+  Invoice: PMP-INV-0042
+  Batch: PMPB-4K7QX
+  Total: A$1242
+  Due by: Wednesday 18 November 2026
+
+No GST has been charged.
+
+View, print or pay by card:
+https://www.picklemypaddle.com/club/invoice?n=PMP-INV-0042#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT
+
+HOW TO PAY
+
+  - PayID or bank transfer to payments@picklemypaddle.com, with PMP-INV-0042 as the reference
+  - By card, with the button above
+  - In cash, at your club’s next pickup or delivery
+
+Part payments are fine: the invoice page shows what is still owing.
+
+The invoice link is private to your club: anyone who has it can see and pay this invoice, so please don’t forward it outside your committee.
+
+Thanks for working with us,
+Attila, PickleMyPaddle
+
+PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.
+https://www.picklemypaddle.com
+Questions? Just reply to this email.
+You’re getting this as the billing contact for Inner West Pickleball Club.
+",
+}
+`;
+
+exports[`email templates > club_invoice (staging) renders the same text and HTML as approved 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="en-AU"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><title>[TEST] Invoice PMP-INV-0042 for Inner West Pickleball Club: 23 paddles re-gritted</title></head>
+<body style="margin:0;padding:0;background:#FBFAF6;font-family:'Work Sans',Arial,Helvetica,sans-serif">
+<table role="presentation" width="100%" style="background:#FBFAF6;border-collapse:collapse"><tr><td style="padding:24px 12px">
+<table role="presentation" width="100%" style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;border-collapse:separate">
+<tr><td style="padding:20px 24px;border-bottom:4px solid #78A472"><span style="font-family:Sora,Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#4565A6">Pickle<span style="color:#3F6B3E">My</span>Paddle</span></td></tr>
+<tr><td style="padding:24px">
+<blockquote style="margin:0 0 16px;padding:8px 16px;border-left:4px solid #78A472;color:#1E2E52;font-size:16px;line-height:1.5">TEST INVOICE: this email comes from the PickleMyPaddle staging site. Nothing is owed or charged.</blockquote>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Hi Jo,</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Your batch PMPB-4K7QX is back: 23 paddles re-gritted for Inner West Pickleball Club. Here’s the invoice.</p>
+<table role="presentation" style="margin:0 0 16px;border-collapse:collapse"><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Invoice</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">PMP-INV-0042</td></tr><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Batch</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">PMPB-4K7QX</td></tr><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Total</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">A$1242</td></tr><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Due by</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">Wednesday 18 November 2026</td></tr></table>
+<p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">No GST has been charged.</p>
+<p style="margin:8px 0 24px"><a href="http://home-server:8088/club/invoice?n=PMP-INV-0042#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT" style="display:inline-block;background:#4565A6;color:#ffffff;text-decoration:none;font-weight:600;font-size:16px;padding:12px 20px;border-radius:8px">View, print or pay by card</a></p>
+<h2 style="margin:24px 0 8px;font-size:17px;color:#1E2E52">How to pay</h2>
+<ul style="margin:0 0 16px;padding-left:20px;color:#1E2E52"><li style="margin:0 0 4px;font-size:16px;line-height:1.5">PayID or bank transfer to payments@picklemypaddle.com, with PMP-INV-0042 as the reference</li><li style="margin:0 0 4px;font-size:16px;line-height:1.5">By card, with the button above</li><li style="margin:0 0 4px;font-size:16px;line-height:1.5">In cash, at your club’s next pickup or delivery</li></ul>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Part payments are fine: the invoice page shows what is still owing.</p>
+<p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">The invoice link is private to your club: anyone who has it can see and pay this invoice, so please don’t forward it outside your committee.</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Thanks for working with us,<br>Attila, PickleMyPaddle</p>
+<p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.<br>http://home-server:8088<br>Questions? Just reply to this email.<br>You’re getting this as the billing contact for Inner West Pickleball Club.</p>
+</td></tr></table>
+</td></tr></table>
+</body></html>
+",
+  "subject": "[TEST] Invoice PMP-INV-0042 for Inner West Pickleball Club: 23 paddles re-gritted",
+  "text": "  > TEST INVOICE: this email comes from the PickleMyPaddle staging site. Nothing is owed or charged.
+
+Hi Jo,
+
+Your batch PMPB-4K7QX is back: 23 paddles re-gritted for Inner West Pickleball Club. Here’s the invoice.
+
+  Invoice: PMP-INV-0042
+  Batch: PMPB-4K7QX
+  Total: A$1242
+  Due by: Wednesday 18 November 2026
+
+No GST has been charged.
+
+View, print or pay by card:
+http://home-server:8088/club/invoice?n=PMP-INV-0042#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT
+
+HOW TO PAY
+
+  - PayID or bank transfer to payments@picklemypaddle.com, with PMP-INV-0042 as the reference
+  - By card, with the button above
+  - In cash, at your club’s next pickup or delivery
+
+Part payments are fine: the invoice page shows what is still owing.
+
+The invoice link is private to your club: anyone who has it can see and pay this invoice, so please don’t forward it outside your committee.
+
+Thanks for working with us,
+Attila, PickleMyPaddle
+
+PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.
+http://home-server:8088
+Questions? Just reply to this email.
+You’re getting this as the billing contact for Inner West Pickleball Club.
+",
+}
+`;
+
 exports[`email templates > customer_submitted (production) renders the same text and HTML as approved 1`] = `
 {
   "html": "<!doctype html>
