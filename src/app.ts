@@ -1,5 +1,6 @@
 import { Hono, type Context } from 'hono';
 import { cors } from 'hono/cors';
+import { clubRoutes } from './clubs/routes.js';
 import { secureHeaders } from 'hono/secure-headers';
 import type { Config } from './config.js';
 import type { Db } from './db/db.js';
@@ -115,6 +116,9 @@ export function createApp(config: Config, deps: AppDeps) {
       peer: deps.peer,
     }),
   );
+
+  // SCRUM-85: club invoices' private pages.
+  app.route('/api/clubs', clubRoutes({ db: deps.db, keys: deps.keys, trusted: deps.trusted, now: deps.now, peer: deps.peer }));
 
   // SCRUM-82: Stripe's webhook exists only in production (Stripe can't reach staging): 404 elsewhere.
   if (config.APP_ENV === 'production' && deps.payments && config.STRIPE_WEBHOOK_SECRET) {

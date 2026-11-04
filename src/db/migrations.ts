@@ -449,6 +449,92 @@ export const MIGRATIONS: readonly Migration[] = [
       CREATE TRIGGER documents_frozen BEFORE UPDATE ON documents FOR EACH ROW EXECUTE FUNCTION documents_frozen();
     `,
   },
+  {
+    version: 14,
+    name: 'clubs, batches and club invoices',
+    sql: `
+      -- SCRUM-85. A club and its billing details. Club members' details are never held: the club
+      -- keeps them. status already has room for SCRUM-10's pipeline (SCRUM-93); SCRUM-85 uses
+      -- active and inactive only. is_test: made outside production.
+      CREATE TABLE clubs (
+        id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        name              text NOT NULL,
+        billing_name      text NOT NULL,
+        billing_email     text NOT NULL,
+        billing_address   text NOT NULL,
+        abn               text CHECK (abn ~ '^[0-9]{11}$'),
+        notes             text,
+        status            text NOT NULL DEFAULT 'active'
+                          CHECK (status IN ('lead', 'meeting', 'agreement_sent', 'active', 'inactive')),
+        is_test           boolean NOT NULL,
+        crm_company_id    text,
+        created_at        timestamptz NOT NULL DEFAULT now(),
+        updated_at        timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE UNIQUE INDEX clubs_name_key ON clubs (lower(name));
+
+      -- One visit's paddles. Collected → Returned → Invoiced → Paid, or Cancelled before return.
+      -- unchanged_count: paddles returned without a re-grit (unsuitable on arrival), not charged.
+      CREATE TABLE batches (
+        id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        reference         text NOT NULL UNIQUE CHECK (reference ~ '^PMPB-[0-9A-Z]{5}$'),
+        club_id           uuid NOT NULL REFERENCES clubs (id),
+        status            text NOT NULL CHECK (status IN ('collected', 'returned', 'invoiced', 'paid', 'cancelled')),
+        status_changed_at timestamptz NOT NULL DEFAULT now(),
+        collected_on      date NOT NULL,
+        paddle_count      integer NOT NULL CHECK (paddle_count BETWEEN 1 AND 500),
+        returned_on       date,
+        unchanged_count   integer NOT NULL DEFAULT 0 CHECK (unchanged_count >= 0 AND unchanged_count <= paddle_count),
+        notes             text,
+        crm_deal_id       text,
+        created_at        timestamptz NOT NULL DEFAULT now(),
+        updated_at        timestamptz NOT NULL DEFAULT now(),
+        CHECK ((returned_on IS NULL) = (status IN ('collected', 'cancelled')))
+      );
+      CREATE INDEX batches_club_idx ON batches (club_id, collected_on);
+      CREATE INDEX batches_status_idx ON batches (status);
+
+      -- A club invoice belongs to its batch (and stays with it: a tax record, never cascaded away).
+      ALTER TABLE documents ADD COLUMN batch_id uuid REFERENCES batches (id);
+      ALTER TABLE documents ADD COLUMN due_on date;
+      CREATE INDEX documents_batch ON documents (batch_id);
+      CREATE UNIQUE INDEX documents_one_invoice_per_batch ON documents (batch_id) WHERE kind = 'invoice';
+
+      -- Club emails are queued like order emails, against the batch (never both).
+      ALTER TABLE outbox ADD COLUMN batch_id uuid REFERENCES batches (id) ON DELETE CASCADE;
+      ALTER TABLE outbox ADD CONSTRAINT outbox_one_owner CHECK (order_id IS NULL OR batch_id IS NULL);
+      CREATE INDEX outbox_batch_idx ON outbox (batch_id, created_at);
+
+      -- The private link in a club invoice email, minted per send like order status tokens:
+      -- only a SHA-256 of each token is kept.
+      CREATE TABLE document_tokens (
+        id          bigserial PRIMARY KEY,
+        document_id bigint NOT NULL REFERENCES documents (id) ON DELETE CASCADE,
+        token_hash  bytea NOT NULL UNIQUE,
+        created_at  timestamptz NOT NULL DEFAULT now(),
+        revoked_at  timestamptz
+      );
+      CREATE INDEX document_tokens_document_idx ON document_tokens (document_id);
+
+      -- The new columns are part of the document as issued, so they are frozen too.
+      CREATE OR REPLACE FUNCTION documents_frozen() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN
+        IF NEW.number IS DISTINCT FROM OLD.number OR NEW.kind IS DISTINCT FROM OLD.kind
+           OR NEW.issued_on IS DISTINCT FROM OLD.issued_on OR NEW.issued_at IS DISTINCT FROM OLD.issued_at
+           OR NEW.total_cents IS DISTINCT FROM OLD.total_cents OR NEW.gst_cents IS DISTINCT FROM OLD.gst_cents
+           OR NEW.snapshot IS DISTINCT FROM OLD.snapshot OR NEW.snapshot_sha256 IS DISTINCT FROM OLD.snapshot_sha256
+           OR NEW.refers_to IS DISTINCT FROM OLD.refers_to
+           OR NEW.batch_id IS DISTINCT FROM OLD.batch_id OR NEW.due_on IS DISTINCT FROM OLD.due_on THEN
+          RAISE EXCEPTION 'documents are never edited after issue: issue a credit note instead';
+        END IF;
+        IF OLD.paid_on IS NOT NULL AND (NEW.paid_on IS DISTINCT FROM OLD.paid_on OR NEW.paid_method IS DISTINCT FROM OLD.paid_method) THEN
+          RAISE EXCEPTION 'a document''s paid state is set once';
+        END IF;
+        RETURN NEW;
+      END
+      $$;
+    `,
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

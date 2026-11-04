@@ -206,6 +206,19 @@ const schema = z
     BUSINESS_NAME: z
       .preprocess((v) => (typeof v === 'string' && v.trim() ? v.trim() : 'PickleMyPaddle'), z.string().max(100, 'must be at most 100 characters'))
       .refine((v) => !/\[To confirm/i.test(v), { message: 'still says [To confirm…]' }),
+    /**
+     * SCRUM-85: the PayID club invoices ask clubs to pay to (an email, phone number or ABN as
+     * registered with the bank). Unset: invoices show "[To confirm: PayID]", and production refuses
+     * to issue one.
+     */
+    BUSINESS_PAYID: optional(
+      z.string().trim().min(3).max(100).refine((v) => !/\[To confirm/i.test(v), { message: 'still says [To confirm…]' }),
+    ),
+    /** SCRUM-85: days a club has to pay an invoice ([To confirm] with Attila; 14 until then). */
+    CLUB_PAYMENT_TERMS_DAYS: z.preprocess(
+      (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+      z.coerce.number().int().min(1, 'must be 1 to 90 days').max(90, 'must be 1 to 90 days').default(14),
+    ),
   })
   .superRefine((c, ctx) => {
     if (c.APP_ENV === 'production') {

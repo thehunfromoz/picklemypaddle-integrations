@@ -17,6 +17,11 @@ import {
 import { dollars, html, type Html } from './html.js';
 import { layout, type PageContext } from './pages.js';
 
+/** SCRUM-85: a club batch's reference (PMPB-…) rather than an order's. */
+const isBatch = (reference: string) => reference.startsWith('PMPB-');
+/** Where a document's reference opens in the admin. */
+export const referenceHref = (reference: string) => (isBatch(reference) ? `/admin/batches/${reference}` : `/admin/orders/${reference}`);
+
 /** The document itself, as on paper. Shared shape with the site's printable page. */
 export function documentBody(v: DocumentView): Html {
   const s = v.snapshot;
@@ -29,7 +34,8 @@ ${s.test ? html`<p class="doc-test">TEST DOCUMENT from the staging site: not a r
     <dl class="doc-meta">
       <dt>Number</dt><dd>${s.number}</dd>
       <dt>Date of issue</dt><dd>${documentDate(s.issuedOn)}</dd>
-      <dt>Order</dt><dd>${s.reference}</dd>
+      <dt>${isBatch(s.reference) ? 'Club batch' : 'Order'}</dt><dd>${s.reference}</dd>
+      ${s.dueOn ? html`<dt>Due by</dt><dd>${documentDate(s.dueOn)}</dd>` : ''}
       ${s.refersTo ? html`<dt>For</dt><dd>${s.refersTo.number} of ${documentDate(s.refersTo.issuedOn)}</dd>` : ''}
     </dl>
   </div>
@@ -49,8 +55,12 @@ ${s.test ? html`<p class="doc-test">TEST DOCUMENT from the staging site: not a r
     (l) => html`<tr><td>${l.description}</td><td class="num">${l.quantity}</td><td class="num">${documentMoney(l.unitCents)}</td><td class="num">${documentMoney(l.amountCents)}</td></tr>`,
   )}</tbody>
   <tfoot>
+    ${s.subtotalCents !== undefined
+      ? html`<tr><th scope="row" colspan="3">Subtotal (excluding GST)</th><td class="num">${documentMoney(s.subtotalCents)}</td></tr>
+    <tr><th scope="row" colspan="3">GST (10%)</th><td class="num">${documentMoney(s.gstCents)}</td></tr>`
+      : ''}
     <tr class="total"><th scope="row" colspan="3">${s.kind === 'credit_note' ? 'Total credit' : 'Total'}</th><td class="num">${documentMoney(s.totalCents)}</td></tr>
-    <tr><td colspan="4" class="gst">${s.gstLine}</td></tr>
+    ${s.subtotalCents === undefined ? html`<tr><td colspan="4" class="gst">${s.gstLine}</td></tr>` : ''}
   </tfoot>
 </table>
 ${paid ? html`<p class="doc-paid">${paid}</p>` : ''}
@@ -62,7 +72,7 @@ export function documentPage(ctx: PageContext, v: DocumentView): string {
   return layout(
     ctx,
     v.snapshot.number,
-    html`<p class="no-print"><a href="/admin/documents">← Documents</a>${v.snapshot.reference ? html` · <a href="/admin/orders/${v.snapshot.reference}">Order ${v.snapshot.reference}</a>` : ''}</p>
+    html`<p class="no-print"><a href="/admin/documents">← Documents</a>${v.snapshot.reference ? html` · <a href="${referenceHref(v.snapshot.reference)}">${isBatch(v.snapshot.reference) ? 'Batch' : 'Order'} ${v.snapshot.reference}</a>` : ''}</p>
 <p class="no-print small">To print it or save it as a PDF, use your browser’s Print (Ctrl+P or ⌘P). It prints without the admin’s header.</p>
 ${documentBody(v)}
 <p class="no-print small">SHA-256 of the issued document: <code>${v.sha256}</code></p>`,
@@ -73,10 +83,10 @@ const kindLabel = (d: DocumentSummary) => KIND_TITLE[d.kind];
 
 function rows(docs: DocumentSummary[], withOrder: boolean): Html {
   return html`<table class="list">
-<thead><tr><th scope="col">Number</th><th scope="col">Kind</th><th scope="col">Issued</th>${withOrder ? html`<th scope="col">Order</th>` : ''}<th scope="col" class="num">Total</th><th scope="col" class="num">GST</th></tr></thead>
+<thead><tr><th scope="col">Number</th><th scope="col">Kind</th><th scope="col">Issued</th>${withOrder ? html`<th scope="col">Order or batch</th>` : ''}<th scope="col" class="num">Total</th><th scope="col" class="num">GST</th></tr></thead>
 <tbody>${docs.map(
     (d) => html`<tr><td><a href="/admin/documents/${d.number}">${d.number}</a></td><td>${kindLabel(d)}${d.refersTo ? html` <span class="small">for ${d.refersTo}</span>` : ''}</td><td>${documentDate(d.issuedOn)}</td>${
-      withOrder ? html`<td>${d.reference ? html`<a href="/admin/orders/${d.reference}">${d.reference}</a>` : '—'}</td>` : ''
+      withOrder ? html`<td>${d.reference ? html`<a href="${referenceHref(d.reference)}">${d.reference}</a>` : '—'}</td>` : ''
     }<td class="num">${d.kind === 'credit_note' ? '−' : ''}${dollars(d.totalCents)}</td><td class="num">${dollars(d.gstCents)}</td></tr>`,
   )}</tbody></table>`;
 }

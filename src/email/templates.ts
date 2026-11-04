@@ -28,6 +28,7 @@ export const TEMPLATES = [
   'alert_payment',
   'payment_received',
   'refund_issued',
+  'club_invoice',
 ] as const;
 export type TemplateName = (typeof TEMPLATES)[number];
 
@@ -85,6 +86,23 @@ export interface TemplateContext {
   refundFull?: boolean;
   /** Review alert: the review, shown only when the customer gave permission to quote it. */
   review?: { quote: string; firstName: string; suburb: string; permission: boolean };
+  /** SCRUM-85: club emails. `reference` is then the batch's (PMPB-…), `firstName` the billing contact's. */
+  club?: { name: string };
+  /** SCRUM-85: a club invoice, from its frozen snapshot, and its private page (view, print, pay by card). */
+  invoice?: {
+    number: string;
+    url: string;
+    paddles: number;
+    /** GST-exclusive invoices only. */
+    subtotalCents?: number;
+    gstCents: number;
+    totalCents: number;
+    dueOn: string;
+    treatment: TaxTreatment;
+    payId: string;
+    /** Whether the invoice's page takes card payments (SCRUM-85, second part). */
+    payByCard: boolean;
+  };
 }
 
 export interface RenderedEmail {
@@ -187,6 +205,7 @@ const paddleLine = (p: PaddleFacts) => (p.model ? `${p.brand} ${p.model}` : p.br
 const tournament = (n: number) =>
   `A reminder: re-gritted paddles aren’t allowed in sanctioned tournaments, so keep ${plural(n, 'this one', 'these')} for social and club play.`;
 const TEST_BANNER = 'TEST ORDER: this email comes from the PickleMyPaddle staging site. Nothing is charged or posted.';
+const CLUB_TEST_BANNER = 'TEST INVOICE: this email comes from the PickleMyPaddle staging site. Nothing is owed or charged.';
 
 function need<K extends keyof TemplateContext>(ctx: TemplateContext, key: K, template: TemplateName): NonNullable<TemplateContext[K]> {
   const v = ctx[key];
@@ -196,7 +215,8 @@ function need<K extends keyof TemplateContext>(ctx: TemplateContext, key: K, tem
 
 function footer(ctx: TemplateContext, forCustomer: boolean): Block[] {
   const lines = ['PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.', ctx.siteUrl];
-  if (forCustomer) lines.push('Questions? Just reply to this email.', 'You’re getting this because an order was placed with this email address.');
+  if (forCustomer && ctx.club) lines.push('Questions? Just reply to this email.', `You’re getting this as the billing contact for ${ctx.club.name}.`);
+  else if (forCustomer) lines.push('Questions? Just reply to this email.', 'You’re getting this because an order was placed with this email address.');
   return [{ small: lines.join('\n') }];
 }
 
@@ -310,6 +330,36 @@ function build(name: TemplateName, ctx: TemplateContext): { subject: string; blo
           { p: 'Refunds usually take 5 to 10 business days to show on your statement, depending on your bank.' },
           statusBlocks(need(ctx, 'statusUrl', name))[1]!,
           { p: 'Thanks,\nPickleMyPaddle' },
+        ],
+      };
+    }
+
+    case 'club_invoice': {
+      // SCRUM-85: on return of a batch. The invoice in brief, its private page, and how to pay.
+      const batch = need(ctx, 'reference', name);
+      const club = need(ctx, 'club', name);
+      const inv = need(ctx, 'invoice', name);
+      const amounts: [string, string][] = inv.treatment === 'gst_exclusive' && inv.subtotalCents !== undefined
+        ? [['Subtotal (excluding GST)', money(inv.subtotalCents)], ['GST (10%)', money(inv.gstCents)], ['Total', money(inv.totalCents)]]
+        : [['Total', money(inv.totalCents)]];
+      return {
+        customer: true,
+        subject: `Invoice ${inv.number} for ${club.name}: ${inv.paddles} ${paddleWord(inv.paddles)} re-gritted`,
+        blocks: [
+          { p: `Hi ${need(ctx, 'firstName', name)},` },
+          { p: `Your batch ${batch} is back: ${inv.paddles} ${paddleWord(inv.paddles)} re-gritted for ${club.name}. Here’s the invoice.` },
+          { kv: [['Invoice', inv.number], ['Batch', batch], ...amounts, ['Due by', longDate(inv.dueOn)]] },
+          ...(inv.treatment === 'not_registered' ? [{ small: 'No GST has been charged.' } as Block] : []),
+          { button: { label: inv.payByCard ? 'View, print or pay by card' : 'View or print the invoice', url: inv.url } },
+          { h: 'How to pay' },
+          { list: [
+            `PayID or bank transfer to ${inv.payId}, with ${inv.number} as the reference`,
+            ...(inv.payByCard ? ['By card, with the button above'] : []),
+            'In cash, at your club’s next pickup or delivery',
+          ] },
+          { p: 'Part payments are fine: the invoice page shows what is still owing.' },
+          { small: 'The invoice link is private to your club: anyone who has it can see and pay this invoice, so please don’t forward it outside your committee.' },
+          { p: 'Thanks for working with us,\nAttila, PickleMyPaddle' },
         ],
       };
     }
@@ -480,7 +530,7 @@ function build(name: TemplateName, ctx: TemplateContext): { subject: string; blo
 export function render(name: TemplateName, ctx: TemplateContext): RenderedEmail {
   const built = build(name, ctx);
   const subject = ctx.test ? `[TEST] ${built.subject}` : built.subject;
-  const blocks: Block[] = [...(ctx.test ? [{ quote: TEST_BANNER }] : []), ...built.blocks, ...footer(ctx, built.customer)];
+  const blocks: Block[] = [...(ctx.test ? [{ quote: ctx.club ? CLUB_TEST_BANNER : TEST_BANNER }] : []), ...built.blocks, ...footer(ctx, built.customer)];
   return { subject, text: toText(blocks), html: toHtml(blocks, subject) };
 }
 
@@ -522,6 +572,24 @@ export function sampleContext(name: TemplateName, test: boolean): TemplateContex
     refundCents: 1800,
     refundFull: false,
     problem: 'it arrived after the order lapsed',
+    ...(name === 'club_invoice'
+      ? {
+          reference: 'PMPB-4K7QX',
+          firstName: 'Jo',
+          club: { name: 'Inner West Pickleball Club' },
+          invoice: {
+            number: 'PMP-INV-0042',
+            url: `${site}/club/invoice?n=PMP-INV-0042#${'T'.repeat(43)}`,
+            paddles: 23,
+            gstCents: 0,
+            totalCents: 124200,
+            dueOn: '2026-11-18',
+            treatment: 'not_registered' as const,
+            payId: 'payments@picklemypaddle.com',
+            payByCard: false,
+          },
+        }
+      : {}),
     review: { quote: 'Feels brand new: the spin is back. Quick turnaround too.', firstName: 'Sam', suburb: 'Newtown', permission: true },
     ...(name === 'links' ? { reference: undefined } : {}),
   };

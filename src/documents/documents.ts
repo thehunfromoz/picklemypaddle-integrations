@@ -20,9 +20,9 @@
  */
 import { createHash } from 'node:crypto';
 import type { Queryable } from '../db/db.js';
-import { enqueueOrderEmail } from '../email/outbox.js';
+import { enqueueBatchEmail, enqueueOrderEmail } from '../email/outbox.js';
 import { sydneyDate } from '../orders/dates.js';
-import { gstIncluded, taxWording, termsOn, type TaxTreatment } from '../pricing/terms.js';
+import { clubInvoiceAmounts, clubTreatment, GST_PERCENT, gstIncluded, termsOn, type TaxTreatment } from '../pricing/terms.js';
 
 export type DocumentKind = 'receipt' | 'invoice' | 'credit_note';
 export type DocumentHeading = 'Invoice' | 'Tax invoice' | 'Credit note' | 'Adjustment note';
@@ -35,9 +35,12 @@ export interface Seller {
   email: string;
   website: string;
   gstRegisteredFrom: string | null;
+  /** SCRUM-85: where clubs pay invoices by PayID (BUSINESS_PAYID). Null shows PAYID_PLACEHOLDER. */
+  payId?: string | null;
 }
 
 export const ABN_PLACEHOLDER = '[To confirm: ABN]';
+export const PAYID_PLACEHOLDER = '[To confirm: PayID]';
 
 export const DEFAULT_SELLER: Seller = {
   name: 'PickleMyPaddle',
@@ -45,6 +48,7 @@ export const DEFAULT_SELLER: Seller = {
   email: 'info@picklemypaddle.com',
   website: 'www.picklemypaddle.com',
   gstRegisteredFrom: null,
+  payId: null,
 };
 
 /** A$1,000 or more, GST-inclusive: a tax invoice must also identify the buyer (ATO). */
@@ -76,8 +80,14 @@ export interface DocumentSnapshot {
   /** Credit notes: the document they adjust. */
   refersTo?: { number: string; issuedOn: string };
   lines: DocumentLine[];
+  /** GST-exclusive documents (club invoices once registered): the lines' sum before GST. */
+  subtotalCents?: number;
   totalCents: number;
   gstCents: number;
+  /** Club invoices (SCRUM-85): the Sydney day it is due, the PayID it asks clubs to pay to, and whether it offers card. */
+  dueOn?: string;
+  payId?: string;
+  payByCard?: boolean;
   /** "No GST has been charged" or "Total includes GST of A$x" (credit notes: "Credit includes …"). */
   gstLine: string;
   /** Plain sentences printed under the totals. */
@@ -167,6 +177,65 @@ export function receiptSnapshot(number: string, issuedOn: string, f: ReceiptFact
   });
 }
 
+/** The facts a club batch's invoice is made from (SCRUM-85). */
+export interface ClubInvoiceFacts {
+  batchReference: string;
+  clubName: string;
+  clubAbn: string | null;
+  billingName: string;
+  billingAddress: string;
+  test: boolean;
+  /** Paddles re-gritted (collected less any returned unchanged). */
+  paddles: number;
+  /** The club price a paddle on the issue date (GST-exclusive once registered). */
+  remitPerPaddleCents: number;
+  collectedOn: string;
+  returnedOn: string;
+  dueOn: string;
+  /** Whether clubs can pay this invoice by card from its page (SCRUM-85, second part). */
+  payByCard: boolean;
+}
+
+/**
+ * A club batch's invoice (SCRUM-85), worded for its issue date. Before GST registration: the
+ * paddles at the club price, "Invoice", "No GST has been charged". From it (decided 4 Nov 2026):
+ * "Tax invoice", the subtotal excluding GST, GST at 10% as its own line, then the total.
+ */
+export function clubInvoiceSnapshot(number: string, issuedOn: string, f: ClubInvoiceFacts, seller: Seller): DocumentSnapshot {
+  const treatment = clubTreatment(issuedOn, { gstRegisteredFrom: seller.gstRegisteredFrom });
+  const amounts = clubInvoiceAmounts(f.paddles, f.remitPerPaddleCents, treatment);
+  const exclusive = treatment === 'gst_exclusive';
+  const payId = seller.payId?.trim() || PAYID_PLACEHOLDER;
+  return finish({
+    number,
+    kind: 'invoice',
+    issuedOn,
+    treatment,
+    test: f.test,
+    seller,
+    buyer: { name: f.clubName, ...(f.clubAbn ? { abn: formatAbn(f.clubAbn) } : {}), address: `Attn: ${f.billingName}\n${f.billingAddress}` },
+    reference: f.batchReference,
+    lines: [{
+      description: `Paddle re-grit, both faces: club batch collected ${documentDate(f.collectedOn)}, returned ${documentDate(f.returnedOn)}${exclusive ? ' (excluding GST)' : ''}`,
+      quantity: f.paddles,
+      unitCents: f.remitPerPaddleCents,
+      amountCents: amounts.subtotalCents,
+    }],
+    ...(exclusive ? { subtotalCents: amounts.subtotalCents } : {}),
+    totalCents: amounts.totalCents,
+    dueOn: f.dueOn,
+    payId,
+    ...(f.payByCard ? { payByCard: true } : {}),
+    notes: [
+      `Due by ${documentDate(f.dueOn)}.`,
+      f.payByCard
+        ? `How to pay: PayID or bank transfer to ${payId}, with ${number} as the reference; by card, with the "Pay by card" button on this invoice's page; or in cash at your club’s next pickup or delivery.`
+        : `How to pay: PayID or bank transfer to ${payId}, with ${number} as the reference; or in cash at your club’s next pickup or delivery.`,
+      'Part payments are fine: we show what is still owing.',
+    ],
+  });
+}
+
 /** A credit note for `cents` refunded against `original`. Follows the original's GST treatment. */
 export function creditNoteSnapshot(number: string, issuedOn: string, original: DocumentSnapshot, cents: number, seller: Seller): DocumentSnapshot {
   if (!Number.isInteger(cents) || cents <= 0) throw new DocumentError('bad_amount', 'A credit note is for a positive amount.');
@@ -189,18 +258,26 @@ export function creditNoteSnapshot(number: string, issuedOn: string, original: D
 type Draft = Omit<DocumentSnapshot, 'v' | 'heading' | 'seller' | 'gstCents' | 'gstLine'> & { seller: Seller };
 
 function finish(d: Draft): DocumentSnapshot {
-  const gst = gstIncluded(d.totalCents, d.treatment);
   const credit = d.kind === 'credit_note';
-  const heading: DocumentHeading = credit
-    ? d.treatment === 'gst_inclusive' ? 'Adjustment note' : 'Credit note'
-    : taxWording(d.treatment, d.totalCents).heading;
+  const registered = d.treatment !== 'not_registered';
+  // GST-exclusive: an invoice's GST is the total less its subtotal (10% added on top); a credit
+  // note against one carries the same one-eleventh share of what it credits, shown with its subtotal.
+  let gst = gstIncluded(d.totalCents, d.treatment);
+  let subtotal = d.subtotalCents;
+  if (d.treatment === 'gst_exclusive') {
+    if (subtotal === undefined) subtotal = d.totalCents - gst;
+    gst = d.totalCents - subtotal;
+  }
+  const heading: DocumentHeading = credit ? (registered ? 'Adjustment note' : 'Credit note') : registered ? 'Tax invoice' : 'Invoice';
   const gstLine = d.treatment === 'gst_inclusive'
     ? `${credit ? 'Credit' : 'Total'} includes GST of ${money(gst)}`
-    : taxWording(d.treatment, d.totalCents).gstLine;
+    : d.treatment === 'gst_exclusive'
+      ? `GST (${GST_PERCENT}%) ${money(gst)}`
+      : 'No GST has been charged';
   const notes = [...d.notes];
-  if (d.treatment === 'gst_inclusive') notes.unshift(credit ? 'This adjusts a taxable sale.' : 'All items are taxable sales.');
+  if (registered) notes.unshift(credit ? 'This adjusts a taxable sale.' : 'All items are taxable sales.');
   // ATO: a tax invoice of A$1,000 or more must identify the buyer (name or ABN).
-  if (d.treatment === 'gst_inclusive' && d.totalCents >= BUYER_ID_THRESHOLD_CENTS && !d.buyer.name.trim() && !d.buyer.abn) {
+  if (registered && d.totalCents >= BUYER_ID_THRESHOLD_CENTS && !d.buyer.name.trim() && !d.buyer.abn) {
     throw new DocumentError('buyer_required', 'A tax invoice of A$1,000 or more needs the buyer’s name or ABN.');
   }
   return {
@@ -216,9 +293,13 @@ function finish(d: Draft): DocumentSnapshot {
     reference: d.reference,
     ...(d.refersTo ? { refersTo: d.refersTo } : {}),
     lines: d.lines,
+    ...(subtotal !== undefined ? { subtotalCents: subtotal } : {}),
     totalCents: d.totalCents,
     gstCents: gst,
     gstLine,
+    ...(d.dueOn ? { dueOn: d.dueOn } : {}),
+    ...(d.payId ? { payId: d.payId } : {}),
+    ...(d.payByCard ? { payByCard: true } : {}),
     notes,
   };
 }
@@ -235,14 +316,14 @@ export async function nextNumber(q: Queryable, series: 'INV' | 'CN'): Promise<st
 async function insert(
   q: Queryable,
   snap: DocumentSnapshot,
-  row: { orderId: string | null; paymentId: string | null; refersTo: string | null; now: Date; paid: { on: string; method: string } | null },
+  row: { orderId: string | null; batchId?: string | null; paymentId: string | null; refersTo: string | null; now: Date; paid: { on: string; method: string } | null },
 ): Promise<string> {
   const text = canonicalJson(snap);
   const { rows } = await q.query<{ id: string }>(
-    `INSERT INTO documents (number, kind, order_id, payment_id, refers_to, issued_on, issued_at, total_cents, gst_cents, snapshot, snapshot_sha256, paid_on, paid_method)
-     VALUES ($1, $2, $3, $4, $5, $6::date, $7, $8, $9, $10, $11, $12::date, $13) RETURNING id`,
-    [snap.number, snap.kind, row.orderId, row.paymentId, row.refersTo, snap.issuedOn, row.now, snap.totalCents, snap.gstCents, text, sha256(text),
-      row.paid?.on ?? null, row.paid?.method ?? null],
+    `INSERT INTO documents (number, kind, order_id, batch_id, payment_id, refers_to, issued_on, issued_at, total_cents, gst_cents, snapshot, snapshot_sha256, paid_on, paid_method, due_on)
+     VALUES ($1, $2, $3, $4, $5, $6, $7::date, $8, $9, $10, $11, $12, $13::date, $14, $15::date) RETURNING id`,
+    [snap.number, snap.kind, row.orderId, row.batchId ?? null, row.paymentId, row.refersTo, snap.issuedOn, row.now, snap.totalCents, snap.gstCents, text, sha256(text),
+      row.paid?.on ?? null, row.paid?.method ?? null, snap.dueOn ?? null],
   );
   return String(rows[0]!.id);
 }
@@ -287,6 +368,61 @@ export async function issueReceipt(q: Queryable, args: { orderId: string; paymen
   const id = await insert(q, snap, { orderId: args.orderId, paymentId: args.paymentId, refersTo: null, now: args.now, paid: { on: sydneyDate(new Date(o.paid_at)), method: 'card' } });
   if (!o.is_smoke) await enqueueOrderEmail(q, args.orderId, 'payment_received', args.now, { documentId: id, amountCents: total });
   return id;
+}
+
+/**
+ * Issues a club batch's invoice, once, inside the caller's transaction (the one that marks the
+ * batch Returned), and queues the invoice email to the club's billing contact. Returns the
+ * invoice's id; a batch that already has one gets that one back and nothing new is queued.
+ * Production refuses to issue one while the PayID isn't set (it would print a placeholder).
+ */
+export async function issueClubInvoice(
+  q: Queryable,
+  args: { batchId: string; seller: Seller; isProduction: boolean; paymentTermsDays: number; now: Date; payByCard?: boolean },
+): Promise<string> {
+  const { rows: existing } = await q.query<{ id: string }>(`SELECT id FROM documents WHERE batch_id = $1 AND kind = 'invoice'`, [args.batchId]);
+  if (existing[0]) return String(existing[0].id);
+  if (args.isProduction && !args.seller.payId?.trim()) throw new DocumentError('payid_missing', 'Set BUSINESS_PAYID before invoicing clubs: invoices tell clubs where to pay.');
+  const { rows } = await q.query<{
+    reference: string; paddle_count: number; unchanged_count: number; collected_on: string; returned_on: string | null;
+    name: string; abn: string | null; billing_name: string; billing_address: string; is_test: boolean;
+  }>(
+    `SELECT b.reference, b.paddle_count, b.unchanged_count, b.collected_on::text AS collected_on, b.returned_on::text AS returned_on,
+            c.name, c.abn, c.billing_name, c.billing_address, c.is_test
+       FROM batches b JOIN clubs c ON c.id = b.club_id WHERE b.id = $1`,
+    [args.batchId],
+  );
+  const b = rows[0];
+  if (!b) throw new DocumentError('not_found', 'No such batch.');
+  if (!b.returned_on) throw new DocumentError('not_returned', 'A batch is invoiced when it is returned.');
+  const paddles = Number(b.paddle_count) - Number(b.unchanged_count);
+  if (paddles < 1) throw new DocumentError('nothing_to_invoice', 'Every paddle came back unchanged: there is nothing to invoice.');
+  const issuedOn = sydneyDate(args.now);
+  const terms = termsOn(issuedOn, { gstRegisteredFrom: args.seller.gstRegisteredFrom });
+  const number = await nextNumber(q, 'INV');
+  const snap = clubInvoiceSnapshot(number, issuedOn, {
+    batchReference: b.reference,
+    clubName: b.name,
+    clubAbn: b.abn,
+    billingName: b.billing_name,
+    billingAddress: b.billing_address,
+    test: b.is_test,
+    paddles,
+    remitPerPaddleCents: terms.clubRemitPerPaddleCents,
+    collectedOn: b.collected_on,
+    returnedOn: b.returned_on,
+    dueOn: addDays(issuedOn, args.paymentTermsDays),
+    payByCard: args.payByCard ?? false,
+  }, args.seller);
+  const id = await insert(q, snap, { orderId: null, batchId: args.batchId, paymentId: null, refersTo: null, now: args.now, paid: null });
+  await enqueueBatchEmail(q, args.batchId, 'club_invoice', args.now, { documentId: id });
+  return id;
+}
+
+/** YYYY-MM-DD plus n calendar days. */
+export function addDays(iso: string, n: number): string {
+  const [y, m, d] = iso.split('-').map(Number) as [number, number, number];
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
 }
 
 /**
@@ -363,8 +499,8 @@ export async function documentsOf(q: Queryable, orderId: string): Promise<Docume
 
 export async function listDocuments(q: Queryable, filter: { orderId?: string; limit?: number } = {}): Promise<DocumentSummary[]> {
   const { rows } = await q.query<{ id: string; number: string; kind: DocumentKind; issued_on: string; total_cents: number; gst_cents: number; reference: string | null; refers_to: string | null }>(
-    `SELECT d.id, d.number, d.kind, d.issued_on::text AS issued_on, d.total_cents, d.gst_cents, o.reference, r.number AS refers_to
-       FROM documents d LEFT JOIN orders o ON o.id = d.order_id LEFT JOIN documents r ON r.id = d.refers_to
+    `SELECT d.id, d.number, d.kind, d.issued_on::text AS issued_on, d.total_cents, d.gst_cents, COALESCE(o.reference, b.reference) AS reference, r.number AS refers_to
+       FROM documents d LEFT JOIN orders o ON o.id = d.order_id LEFT JOIN batches b ON b.id = d.batch_id LEFT JOIN documents r ON r.id = d.refers_to
       WHERE ($1::uuid IS NULL OR d.order_id = $1::uuid)
       ORDER BY d.issued_at DESC, d.id DESC LIMIT $2`,
     [filter.orderId ?? null, filter.limit ?? 500],
@@ -389,3 +525,22 @@ export function paidLine(v: DocumentView): string | null {
 }
 
 export { money as documentMoney };
+
+/** SCRUM-85: a club invoice's private link stays valid this long after the email that carried it. */
+export const CLUB_LINK_DAYS = 365;
+
+/**
+ * SCRUM-85: a club document opened with the private link from its email (a token minted for that
+ * send, only its hash kept). Null for anything else, so a wrong token and a wrong number look alike.
+ */
+export async function clubDocumentForToken(q: Queryable, token: unknown, number: unknown, now: Date): Promise<DocumentView | null> {
+  if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(token)) return null;
+  if (typeof number !== 'string' || !/^PMP-(INV|CN)-\d{4,}$/.test(number)) return null;
+  const { rows } = await q.query<DocumentRow>(
+    `SELECT d.id, d.snapshot, d.snapshot_sha256, d.paid_on::text AS paid_on, d.paid_method
+       FROM document_tokens t JOIN documents d ON d.id = t.document_id
+      WHERE t.token_hash = $1 AND t.revoked_at IS NULL AND t.created_at > $2 AND d.number = $3 AND d.batch_id IS NOT NULL`,
+    [createHash('sha256').update(token, 'utf8').digest(), new Date(now.getTime() - CLUB_LINK_DAYS * 86_400_000), number],
+  );
+  return rows[0] ? view(rows[0]) : null;
+}

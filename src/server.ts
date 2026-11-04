@@ -81,6 +81,7 @@ const seller: Seller = {
   name: config.BUSINESS_NAME,
   abn: config.BUSINESS_ABN ?? null,
   gstRegisteredFrom: config.GST_REGISTERED_FROM ?? null,
+  payId: config.BUSINESS_PAYID ?? null,
 };
 // SCRUM-82: Stripe, only when a key is set. Outside production the settings refuse a live key.
 const payments: PaymentDeps | null = config.STRIPE_SECRET_KEY
@@ -135,6 +136,8 @@ const admin = createAdminApp({
   // SCRUM-82: shows "Payments not configured" without a key.
   paymentsConfigured: !!payments,
   seller,
+  // SCRUM-85: days a club has to pay.
+  clubPaymentTermsDays: config.CLUB_PAYMENT_TERMS_DAYS,
 });
 const adminServer = serve({ fetch: admin.fetch, port: config.ADMIN_PORT }, (info) => {
   log('admin_listening', { port: info.port, logins: config.ADMIN_LOGINS?.length ?? 0 });

@@ -36,6 +36,7 @@ export function layout(ctx: PageContext, title: string, body: Html): string {
 <body>
 <header class="bar">
   <a href="/admin/orders">PickleMyPaddle orders${ctx.isProduction ? '' : ' (TEST)'}</a>
+  <a href="/admin/clubs">Clubs</a>
   <a href="/admin/codes">Discount codes</a>
   <a href="/admin/documents">Documents</a>
   <a href="/admin/retention">Retention</a>

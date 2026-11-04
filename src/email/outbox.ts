@@ -18,7 +18,8 @@ import type { Db, Queryable } from '../db/db.js';
 import { log, logError } from '../log.js';
 import { hashToken, newStatusToken } from '../orders/model.js';
 import type { LinksMailer } from '../orders/status.js';
-import { ALERT_TO, SendError, type EmailSender } from './sender.js';
+import { ALERT_TO, CLUB_REPLY_TO, SendError, type EmailSender } from './sender.js';
+import type { DocumentSnapshot } from '../documents/documents.js';
 import { render, type TemplateContext, type TemplateName } from './templates.js';
 import type { DiscountKind } from '../orders/rules.js';
 
@@ -116,11 +117,31 @@ export async function enqueueOrderEmail(
   );
 }
 
+/**
+ * SCRUM-85: queues a club batch's email inside the caller's transaction, to the club's billing
+ * contact. Rendered from the batch, the club and its document when it is sent.
+ */
+export async function enqueueBatchEmail(
+  q: Queryable,
+  batchId: string,
+  template: TemplateName,
+  now: Date,
+  payload: EmailPayload = {},
+): Promise<void> {
+  await q.query(
+    `INSERT INTO outbox (kind, batch_id, template, recipient, payload, next_attempt_at, created_at, updated_at)
+     SELECT 'email', b.id, $2::text, c.billing_email, $3::jsonb, $4::timestamptz, $4::timestamptz, $4::timestamptz
+       FROM batches b JOIN clubs c ON c.id = b.club_id WHERE b.id = $1::uuid`,
+    [batchId, template, JSON.stringify(payload), now],
+  );
+}
+
 // ── Sending ───────────────────────────────────────────────────────────────────
 
 interface OutboxRow {
   id: string;
   order_id: string | null;
+  batch_id: string | null;
   template: TemplateName;
   recipient: string | null;
   payload: EmailPayload | string;
@@ -165,7 +186,7 @@ export async function processOutbox(deps: OutboxDeps, batch = 20): Promise<Outbo
       WHERE id IN (SELECT id FROM outbox
                     WHERE kind = 'email' AND state IN ('pending', 'sending') AND next_attempt_at <= $1
                     ORDER BY next_attempt_at, id LIMIT $3 FOR UPDATE SKIP LOCKED)
-      RETURNING id, order_id, template, recipient, payload, attempts`,
+      RETURNING id, order_id, batch_id, template, recipient, payload, attempts`,
     [now, new Date(now.getTime() + LEASE_MS), batch],
   );
   for (const row of rows) {
@@ -203,6 +224,8 @@ async function sendOne(deps: OutboxDeps, row: OutboxRow, now: Date): Promise<key
     log('email_suppressed', { ...ref, reason: 'no_provider' });
     return 'suppressed';
   }
+
+  if (row.batch_id) return sendBatchEmail(deps, row, now);
 
   const { rows: orders } = await db.query<OrderFacts>(
     `SELECT id, reference, name, tracking_number, arrived_on::text AS arrived_on, discount_code, discount_kind, discount_value
@@ -292,6 +315,87 @@ async function sendOne(deps: OutboxDeps, row: OutboxRow, now: Date): Promise<key
     const wait: number = BACKOFF_MINUTES[row.attempts - 1] ?? 720;
     await settle(db, row.id, { state: 'pending', error: code, nextAt: new Date(now.getTime() + wait * MINUTE) }, now);
     log('email_retrying', { ...ref, reference: order.reference, code, attempt: row.attempts, inMinutes: wait });
+    return 'retrying';
+  }
+}
+
+/** The private link to a club document: a fresh token per send, only its hash kept. */
+export const clubDocumentUrl = (siteUrl: string, number: string, token: string) => `${siteUrl}/club/invoice?n=${number}#${token}`;
+
+async function sendBatchEmail(deps: OutboxDeps, row: OutboxRow, now: Date): Promise<keyof OutboxRun> {
+  const { db, settings } = deps;
+  const ref = { outbox: Number(row.id), template: row.template };
+  const { rows: batches } = await db.query<{ reference: string; name: string; billing_name: string }>(
+    'SELECT b.reference, c.name, c.billing_name FROM batches b JOIN clubs c ON c.id = b.club_id WHERE b.id = $1',
+    [row.batch_id],
+  );
+  const batch = batches[0];
+  if (!batch) {
+    await settle(db, row.id, { state: 'failed', error: 'batch_missing' }, now);
+    return 'failed';
+  }
+  const payload: EmailPayload = typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload;
+  let tokenId: string | null = null;
+  let invoice: TemplateContext['invoice'];
+  if (payload.documentId) {
+    const { rows: docs } = await db.query<{ id: string; number: string; snapshot: string }>(
+      'SELECT id, number, snapshot FROM documents WHERE id = $1 AND batch_id = $2',
+      [payload.documentId, row.batch_id],
+    );
+    const doc = docs[0];
+    if (!doc) {
+      await settle(db, row.id, { state: 'failed', error: 'document_missing' }, now);
+      return 'failed';
+    }
+    const token = newStatusToken();
+    const { rows: t } = await db.query<{ id: string }>(
+      'INSERT INTO document_tokens (document_id, token_hash, created_at) VALUES ($1, $2, $3) RETURNING id',
+      [doc.id, hashToken(token), now],
+    );
+    tokenId = String(t[0]!.id);
+    const snap = JSON.parse(doc.snapshot) as DocumentSnapshot;
+    invoice = {
+      number: doc.number,
+      url: clubDocumentUrl(settings.siteUrl, doc.number, token),
+      paddles: snap.lines[0]?.quantity ?? 0,
+      subtotalCents: snap.subtotalCents,
+      gstCents: snap.gstCents,
+      totalCents: snap.totalCents,
+      dueOn: snap.dueOn ?? snap.issuedOn,
+      treatment: snap.treatment,
+      payId: snap.payId ?? '',
+      payByCard: snap.payByCard === true,
+    };
+  }
+  const ctx: TemplateContext = {
+    test: !settings.isProduction,
+    siteUrl: settings.siteUrl,
+    reference: batch.reference,
+    firstName: firstName(batch.billing_name),
+    club: { name: batch.name },
+    invoice,
+  };
+  try {
+    const email = render(row.template, ctx);
+    const { id } = await deps.sender!.send({ to: row.recipient!, ...email, replyTo: CLUB_REPLY_TO, idempotencyKey: `pmp-outbox-${row.id}` });
+    await settle(db, row.id, { state: 'sent', providerId: id }, now);
+    log('email_sent', { ...ref, reference: batch.reference, attempt: row.attempts });
+    return 'sent';
+  } catch (err) {
+    const code = err instanceof SendError ? err.code : `render:${(err as Error)?.name ?? 'error'}`;
+    const permanent = err instanceof SendError ? err.permanent : true;
+    // Delete the link's token only when the email certainly didn't go (a render error or a refusal).
+    // A temporary failure (a timeout, say) may still have been delivered, and the retry reuses the
+    // idempotency key, so the provider drops it: that delivered email's link must keep working.
+    if (tokenId && permanent) await db.query('DELETE FROM document_tokens WHERE id = $1', [tokenId]).catch(() => undefined);
+    if (permanent || row.attempts >= MAX_ATTEMPTS) {
+      await settle(db, row.id, { state: 'failed', error: code }, now);
+      logError('email_failed', err, { ...ref, reference: batch.reference, code, attempt: row.attempts });
+      return 'failed';
+    }
+    const wait: number = BACKOFF_MINUTES[row.attempts - 1] ?? 720;
+    await settle(db, row.id, { state: 'pending', error: code, nextAt: new Date(now.getTime() + wait * MINUTE) }, now);
+    log('email_retrying', { ...ref, reference: batch.reference, code, attempt: row.attempts, inMinutes: wait });
     return 'retrying';
   }
 }
