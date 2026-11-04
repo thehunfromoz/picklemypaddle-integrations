@@ -8,6 +8,7 @@
  */
 import { PRICE_PER_PADDLE_CENTS, STATUSES, type OrderStatus } from '../orders/model.js';
 import { discountCents, type DiscountKind } from '../orders/rules.js';
+import { BATCH_STATUSES, type BatchStatus } from '../clubs/model.js';
 
 export interface CrmContact {
   email: string;
@@ -88,6 +89,8 @@ export interface CrmAdapter {
   stripDeal(id: string): Promise<void>;
   /** The contact for this email, if the CRM has one (erasure, when no ID was stored). */
   findContactId(email: string): Promise<string | null>;
+  /** SCRUM-85: a club as a company, its billing contact, and one deal per batch, all associated. */
+  syncClub?(company: CrmCompany, contact: CrmClubContact, deals: CrmBatchDeal[], known: { companyId?: string; contactId?: string; dealIds: Record<string, string> }): Promise<ClubIds>;
 }
 
 /** "Sam de la Cruz" → Sam / de la Cruz. One word → that word and an empty last name. */
@@ -163,3 +166,88 @@ export const STAGES: Readonly<Record<OrderStatus, { label: string; probability: 
 
 /** Stages in display order. */
 export const STAGE_ORDER: readonly OrderStatus[] = STATUSES;
+
+// ── Clubs (SCRUM-85 AC8) ──────────────────────────────────────────────────────
+
+/** A club as a CRM company: its name only (the billing address stays in our database). */
+export interface CrmCompany {
+  clubId: string;
+  /** `[TEST] …` for clubs made outside production. */
+  name: string;
+  isTest: boolean;
+}
+
+/** The club's billing contact: name and email only. */
+export interface CrmClubContact {
+  email: string;
+  firstName: string;
+  lastName: string;
+}
+
+/** A batch as a deal: amount = the invoice total (an estimate at the club price before), stage = batch status. */
+export interface CrmBatchDeal {
+  reference: string;
+  name: string;
+  amountCents: number;
+  paddleCount: number;
+  isTest: boolean;
+  status: BatchStatus;
+}
+
+export interface ClubIds {
+  companyId: string;
+  contactId: string;
+  /** Batch reference → deal id. */
+  dealIds: Record<string, string>;
+}
+
+/** Club data as the sync reads it from the database. */
+export interface ClubForCrm {
+  id: string;
+  name: string;
+  is_test: boolean;
+  billing_name: string;
+  billing_email: string;
+  crm_company_id: string | null;
+  crm_contact_id: string | null;
+  batches: { reference: string; status: BatchStatus; paddle_count: number; unchanged_count: number; invoice_total: number | null; crm_deal_id: string | null }[];
+}
+
+/** The club price a paddle, for a batch's estimate before it's invoiced. */
+const CLUB_ESTIMATE_CENTS = 5400;
+
+export function mapClub(c: ClubForCrm): { company: CrmCompany; contact: CrmClubContact; deals: CrmBatchDeal[] } {
+  const tag = (s: string) => (c.is_test ? `[TEST] ${s}` : s);
+  return {
+    company: { clubId: c.id, name: tag(c.name), isTest: c.is_test },
+    contact: { email: c.billing_email.trim().toLowerCase(), ...splitName(c.billing_name) },
+    deals: c.batches.map((b) => ({
+      reference: b.reference,
+      name: tag(`${b.reference} (${c.name})`),
+      // Invoiced: the total as issued. Before (or with nothing invoiced): the paddles to re-grit at the club price.
+      amountCents: b.invoice_total !== null ? Number(b.invoice_total) : b.status === 'cancelled' ? 0 : (b.paddle_count - b.unchanged_count) * CLUB_ESTIMATE_CENTS,
+      paddleCount: b.paddle_count,
+      isTest: c.is_test,
+      status: b.status,
+    })),
+  };
+}
+
+/**
+ * Club batches' stages. The free CRM has one deal pipeline, so they sit after the order stages in
+ * the same pipeline, prefixed "Club batch:" (with a paid HubSpot plan they could move to their own).
+ */
+export const CLUB_STAGES: Readonly<Record<BatchStatus, { label: string; probability: number }>> = {
+  collected: { label: 'Club batch: collected', probability: 0.5 },
+  returned: { label: 'Club batch: returned', probability: 0.8 },
+  invoiced: { label: 'Club batch: invoiced', probability: 0.9 },
+  paid: { label: 'Club batch: paid', probability: 1 },
+  cancelled: { label: 'Club batch: cancelled', probability: 0 },
+};
+export const CLUB_STAGE_ORDER: readonly BatchStatus[] = BATCH_STATUSES;
+
+/** Every stage we own in the pipeline, in order: orders' first, then club batches'. */
+export const PIPELINE_STAGES: readonly { key: string; label: string; probability: number }[] = [
+  ...STAGE_ORDER.map((s) => ({ key: s, ...STAGES[s] })),
+  ...CLUB_STAGE_ORDER.map((s) => ({ key: `club:${s}`, ...CLUB_STAGES[s] })),
+];

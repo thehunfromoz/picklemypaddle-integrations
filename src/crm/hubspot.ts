@@ -7,8 +7,7 @@
  * Errors carry an HTTP status or network error name only, never HubSpot's message, which can
  * quote the request (an email address, say).
  */
-import type { OrderStatus } from '../orders/model.js';
-import { STAGE_ORDER, STAGES, type CrmAdapter, type CrmContact, type CrmDeal, type CrmIds } from './crm.js';
+import { PIPELINE_STAGES, type ClubIds, type CrmAdapter, type CrmBatchDeal, type CrmClubContact, type CrmCompany, type CrmContact, type CrmDeal, type CrmIds } from './crm.js';
 
 export class HubSpotError extends Error {
   constructor(
@@ -80,7 +79,7 @@ export interface PropertyDef {
 }
 
 /** The HubSpot objects we keep properties on. */
-export type CrmObject = 'deals' | 'contacts';
+export type CrmObject = 'deals' | 'contacts' | 'companies';
 
 const yesNo = [
   { label: 'Yes', value: 'true', displayOrder: 0 },
@@ -127,8 +126,21 @@ export const CONTACT_PROPERTIES: readonly PropertyDef[] = [
   },
 ];
 
-export const PROPERTIES: Readonly<Record<CrmObject, readonly PropertyDef[]>> = { deals: DEAL_PROPERTIES, contacts: CONTACT_PROPERTIES };
-const OBJECT_WORD: Record<CrmObject, string> = { deals: 'deal', contacts: 'contact' };
+/** SCRUM-85: on the club's company, so a lost company ID can be found again. */
+export const COMPANY_PROPERTIES: readonly PropertyDef[] = [
+  { name: 'pmp_club_id', label: 'Club ID', type: 'string', fieldType: 'text', description: 'PickleMyPaddle club ID. Set by the integrations service.' },
+  {
+    name: 'pmp_is_test',
+    label: 'Test club',
+    type: 'bool',
+    fieldType: 'booleancheckbox',
+    description: 'A TEST club made outside production. Set by the integrations service.',
+    options: yesNo,
+  },
+];
+
+export const PROPERTIES: Readonly<Record<CrmObject, readonly PropertyDef[]>> = { deals: DEAL_PROPERTIES, contacts: CONTACT_PROPERTIES, companies: COMPANY_PROPERTIES };
+const OBJECT_WORD: Record<CrmObject, string> = { deals: 'deal', contacts: 'contact', companies: 'company' };
 
 /** HubSpot's own association type: deal → contact. */
 const DEAL_TO_CONTACT = 3;
@@ -148,19 +160,20 @@ interface Pipeline {
 
 const norm = (s: string) => s.trim().toLowerCase();
 
-export function hubspotAdapter(client: HubSpotClient): CrmAdapter & { stageIds(): Promise<Record<OrderStatus, string>> } {
-  let cached: Record<OrderStatus, string> | null = null;
+export function hubspotAdapter(client: HubSpotClient): CrmAdapter & { stageIds(): Promise<Record<string, string>> } {
+  let cached: Record<string, string> | null = null;
 
-  async function stageIds(): Promise<Record<OrderStatus, string>> {
+  /** Stage IDs by key: an order status, or `club:<batch status>` (SCRUM-85). */
+  async function stageIds(): Promise<Record<string, string>> {
     if (cached) return cached;
     const pipeline = await client.request<Pipeline>('GET', `/crm/v3/pipelines/deals/${PIPELINE_ID}`);
     const byLabel = new Map(pipeline.stages.map((s) => [norm(s.label), s.id]));
-    const out = {} as Record<OrderStatus, string>;
-    for (const status of STAGE_ORDER) {
-      const id = byLabel.get(norm(STAGES[status].label));
+    const out: Record<string, string> = {};
+    for (const stage of PIPELINE_STAGES) {
+      const id = byLabel.get(norm(stage.label));
       // A stage missing from HubSpot means the setup script hasn't run against this portal.
       if (!id) throw new HubSpotError(null, 'stage_missing', true);
-      out[status] = id;
+      out[stage.key] = id;
     }
     cached = out;
     return out;
@@ -215,14 +228,82 @@ export function hubspotAdapter(client: HubSpotClient): CrmAdapter & { stageIds()
 
   const associate = (dealId: string, contactId: string) =>
     client.request('PUT', `/crm/v4/objects/deals/${dealId}/associations/default/contacts/${contactId}`);
+  /** HubSpot's default association between two records (no type IDs to keep in step). */
+  const link = (from: 'deals' | 'companies', fromId: string, to: 'contacts' | 'companies', toId: string) =>
+    client.request('PUT', `/crm/v4/objects/${from}/${fromId}/associations/default/${to}/${toId}`);
+
+  // ── SCRUM-85: clubs ──
+  async function upsertClubContact(c: CrmClubContact): Promise<string> {
+    // Name and email only: a billing contact who is also a customer keeps their other details.
+    const r = await client.request<{ results: { id: string }[] }>('POST', '/crm/v3/objects/contacts/batch/upsert', {
+      inputs: [{ idProperty: 'email', id: c.email, properties: { email: c.email, firstname: c.firstName, lastname: c.lastName } }],
+    });
+    const id = r.results?.[0]?.id;
+    if (!id) throw new HubSpotError(null, 'contact_upsert_empty', false);
+    return id;
+  }
+
+  async function findCompany(clubId: string): Promise<string | null> {
+    const r = await client.request<{ results: { id: string }[] }>('POST', '/crm/v3/objects/companies/search', {
+      filterGroups: [{ filters: [{ propertyName: 'pmp_club_id', operator: 'EQ', value: clubId }] }],
+      properties: ['pmp_club_id'],
+      limit: 1,
+    });
+    return r.results?.[0]?.id ?? null;
+  }
+
+  /** Update the record we know about, else find it again, else create it. Returns its ID. */
+  async function upsert(object: 'companies' | 'deals', known: string | undefined, find: () => Promise<string | null>, properties: Record<string, string>): Promise<{ id: string; isNew: boolean }> {
+    if (known) {
+      try {
+        await client.request('PATCH', `/crm/v3/objects/${object}/${known}`, { properties });
+        return { id: known, isNew: false };
+      } catch (err) {
+        if (!(err instanceof HubSpotError && err.status === 404)) throw err;
+      }
+    }
+    const found = await find();
+    if (found) {
+      await client.request('PATCH', `/crm/v3/objects/${object}/${found}`, { properties });
+      return { id: found, isNew: true };
+    }
+    const created = await client.request<{ id: string }>('POST', `/crm/v3/objects/${object}`, { properties });
+    return { id: created.id, isNew: true };
+  }
+
+  const companyProperties = (c: CrmCompany) => ({ name: c.name, pmp_club_id: c.clubId, pmp_is_test: String(c.isTest) });
+  const batchDealProperties = (d: CrmBatchDeal, stageId: string) => ({
+    dealname: d.name,
+    amount: aud(d.amountCents),
+    pipeline: PIPELINE_ID,
+    dealstage: stageId,
+    pmp_reference: d.reference,
+    pmp_paddle_count: String(d.paddleCount),
+    pmp_is_test: String(d.isTest),
+  });
 
   return {
     name: 'hubspot',
     stageIds,
 
+    async syncClub(company, contact, deals, known) {
+      const stages = await stageIds();
+      const contactId = await upsertClubContact(contact);
+      const co = await upsert('companies', known.companyId, () => findCompany(company.clubId), companyProperties(company));
+      if (co.isNew || known.contactId !== contactId) await link('companies', co.id, 'contacts', contactId);
+      const dealIds: Record<string, string> = {};
+      for (const d of deals) {
+        const deal = await upsert('deals', known.dealIds[d.reference], () => findDeal(d.reference), batchDealProperties(d, stages[`club:${d.status}`]!));
+        if (deal.isNew || co.isNew) await link('deals', deal.id, 'companies', co.id);
+        if (deal.isNew || known.contactId !== contactId) await link('deals', deal.id, 'contacts', contactId);
+        dealIds[d.reference] = deal.id;
+      }
+      return { companyId: co.id, contactId, dealIds } satisfies ClubIds;
+    },
+
     async sync(contact, deal, known) {
       const contactId = await upsertContact(contact);
-      const properties = dealProperties(deal, (await stageIds())[deal.status]);
+      const properties = dealProperties(deal, (await stageIds())[deal.status]!);
 
       // Update the deal we know about; if it was deleted in HubSpot, find it again or recreate it.
       let dealId = known.dealId ?? null;
@@ -302,8 +383,8 @@ export type SetupChange =
   | { kind: 'create_group'; object: CrmObject }
   | { kind: 'create_property'; object: CrmObject; property: PropertyDef }
   | { kind: 'update_property'; object: CrmObject; property: PropertyDef; differences: string[] }
-  | { kind: 'create_stage'; status: OrderStatus; label: string; displayOrder: number; probability: number }
-  | { kind: 'update_stage'; status: OrderStatus; id: string; label: string; displayOrder: number; probability: number; differences: string[] };
+  | { kind: 'create_stage'; status: string; label: string; displayOrder: number; probability: number }
+  | { kind: 'update_stage'; status: string; id: string; label: string; displayOrder: number; probability: number; differences: string[] };
 
 export interface SetupPlan {
   changes: SetupChange[];
@@ -348,14 +429,14 @@ export async function planSetup(client: HubSpotClient): Promise<SetupPlan> {
   }
 
   const pipeline = await client.request<Pipeline>('GET', `/crm/v3/pipelines/deals/${PIPELINE_ID}`);
-  const ours = new Set(STAGE_ORDER.map((s) => norm(STAGES[s].label)));
+  const ours = new Set(PIPELINE_STAGES.map((s) => norm(s.label)));
   // Position is checked as order, not as exact numbers: HubSpot numbers stages across the whole
   // pipeline (its own default stages included), so ours land at 1..11 rather than 0..10.
-  const found = STAGE_ORDER.map((status) => pipeline.stages.find((s) => norm(s.label) === norm(STAGES[status].label)));
+  const found = PIPELINE_STAGES.map((want) => pipeline.stages.find((s) => norm(s.label) === norm(want.label)));
   const present = found.filter((s): s is Stage => s !== undefined);
   const inOrder = present.every((s, i) => i === 0 || present[i - 1]!.displayOrder < s.displayOrder);
-  STAGE_ORDER.forEach((status, displayOrder) => {
-    const want = STAGES[status];
+  PIPELINE_STAGES.forEach((want, displayOrder) => {
+    const status = want.key;
     const have = found[displayOrder];
     if (!have) {
       changes.push({ kind: 'create_stage', status, label: want.label, displayOrder, probability: want.probability });

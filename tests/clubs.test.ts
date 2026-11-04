@@ -316,7 +316,7 @@ describe('club batches: all-or-nothing, GST end to end, settings and email edge 
     await t.db.exec('ALTER TABLE outbox_gone RENAME TO outbox');
     expect(await n(`SELECT last AS n FROM document_counters WHERE series = 'INV'`)).toBe(0);
     expect(await n('SELECT count(*)::int AS n FROM documents')).toBe(0);
-    expect(await n('SELECT count(*)::int AS n FROM outbox')).toBe(0);
+    expect(await n("SELECT count(*)::int AS n FROM outbox WHERE kind = 'email'")).toBe(0);
     expect(await findBatch(t.db, batch.reference)).toMatchObject({ status: 'collected', returnedOn: null, unchangedCount: 0 });
   });
 
@@ -329,7 +329,7 @@ describe('club batches: all-or-nothing, GST end to end, settings and email edge 
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
     expect(results.find((r) => r.status === 'rejected')).toMatchObject({ reason: { code: 'not_collected' } });
     expect(await n('SELECT count(*)::int AS n FROM documents')).toBe(1);
-    expect(await n('SELECT count(*)::int AS n FROM outbox')).toBe(1);
+    expect(await n("SELECT count(*)::int AS n FROM outbox WHERE kind = 'email'")).toBe(1);
   });
 
   it('once GST-registered, a returned batch is invoiced with GST on top, in the database and the email', async () => {
@@ -354,7 +354,7 @@ describe('club batches: all-or-nothing, GST end to end, settings and email edge 
     const sent: EmailMessage[] = [];
     await mail({ name: 'fake', send: async (m) => (sent.push(m), { id: 'e1' }) }, ['someone-else@test.picklemypaddle.com']);
     expect(sent).toHaveLength(0);
-    expect(await n(`SELECT count(*)::int AS n FROM outbox WHERE state = 'suppressed' AND last_error = 'not_allow_listed'`)).toBe(1);
+    expect(await n(`SELECT count(*)::int AS n FROM outbox WHERE kind = 'email' AND state = 'suppressed' AND last_error = 'not_allow_listed'`)).toBe(1);
     expect(await n('SELECT count(*)::int AS n FROM document_tokens')).toBe(0);
   });
 
@@ -364,15 +364,15 @@ describe('club batches: all-or-nothing, GST end to end, settings and email edge 
     const { SendError } = await import('../src/email/sender.js');
     await mail({ name: 'fake', send: async () => { throw new SendError('timeout', false); } });
     expect(await n('SELECT count(*)::int AS n FROM document_tokens')).toBe(1);
-    expect(await n(`SELECT count(*)::int AS n FROM outbox WHERE state = 'pending' AND attempts = 1`)).toBe(1);
+    expect(await n(`SELECT count(*)::int AS n FROM outbox WHERE kind = 'email' AND state = 'pending' AND attempts = 1`)).toBe(1);
 
     await t.db.query(`UPDATE outbox SET state = 'failed'`);
     const admin = await makeAdmin(t);
-    const id = (await t.db.query<{ id: string }>('SELECT id FROM outbox')).rows[0]!.id;
+    const id = (await t.db.query<{ id: string }>("SELECT id FROM outbox WHERE kind = 'email'")).rows[0]!.id;
     const retry = await admin.post(`/admin/outbox/${id}/retry`);
     expect(retry.status).toBe(303);
     expect(retry.headers.get('location')).toBe(`/admin/batches/${batch.reference}?done=retry`);
-    expect(await n(`SELECT count(*)::int AS n FROM outbox WHERE state = 'pending' AND attempts = 0`)).toBe(1);
+    expect(await n(`SELECT count(*)::int AS n FROM outbox WHERE kind = 'email' AND state = 'pending' AND attempts = 0`)).toBe(1);
   });
 
   it('an issued club invoice can’t be moved to another batch or have its due date changed', async () => {

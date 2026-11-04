@@ -2,9 +2,9 @@
  * HubSpot mirror (SCRUM-74): mapping, the sync worker against a fake HubSpot, and setup as code.
  */
 import { afterEach, describe, expect, it } from 'vitest';
-import { mapOrder, splitName, STAGE_ORDER, STAGES } from '../src/crm/crm.js';
+import { CLUB_STAGES, mapOrder, PIPELINE_STAGES, splitName, STAGE_ORDER, STAGES } from '../src/crm/crm.js';
 import { submitReview } from '../src/orders/reviews.js';
-import { applySetup, CONTACT_PROPERTIES, DEAL_PROPERTIES, describeChange, hubspotAdapter, hubspotClient, planSetup, portalIdOf } from '../src/crm/hubspot.js';
+import { applySetup, COMPANY_PROPERTIES, CONTACT_PROPERTIES, DEAL_PROPERTIES, describeChange, hubspotAdapter, hubspotClient, planSetup, portalIdOf } from '../src/crm/hubspot.js';
 import { processCrm, resyncAll, retryCrmJob, type CrmDeps } from '../src/crm/sync.js';
 import { BACKOFF_MINUTES } from '../src/email/outbox.js';
 import { STATUSES } from '../src/orders/model.js';
@@ -274,8 +274,13 @@ describe('HubSpot setup as code', () => {
     expect(plan.changes.map((x) => x.kind)).toEqual([
       'create_group', ...DEAL_PROPERTIES.map(() => 'create_property'),
       'create_group', ...CONTACT_PROPERTIES.map(() => 'create_property'),
+      'create_group', ...COMPANY_PROPERTIES.map(() => 'create_property'),
       ...STATUSES.map(() => 'create_stage'),
+      ...Object.keys(CLUB_STAGES).map(() => 'create_stage'),
     ]);
+    // SCRUM-85: club batches sit after the order stages, in the same (free plan's only) pipeline.
+    expect(plan.changes.filter((x) => x.kind === 'create_stage').map((x) => (x as { label: string }).label).slice(-5))
+      .toEqual(['Club batch: collected', 'Club batch: returned', 'Club batch: invoiced', 'Club batch: paid', 'Club batch: cancelled']);
     // SCRUM-80: the "reviewed" flags, on the deal and on the contact.
     expect(plan.changes.filter((x) => x.kind === 'create_property').map((x) => `${(x as { object: string }).object}.${(x as { property: { name: string } }).property.name}`))
       .toEqual(expect.arrayContaining(['deals.pmp_reviewed', 'contacts.pmp_has_reviewed']));
@@ -294,8 +299,8 @@ describe('HubSpot setup as code', () => {
     const hs = fakeHubSpot();
     const c = client(hs);
     await applySetup(c, await planSetup(c));
-    // What the real test portal did on 29 Oct: ours at 1..11 (a default stage kept position 0).
-    const ours = STATUSES.map((st) => hs.stages.find((s) => s.label === STAGES[st].label)!);
+    // What the real test portal did on 29 Oct: ours from 1 (a default stage kept position 0).
+    const ours = PIPELINE_STAGES.map((st) => hs.stages.find((s) => s.label === st.label)!);
     ours.forEach((s, i) => (s.displayOrder = i + 1));
     expect((await planSetup(c)).changes).toEqual([]);
 

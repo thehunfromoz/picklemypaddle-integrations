@@ -565,6 +565,18 @@ export const MIGRATIONS: readonly Migration[] = [
       ALTER TABLE payments ADD CONSTRAINT payments_one_owner CHECK (order_id IS NULL OR document_id IS NULL);
     `,
   },
+  {
+    version: 16,
+    name: 'club HubSpot sync',
+    sql: `
+      -- SCRUM-85 AC8: a club is a HubSpot company (with its billing contact) and each batch a deal.
+      -- One CRM job per club syncs all of it; at most one waits per club, like orders.
+      ALTER TABLE clubs ADD COLUMN crm_contact_id text;
+      ALTER TABLE outbox ADD COLUMN club_id uuid REFERENCES clubs (id) ON DELETE CASCADE;
+      ALTER TABLE outbox ADD CONSTRAINT outbox_club_alone CHECK (club_id IS NULL OR (order_id IS NULL AND batch_id IS NULL));
+      CREATE UNIQUE INDEX outbox_crm_club_pending_key ON outbox (club_id) WHERE kind = 'crm' AND state = 'pending';
+    `,
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

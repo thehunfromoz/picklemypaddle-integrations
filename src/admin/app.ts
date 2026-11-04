@@ -55,7 +55,7 @@ import { ADMIN_CSS } from './style.js';
 import { batchesPage, batchPage, clubPage, clubsPage } from './club-pages.js';
 import { flaggedCardPayments, paymentsOfInvoice, recordClubPayment } from '../clubs/payments.js';
 import {
-  batchEmails, cancelBatch, ClubError, createBatch, createClub, findBatch, findClub, listBatches, listClubs, returnBatch, setBatchNote, setClubActive, updateClub, validateClub,
+  batchEmails, cancelBatch, clubCrmSync, ClubError, createBatch, createClub, findBatch, findClub, listBatches, listClubs, returnBatch, setBatchNote, setClubActive, updateClub, validateClub,
   type Club, type ClubInput,
 } from '../clubs/clubs.js';
 
@@ -350,6 +350,14 @@ export function createAdminApp(deps: AdminDeps) {
     if (!row) return c.html(notFoundPage(ctx(c), 'No such email or sync.'), 404);
     const retried = row.kind === 'email' ? await retryEmail(deps.db, c.req.param('id'), now()) : await retryCrmJob(deps.db, c.req.param('id'), now());
     const isBatch = row.reference.startsWith('PMPB-');
+    const clubId = row.reference.startsWith('club:') ? row.reference.slice(5) : null;
+    if (clubId) {
+      const club = await findClub(deps.db, clubId);
+      if (!club) return c.html(notFoundPage(ctx(c), 'No such club.'), 404);
+      if (!retried) return clubPageFor(c, club, { kind: 'error', text: 'Only a failed sync can be retried (it may already be queued again).' }, 400);
+      log('admin_retry', { outbox: Number(c.req.param('id')), kind: row.kind });
+      return c.redirect(`/admin/clubs/${clubId}?done=retry`, 303);
+    }
     if (!retried) {
       const text = 'Only a failed email or sync can be retried (it may already be queued again).';
       return isBatch ? batchPageFor(c, row.reference, { kind: 'error', text }, 409) : showOrder(c, row.reference, { kind: 'error', text }, 409);
@@ -457,7 +465,7 @@ export function createAdminApp(deps: AdminDeps) {
     notes: field(body, 'notes') ?? null,
   });
   const clubPageFor = async (c: Context<Env>, club: Club, flash?: Flash, status: 200 | 400 = 200, form?: Partial<Club>) =>
-    c.html(clubPage(ctx(c), club, await listBatches(deps.db, { clubId: club.id }), sydneyDate(now()), flash, form), status);
+    c.html(clubPage(ctx(c), club, await listBatches(deps.db, { clubId: club.id }), sydneyDate(now()), flash, form, await clubCrmSync(deps.db, club.id)), status);
   const seller = deps.seller ?? DEFAULT_SELLER;
 
   app.get('/admin/clubs', async (c) => c.html(clubsPage(ctx(c), await listClubs(deps.db), flashOf(c))));

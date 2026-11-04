@@ -18,6 +18,7 @@ import type { CheckoutSession, FormValue } from '../payments/stripe.js';
 import { PaymentError, SESSION_MINUTES, type ApplyOutcome, type PaymentDeps, type PaymentSource } from '../payments/payments.js';
 import { CLUB_LINK_DAYS } from '../documents/documents.js';
 import { ClubError } from './clubs.js';
+import { enqueueClubCrmSync } from '../crm/sync.js';
 
 export type ClubPaymentMethod = 'payid' | 'cash' | 'card';
 export const METHOD_LABELS: Record<ClubPaymentMethod, string> = { payid: 'PayID', cash: 'cash', card: 'card' };
@@ -76,7 +77,11 @@ async function settle(q: Queryable, documentId: string, batchId: string, now: Da
   const pays = await paymentsOfInvoice(q, documentId);
   const lastDay = pays.reduce((d, p) => (p.paidOn > d ? p.paidOn : d), pays[0]?.paidOn ?? sydneyDate(now));
   await q.query(`UPDATE documents SET paid_on = $2::date, paid_method = $3 WHERE id = $1 AND paid_on IS NULL`, [documentId, lastDay, methodWords(pays.map((p) => p.method))]);
-  await q.query(`UPDATE batches SET status = 'paid', status_changed_at = $2, updated_at = $2 WHERE id = $1 AND status = 'invoiced'`, [batchId, now]);
+  const { rows } = await q.query<{ club_id: string }>(
+    `UPDATE batches SET status = 'paid', status_changed_at = $2, updated_at = $2 WHERE id = $1 AND status = 'invoiced' RETURNING club_id`,
+    [batchId, now],
+  );
+  if (rows[0]) await enqueueClubCrmSync(q, rows[0].club_id, now);
   return true;
 }
 
