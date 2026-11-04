@@ -104,7 +104,8 @@ const money = (cents: number) => `A$${(cents / 100).toFixed(2)}`;
 /** How a document is headed and what it says about GST, for its issue date's treatment. */
 export function taxWording(treatment: TaxTreatment, totalCents: number): { heading: 'Invoice' | 'Tax invoice'; gstLine: string } {
   if (treatment === 'gst_inclusive') return { heading: 'Tax invoice', gstLine: `Total includes GST of ${money(gstIncluded(totalCents, treatment))}` };
-  if (treatment === 'gst_exclusive') return { heading: 'Tax invoice', gstLine: `GST (${GST_PERCENT}%) ${money(gstIncluded(totalCents, treatment))}` };
+  // Club invoices work their GST out from the subtotal (clubInvoiceAmounts), never from the total.
+  if (treatment === 'gst_exclusive') throw new Error('taxWording is for GST-inclusive or unregistered documents; club invoices use clubInvoiceAmounts');
   return { heading: 'Invoice', gstLine: 'No GST has been charged' };
 }
 

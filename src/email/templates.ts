@@ -100,6 +100,8 @@ export interface TemplateContext {
     dueOn: string;
     treatment: TaxTreatment;
     payId: string;
+    /** Whether the invoice's page takes card payments (SCRUM-85, second part). */
+    payByCard: boolean;
   };
 }
 
@@ -348,11 +350,11 @@ function build(name: TemplateName, ctx: TemplateContext): { subject: string; blo
           { p: `Your batch ${batch} is back: ${inv.paddles} ${paddleWord(inv.paddles)} re-gritted for ${club.name}. Here’s the invoice.` },
           { kv: [['Invoice', inv.number], ['Batch', batch], ...amounts, ['Due by', longDate(inv.dueOn)]] },
           ...(inv.treatment === 'not_registered' ? [{ small: 'No GST has been charged.' } as Block] : []),
-          { button: { label: 'View, print or pay by card', url: inv.url } },
+          { button: { label: inv.payByCard ? 'View, print or pay by card' : 'View or print the invoice', url: inv.url } },
           { h: 'How to pay' },
           { list: [
             `PayID or bank transfer to ${inv.payId}, with ${inv.number} as the reference`,
-            'By card, with the button above',
+            ...(inv.payByCard ? ['By card, with the button above'] : []),
             'In cash, at your club’s next pickup or delivery',
           ] },
           { p: 'Part payments are fine: the invoice page shows what is still owing.' },
@@ -584,6 +586,7 @@ export function sampleContext(name: TemplateName, test: boolean): TemplateContex
             dueOn: '2026-11-18',
             treatment: 'not_registered' as const,
             payId: 'payments@picklemypaddle.com',
+            payByCard: false,
           },
         }
       : {}),

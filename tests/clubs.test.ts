@@ -39,6 +39,7 @@ const facts: ClubInvoiceFacts = {
   collectedOn: '2027-02-20',
   returnedOn: '2027-03-02',
   dueOn: '2027-03-16',
+  payByCard: false,
 };
 
 describe('club invoice amounts (GST on top for clubs, decided 4 Nov 2026)', () => {
@@ -67,8 +68,9 @@ describe('club invoice wording by issue date', () => {
     expect(s.buyer).toEqual({ name: 'Inner West Pickleball Club', abn: '51 824 753 556', address: 'Attn: Jo Treasurer\n1 Court St\nNewtown NSW 2042' });
     expect(s.lines).toEqual([{ description: 'Paddle re-grit, both faces: club batch collected 20 February 2027, returned 2 March 2027', quantity: 23, unitCents: 5400, amountCents: 124200 }]);
     expect(s.notes[0]).toBe('Due by 16 March 2027.');
-    expect(s.notes[1]).toContain('PayID or bank transfer to payments@picklemypaddle.com, with PMP-INV-0042 as the reference');
+    expect(s.notes[1]).toBe('How to pay: PayID or bank transfer to payments@picklemypaddle.com, with PMP-INV-0042 as the reference; or in cash at your club’s next pickup or delivery.');
     expect(s.payId).toBe('payments@picklemypaddle.com');
+    expect(s.payByCard).toBeUndefined();
     expect(JSON.stringify(s).toLowerCase()).not.toContain('tax invoice');
   });
 
@@ -78,6 +80,12 @@ describe('club invoice wording by issue date', () => {
     expect(s.lines[0]!.description).toContain('(excluding GST)');
     expect(s.notes[0]).toBe('All items are taxable sales.');
     expect(s.seller.abn).toBe('51 824 753 556');
+  });
+
+  it('offers card only once the invoice page takes card payments', () => {
+    const s = clubInvoiceSnapshot('PMP-INV-0047', '2027-02-28', { ...facts, payByCard: true }, registered);
+    expect(s.notes[1]).toContain('by card, with the "Pay by card" button on this invoice\'s page');
+    expect(s.payByCard).toBe(true);
   });
 
   it('shows "[To confirm: PayID]" until BUSINESS_PAYID is set', () => {
@@ -106,6 +114,10 @@ describe('the club invoice email template', () => {
     expect(before.text).toContain('No GST has been charged.');
     expect(before.text).toContain('PayID or bank transfer to payments@picklemypaddle.com, with PMP-INV-0042 as the reference');
     expect(before.text).toContain('You’re getting this as the billing contact for Inner West Pickleball Club.');
+    expect(before.text).not.toMatch(/card/i);
+    const withCard = render('club_invoice', { ...sampleContext('club_invoice', true), invoice: { ...sampleContext('club_invoice', true).invoice!, payByCard: true } });
+    expect(withCard.text).toContain('View, print or pay by card');
+    expect(withCard.text).toContain('By card, with the button above');
     const ctx = sampleContext('club_invoice', false);
     const after = render('club_invoice', { ...ctx, invoice: { ...ctx.invoice!, treatment: 'gst_exclusive', subtotalCents: 124200, gstCents: 12420, totalCents: 136620 } });
     expect(after.text).toContain('Subtotal (excluding GST): A$1242');
@@ -278,6 +290,116 @@ describe('clubs and batches in the database', () => {
   });
 });
 
+describe('club batches: all-or-nothing, GST end to end, settings and email edge cases', () => {
+  let t: TestApp;
+  afterEach(async () => t?.close());
+  const input: ClubInput = { name: 'Inner West PC', billingName: 'Jo Treasurer', billingEmail: 'jo@test.picklemypaddle.com', billingAddress: '1 Court St, Newtown NSW 2042', abn: null, notes: null };
+  const setup = async () => {
+    t = await makeApp();
+    t.clock.now = new Date('2026-11-04T01:00:00Z');
+    const club = await createClub(t.db, input, { isProduction: false, now: t.clock.now });
+    const batch = await createBatch(t.db, { clubId: club.id, collectedOn: '2026-11-02', paddleCount: 4, notes: null, now: t.clock.now });
+    return { club, batch };
+  };
+  const deps = (over: Partial<Parameters<typeof returnBatch>[0]> = {}) => ({
+    db: t.db, seller: { ...DEFAULT_SELLER, payId: 'payments@picklemypaddle.com' }, isProduction: false, paymentTermsDays: 14, now: t.clock.now, ...over,
+  });
+  const n = async (sql: string, params: unknown[] = []) => Number((await t.db.query<{ n: number }>(sql, params)).rows[0]!.n);
+  const mail = (sender: EmailSender, allow = ['jo@test.picklemypaddle.com']) =>
+    processOutbox({ db: t.db, sender, settings: { isProduction: false, allowList: allow, siteUrl: SITE, adminUrl: null }, now: () => t.clock.now });
+
+  it('a failure after the invoice number is taken rolls everything back: no number used, no document, no email, still Collected', async () => {
+    const { batch } = await setup();
+    // Make queueing the email fail, after nextNumber and the document insert have run.
+    await t.db.exec('ALTER TABLE outbox RENAME TO outbox_gone');
+    await expect(returnBatch(deps(), { reference: batch.reference, returnedOn: '2026-11-04', unchangedCount: 0 })).rejects.toThrow();
+    await t.db.exec('ALTER TABLE outbox_gone RENAME TO outbox');
+    expect(await n(`SELECT last AS n FROM document_counters WHERE series = 'INV'`)).toBe(0);
+    expect(await n('SELECT count(*)::int AS n FROM documents')).toBe(0);
+    expect(await n('SELECT count(*)::int AS n FROM outbox')).toBe(0);
+    expect(await findBatch(t.db, batch.reference)).toMatchObject({ status: 'collected', returnedOn: null, unchangedCount: 0 });
+  });
+
+  it('two returns at once: one invoice and one email; the other is refused', async () => {
+    const { batch } = await setup();
+    const results = await Promise.allSettled([
+      returnBatch(deps(), { reference: batch.reference, returnedOn: '2026-11-04', unchangedCount: 0 }),
+      returnBatch(deps(), { reference: batch.reference, returnedOn: '2026-11-04', unchangedCount: 1 }),
+    ]);
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    expect(results.find((r) => r.status === 'rejected')).toMatchObject({ reason: { code: 'not_collected' } });
+    expect(await n('SELECT count(*)::int AS n FROM documents')).toBe(1);
+    expect(await n('SELECT count(*)::int AS n FROM outbox')).toBe(1);
+  });
+
+  it('once GST-registered, a returned batch is invoiced with GST on top, in the database and the email', async () => {
+    const { batch } = await setup();
+    const seller = { ...DEFAULT_SELLER, abn: '51824753556', gstRegisteredFrom: '2026-11-01', payId: 'payments@picklemypaddle.com' };
+    await returnBatch(deps({ seller, paymentTermsDays: 30 }), { reference: batch.reference, returnedOn: '2026-11-04', unchangedCount: 1 });
+    const doc = (await t.db.query<{ total_cents: number; gst_cents: number; due_on: string; snapshot: string }>('SELECT total_cents, gst_cents, due_on::text AS due_on, snapshot FROM documents')).rows[0]!;
+    // 3 × A$54 = A$162, plus GST A$16.20.
+    expect({ total: Number(doc.total_cents), gst: Number(doc.gst_cents), due: doc.due_on }).toEqual({ total: 17820, gst: 1620, due: '2026-12-04' });
+    expect(JSON.parse(doc.snapshot)).toMatchObject({ heading: 'Tax invoice', treatment: 'gst_exclusive', subtotalCents: 16200 });
+    const sent: EmailMessage[] = [];
+    await mail({ name: 'fake', send: async (m) => (sent.push(m), { id: 'e1' }) });
+    expect(sent[0]!.text).toContain('Subtotal (excluding GST): A$162');
+    expect(sent[0]!.text).toContain('GST (10%): A$16.20');
+    expect(sent[0]!.text).toContain('Total: A$178.20');
+    expect(sent[0]!.text).toContain('Due by: Friday 4 December 2026');
+  });
+
+  it('outside production, a billing email not on the allow-list is never sent (and no link is made)', async () => {
+    const { batch } = await setup();
+    await returnBatch(deps(), { reference: batch.reference, returnedOn: '2026-11-04', unchangedCount: 0 });
+    const sent: EmailMessage[] = [];
+    await mail({ name: 'fake', send: async (m) => (sent.push(m), { id: 'e1' }) }, ['someone-else@test.picklemypaddle.com']);
+    expect(sent).toHaveLength(0);
+    expect(await n(`SELECT count(*)::int AS n FROM outbox WHERE state = 'suppressed' AND last_error = 'not_allow_listed'`)).toBe(1);
+    expect(await n('SELECT count(*)::int AS n FROM document_tokens')).toBe(0);
+  });
+
+  it('a temporary failure keeps the link (it may have been delivered) and retries; the admin can retry a failed one', async () => {
+    const { batch } = await setup();
+    await returnBatch(deps(), { reference: batch.reference, returnedOn: '2026-11-04', unchangedCount: 0 });
+    const { SendError } = await import('../src/email/sender.js');
+    await mail({ name: 'fake', send: async () => { throw new SendError('timeout', false); } });
+    expect(await n('SELECT count(*)::int AS n FROM document_tokens')).toBe(1);
+    expect(await n(`SELECT count(*)::int AS n FROM outbox WHERE state = 'pending' AND attempts = 1`)).toBe(1);
+
+    await t.db.query(`UPDATE outbox SET state = 'failed'`);
+    const admin = await makeAdmin(t);
+    const id = (await t.db.query<{ id: string }>('SELECT id FROM outbox')).rows[0]!.id;
+    const retry = await admin.post(`/admin/outbox/${id}/retry`);
+    expect(retry.status).toBe(303);
+    expect(retry.headers.get('location')).toBe(`/admin/batches/${batch.reference}?done=retry`);
+    expect(await n(`SELECT count(*)::int AS n FROM outbox WHERE state = 'pending' AND attempts = 0`)).toBe(1);
+  });
+
+  it('an issued club invoice can’t be moved to another batch or have its due date changed', async () => {
+    const { batch } = await setup();
+    await returnBatch(deps(), { reference: batch.reference, returnedOn: '2026-11-04', unchangedCount: 0 });
+    await expect(t.db.query(`UPDATE documents SET due_on = '2027-01-01'`)).rejects.toThrow(/never edited/);
+    await expect(t.db.query(`UPDATE documents SET batch_id = NULL`)).rejects.toThrow(/never edited/);
+  });
+
+  it('holds no member details or discount codes for clubs: the tables have no such columns', async () => {
+    await setup();
+    const cols = async (table: string) => (await t.db.query<{ c: string }>(`SELECT column_name AS c FROM information_schema.columns WHERE table_name = $1`, [table])).rows.map((r) => r.c);
+    for (const table of ['clubs', 'batches']) {
+      expect((await cols(table)).filter((c) => /member|player|discount|code/.test(c)), table).toEqual([]);
+    }
+  });
+
+  it('limits invoice lookups per address', async () => {
+    await setup();
+    const api = () => t.app.request('/api/clubs/invoice', { method: 'POST', body: JSON.stringify({ token: 'x'.repeat(43), number: 'PMP-INV-0001' }), headers: { 'Content-Type': 'application/json' } });
+    for (let i = 0; i < 120; i++) expect((await api()).status).toBe(404);
+    const limited = await api();
+    expect(limited.status).toBe(429);
+    expect(limited.headers.get('retry-after')).toBeTruthy();
+  });
+});
+
 describe('the admin club pages', () => {
   let t: TestApp;
   afterEach(async () => t?.close());
@@ -315,5 +437,25 @@ describe('the admin club pages', () => {
     const doc = await (await admin.get('/admin/documents/PMP-INV-0001')).text();
     expect(doc).toContain('Club batch');
     expect(doc).toContain('Due by');
+  });
+
+  it('edits a club, escapes what’s typed, and makes it inactive and active again', async () => {
+    t = await makeApp();
+    const admin = await makeAdmin(t);
+    const made = await admin.post('/admin/clubs', { name: 'Club', billingName: 'Jo', billingEmail: 'jo@test.picklemypaddle.com', billingAddress: '1 Court St' });
+    const url = made.headers.get('location')!.replace(/\?.*$/, '');
+    const saved = await admin.post(url, { name: '<script>alert(1)</script> PC', billingName: 'Jo "Quotes"', billingEmail: 'jo@test.picklemypaddle.com', billingAddress: '2 Net Rd', abn: '51 824 753 556', notes: '<b>hi</b>' });
+    expect(saved.status).toBe(303);
+    const page = await (await admin.get(url)).text();
+    expect(page).not.toContain('<script>alert(1)</script>');
+    expect(page).toContain('&lt;script&gt;alert(1)&lt;/script&gt; PC');
+    expect(page).not.toContain('<b>hi</b>');
+    expect(page).toContain('value="51824753556"');
+
+    expect((await admin.post(`${url}/active`, { active: 'no' })).headers.get('location')).toContain('done=club_inactive');
+    expect(await (await admin.get(url)).text()).toContain('This club is inactive');
+    expect((await admin.post(`${url}/batches`, { collectedOn: '2026-10-26', paddleCount: '2' })).status).toBe(400);
+    expect((await admin.post(`${url}/active`, { active: 'yes' })).headers.get('location')).toContain('done=club_active');
+    expect(await (await admin.get(url)).text()).toContain('Record a batch collected');
   });
 });

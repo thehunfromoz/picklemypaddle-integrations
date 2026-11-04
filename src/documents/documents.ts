@@ -22,7 +22,7 @@ import { createHash } from 'node:crypto';
 import type { Queryable } from '../db/db.js';
 import { enqueueBatchEmail, enqueueOrderEmail } from '../email/outbox.js';
 import { sydneyDate } from '../orders/dates.js';
-import { clubInvoiceAmounts, clubTreatment, GST_PERCENT, gstIncluded, taxWording, termsOn, type TaxTreatment } from '../pricing/terms.js';
+import { clubInvoiceAmounts, clubTreatment, GST_PERCENT, gstIncluded, termsOn, type TaxTreatment } from '../pricing/terms.js';
 
 export type DocumentKind = 'receipt' | 'invoice' | 'credit_note';
 export type DocumentHeading = 'Invoice' | 'Tax invoice' | 'Credit note' | 'Adjustment note';
@@ -84,9 +84,10 @@ export interface DocumentSnapshot {
   subtotalCents?: number;
   totalCents: number;
   gstCents: number;
-  /** Club invoices (SCRUM-85): the Sydney day it is due, and the PayID it asks clubs to pay to. */
+  /** Club invoices (SCRUM-85): the Sydney day it is due, the PayID it asks clubs to pay to, and whether it offers card. */
   dueOn?: string;
   payId?: string;
+  payByCard?: boolean;
   /** "No GST has been charged" or "Total includes GST of A$x" (credit notes: "Credit includes …"). */
   gstLine: string;
   /** Plain sentences printed under the totals. */
@@ -191,6 +192,8 @@ export interface ClubInvoiceFacts {
   collectedOn: string;
   returnedOn: string;
   dueOn: string;
+  /** Whether clubs can pay this invoice by card from its page (SCRUM-85, second part). */
+  payByCard: boolean;
 }
 
 /**
@@ -222,9 +225,12 @@ export function clubInvoiceSnapshot(number: string, issuedOn: string, f: ClubInv
     totalCents: amounts.totalCents,
     dueOn: f.dueOn,
     payId,
+    ...(f.payByCard ? { payByCard: true } : {}),
     notes: [
       `Due by ${documentDate(f.dueOn)}.`,
-      `How to pay: PayID or bank transfer to ${payId}, with ${number} as the reference; by card, with the "Pay by card" button on this invoice's page; or in cash at your club’s next pickup or delivery.`,
+      f.payByCard
+        ? `How to pay: PayID or bank transfer to ${payId}, with ${number} as the reference; by card, with the "Pay by card" button on this invoice's page; or in cash at your club’s next pickup or delivery.`
+        : `How to pay: PayID or bank transfer to ${payId}, with ${number} as the reference; or in cash at your club’s next pickup or delivery.`,
       'Part payments are fine: we show what is still owing.',
     ],
   });
@@ -262,14 +268,12 @@ function finish(d: Draft): DocumentSnapshot {
     if (subtotal === undefined) subtotal = d.totalCents - gst;
     gst = d.totalCents - subtotal;
   }
-  const heading: DocumentHeading = credit
-    ? registered ? 'Adjustment note' : 'Credit note'
-    : taxWording(d.treatment, d.totalCents).heading;
+  const heading: DocumentHeading = credit ? (registered ? 'Adjustment note' : 'Credit note') : registered ? 'Tax invoice' : 'Invoice';
   const gstLine = d.treatment === 'gst_inclusive'
     ? `${credit ? 'Credit' : 'Total'} includes GST of ${money(gst)}`
     : d.treatment === 'gst_exclusive'
       ? `GST (${GST_PERCENT}%) ${money(gst)}`
-      : taxWording(d.treatment, d.totalCents).gstLine;
+      : 'No GST has been charged';
   const notes = [...d.notes];
   if (registered) notes.unshift(credit ? 'This adjusts a taxable sale.' : 'All items are taxable sales.');
   // ATO: a tax invoice of A$1,000 or more must identify the buyer (name or ABN).
@@ -295,6 +299,7 @@ function finish(d: Draft): DocumentSnapshot {
     gstLine,
     ...(d.dueOn ? { dueOn: d.dueOn } : {}),
     ...(d.payId ? { payId: d.payId } : {}),
+    ...(d.payByCard ? { payByCard: true } : {}),
     notes,
   };
 }
@@ -373,7 +378,7 @@ export async function issueReceipt(q: Queryable, args: { orderId: string; paymen
  */
 export async function issueClubInvoice(
   q: Queryable,
-  args: { batchId: string; seller: Seller; isProduction: boolean; paymentTermsDays: number; now: Date },
+  args: { batchId: string; seller: Seller; isProduction: boolean; paymentTermsDays: number; now: Date; payByCard?: boolean },
 ): Promise<string> {
   const { rows: existing } = await q.query<{ id: string }>(`SELECT id FROM documents WHERE batch_id = $1 AND kind = 'invoice'`, [args.batchId]);
   if (existing[0]) return String(existing[0].id);
@@ -407,6 +412,7 @@ export async function issueClubInvoice(
     collectedOn: b.collected_on,
     returnedOn: b.returned_on,
     dueOn: addDays(issuedOn, args.paymentTermsDays),
+    payByCard: args.payByCard ?? false,
   }, args.seller);
   const id = await insert(q, snap, { orderId: null, batchId: args.batchId, paymentId: null, refersTo: null, now: args.now, paid: null });
   await enqueueBatchEmail(q, args.batchId, 'club_invoice', args.now, { documentId: id });

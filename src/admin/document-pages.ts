@@ -60,7 +60,7 @@ ${s.test ? html`<p class="doc-test">TEST DOCUMENT from the staging site: not a r
     <tr><th scope="row" colspan="3">GST (10%)</th><td class="num">${documentMoney(s.gstCents)}</td></tr>`
       : ''}
     <tr class="total"><th scope="row" colspan="3">${s.kind === 'credit_note' ? 'Total credit' : 'Total'}</th><td class="num">${documentMoney(s.totalCents)}</td></tr>
-    <tr><td colspan="4" class="gst">${s.gstLine}</td></tr>
+    ${s.subtotalCents === undefined ? html`<tr><td colspan="4" class="gst">${s.gstLine}</td></tr>` : ''}
   </tfoot>
 </table>
 ${paid ? html`<p class="doc-paid">${paid}</p>` : ''}

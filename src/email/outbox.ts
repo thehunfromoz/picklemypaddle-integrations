@@ -364,6 +364,7 @@ async function sendBatchEmail(deps: OutboxDeps, row: OutboxRow, now: Date): Prom
       dueOn: snap.dueOn ?? snap.issuedOn,
       treatment: snap.treatment,
       payId: snap.payId ?? '',
+      payByCard: snap.payByCard === true,
     };
   }
   const ctx: TemplateContext = {
@@ -381,9 +382,12 @@ async function sendBatchEmail(deps: OutboxDeps, row: OutboxRow, now: Date): Prom
     log('email_sent', { ...ref, reference: batch.reference, attempt: row.attempts });
     return 'sent';
   } catch (err) {
-    if (tokenId) await db.query('DELETE FROM document_tokens WHERE id = $1', [tokenId]).catch(() => undefined);
     const code = err instanceof SendError ? err.code : `render:${(err as Error)?.name ?? 'error'}`;
     const permanent = err instanceof SendError ? err.permanent : true;
+    // Delete the link's token only when the email certainly didn't go (a render error or a refusal).
+    // A temporary failure (a timeout, say) may still have been delivered, and the retry reuses the
+    // idempotency key, so the provider drops it: that delivered email's link must keep working.
+    if (tokenId && permanent) await db.query('DELETE FROM document_tokens WHERE id = $1', [tokenId]).catch(() => undefined);
     if (permanent || row.attempts >= MAX_ATTEMPTS) {
       await settle(db, row.id, { state: 'failed', error: code }, now);
       logError('email_failed', err, { ...ref, reference: batch.reference, code, attempt: row.attempts });

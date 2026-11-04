@@ -500,8 +500,9 @@ export const MIGRATIONS: readonly Migration[] = [
       CREATE INDEX documents_batch ON documents (batch_id);
       CREATE UNIQUE INDEX documents_one_invoice_per_batch ON documents (batch_id) WHERE kind = 'invoice';
 
-      -- Club emails are queued like order emails, against the batch.
+      -- Club emails are queued like order emails, against the batch (never both).
       ALTER TABLE outbox ADD COLUMN batch_id uuid REFERENCES batches (id) ON DELETE CASCADE;
+      ALTER TABLE outbox ADD CONSTRAINT outbox_one_owner CHECK (order_id IS NULL OR batch_id IS NULL);
       CREATE INDEX outbox_batch_idx ON outbox (batch_id, created_at);
 
       -- The private link in a club invoice email, minted per send like order status tokens:
@@ -514,6 +515,24 @@ export const MIGRATIONS: readonly Migration[] = [
         revoked_at  timestamptz
       );
       CREATE INDEX document_tokens_document_idx ON document_tokens (document_id);
+
+      -- The new columns are part of the document as issued, so they are frozen too.
+      CREATE OR REPLACE FUNCTION documents_frozen() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN
+        IF NEW.number IS DISTINCT FROM OLD.number OR NEW.kind IS DISTINCT FROM OLD.kind
+           OR NEW.issued_on IS DISTINCT FROM OLD.issued_on OR NEW.issued_at IS DISTINCT FROM OLD.issued_at
+           OR NEW.total_cents IS DISTINCT FROM OLD.total_cents OR NEW.gst_cents IS DISTINCT FROM OLD.gst_cents
+           OR NEW.snapshot IS DISTINCT FROM OLD.snapshot OR NEW.snapshot_sha256 IS DISTINCT FROM OLD.snapshot_sha256
+           OR NEW.refers_to IS DISTINCT FROM OLD.refers_to
+           OR NEW.batch_id IS DISTINCT FROM OLD.batch_id OR NEW.due_on IS DISTINCT FROM OLD.due_on THEN
+          RAISE EXCEPTION 'documents are never edited after issue: issue a credit note instead';
+        END IF;
+        IF OLD.paid_on IS NOT NULL AND (NEW.paid_on IS DISTINCT FROM OLD.paid_on OR NEW.paid_method IS DISTINCT FROM OLD.paid_method) THEN
+          RAISE EXCEPTION 'a document''s paid state is set once';
+        END IF;
+        RETURN NEW;
+      END
+      $$;
     `,
   },
 ];
