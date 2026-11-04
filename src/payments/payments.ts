@@ -22,6 +22,7 @@ import { enqueueOrderEmail } from '../email/outbox.js';
 import type { OrderStatus } from '../orders/model.js';
 import { DEFAULT_SELLER, issueCreditNote, issueReceipt, type Seller } from '../documents/documents.js';
 import type { Charge, CheckoutSession, FormValue, StripeApi, StripeEvent } from './stripe.js';
+import { applyClubSession, CLUB_SESSION_PREFIX } from '../clubs/payments.js';
 
 export interface PaymentDeps {
   db: Db;
@@ -168,6 +169,8 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  * The fee comes from the charge's balance transaction (null if Stripe hasn't made it yet).
  */
 export async function applySession(deps: PaymentDeps, session: CheckoutSession, source: PaymentSource): Promise<ApplyOutcome> {
+  // SCRUM-85: a club invoice's Checkout Session.
+  if (session.client_reference_id?.startsWith(CLUB_SESSION_PREFIX)) return applyClubSession(deps, session, source);
   if (session.mode !== 'payment' || session.payment_status !== 'paid' || !session.payment_intent) return 'not_paid';
   const orderId = session.client_reference_id;
   if (!orderId || !UUID_RE.test(orderId)) return 'not_ours';

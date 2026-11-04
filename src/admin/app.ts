@@ -53,6 +53,7 @@ import { adminGuard, type AdminIdentity } from './guard.js';
 import { detailPage, filterStatuses, listPage, notFoundPage, parseFilter, type Flash, type PageContext } from './pages.js';
 import { ADMIN_CSS } from './style.js';
 import { batchesPage, batchPage, clubPage, clubsPage } from './club-pages.js';
+import { flaggedCardPayments, paymentsOfInvoice, recordClubPayment } from '../clubs/payments.js';
 import {
   batchEmails, cancelBatch, ClubError, createBatch, createClub, findBatch, findClub, listBatches, listClubs, returnBatch, setBatchNote, setClubActive, updateClub, validateClub,
   type Club, type ClubInput,
@@ -115,6 +116,8 @@ const DONE: Record<string, string> = {
   batch_returned_unchanged: 'Returned. Every paddle was unchanged, so nothing was invoiced.',
   batch_cancelled: 'Batch cancelled.',
   batch_noted: 'Notes saved.',
+  payment_recorded: 'Payment recorded.',
+  payment_paid: 'Payment recorded: the invoice is paid in full and the batch is Paid.',
 };
 
 /** "60", "60.5", "60.50" → cents. Anything else → undefined (bad input). */
@@ -518,12 +521,15 @@ export function createAdminApp(deps: AdminDeps) {
 
   app.get('/admin/batches', async (c) => {
     const all = c.req.query('all') === '1';
-    return c.html(batchesPage(ctx(c), await listBatches(deps.db, { open: !all }), all));
+    return c.html(batchesPage(ctx(c), await listBatches(deps.db, { open: !all }), all, sydneyDate(now())));
   });
   const batchPageFor = async (c: Context<Env>, reference: string, flash?: Flash, status: 200 | 400 | 409 = 200) => {
     const batch = await findBatch(deps.db, reference);
     if (!batch) return c.html(notFoundPage(ctx(c), 'No such batch.'), 404);
-    return c.html(batchPage(ctx(c), batch, sydneyDate(now()), flash, await batchEmails(deps.db, batch.id)), status);
+    const pays = batch.invoice
+      ? { payments: await paymentsOfInvoice(deps.db, batch.invoice.id), flagged: await flaggedCardPayments(deps.db, batch.invoice.id) }
+      : undefined;
+    return c.html(batchPage(ctx(c), batch, sydneyDate(now()), flash, await batchEmails(deps.db, batch.id), pays), status);
   };
   app.get('/admin/batches/:ref', async (c) => batchPageFor(c, c.req.param('ref'), flashOf(c)));
   app.post('/admin/batches/:ref/return', async (c) => {
@@ -533,11 +539,32 @@ export function createAdminApp(deps: AdminDeps) {
     const unchanged = field(body, 'unchangedCount') ?? '0';
     try {
       const { invoiceId } = await returnBatch(
-        { db: deps.db, seller, isProduction: deps.isProduction, paymentTermsDays: deps.clubPaymentTermsDays ?? 14, now: now() },
+        { db: deps.db, seller, isProduction: deps.isProduction, paymentTermsDays: deps.clubPaymentTermsDays ?? 14, now: now(), payByCard: deps.paymentsConfigured ?? false },
         { reference, returnedOn: field(body, 'returnedOn') ?? '', unchangedCount: /^\d{1,3}$/.test(unchanged) ? Number(unchanged) : NaN },
       );
       log('admin_batch_returned', { batch: reference, invoiced: !!invoiceId });
       return c.redirect(`/admin/batches/${reference}?done=${invoiceId ? 'batch_returned' : 'batch_returned_unchanged'}`, 303);
+    } catch (err) {
+      if (!(err instanceof ClubError)) throw err;
+      return batchPageFor(c, reference, { kind: 'error', text: err.message }, 400);
+    }
+  });
+  app.post('/admin/batches/:ref/payments', async (c) => {
+    const reference = c.req.param('ref');
+    if (!(await findBatch(deps.db, reference))) return c.html(notFoundPage(ctx(c), 'No such batch.'), 404);
+    const body = await c.req.parseBody();
+    const amount = parseAmount((field(body, 'amount') ?? '').replace(/^A?\$/, '').replace(/,/g, ''));
+    try {
+      const { paidInFull } = await recordClubPayment(deps.db, {
+        batchReference: reference,
+        method: field(body, 'method') ?? '',
+        amountCents: amount ?? NaN,
+        paidOn: field(body, 'paidOn') ?? '',
+        reference: field(body, 'reference') ?? null,
+        by: c.get('admin').login,
+        now: now(),
+      });
+      return c.redirect(`/admin/batches/${reference}?done=${paidInFull ? 'payment_paid' : 'payment_recorded'}`, 303);
     } catch (err) {
       if (!(err instanceof ClubError)) throw err;
       return batchPageFor(c, reference, { kind: 'error', text: err.message }, 400);

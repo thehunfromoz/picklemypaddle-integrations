@@ -199,7 +199,7 @@ describe('clubs and batches in the database', () => {
     const after = (await findBatch(t.db, b.reference))!;
     expect(after).toMatchObject({ status: 'invoiced', returnedOn: '2026-11-04', unchangedCount: 2 });
     // 10 re-gritted × A$54, numbered in the shared sequence, due 14 days after issue.
-    expect(after.invoice).toEqual({ id: invoiceId, number: 'PMP-INV-0001', totalCents: 54000, dueOn: '2026-11-18' });
+    expect(after.invoice).toEqual({ id: invoiceId, number: 'PMP-INV-0001', totalCents: 54000, dueOn: '2026-11-18', balanceCents: 54000 });
     expect(await count(`SELECT count(*)::int AS n FROM documents WHERE batch_id = $1`, [b.id])).toBe(1);
     const emails = await t.db.query<{ recipient: string; template: string; order_id: string | null }>(`SELECT recipient, template, order_id FROM outbox WHERE batch_id = $1`, [b.id]);
     expect(emails.rows).toEqual([{ recipient: 'jo@test.picklemypaddle.com', template: 'club_invoice', order_id: null }]);

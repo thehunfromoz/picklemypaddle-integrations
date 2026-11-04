@@ -460,8 +460,18 @@ members' details, so only the club's name and billing details are held here.
 - **How to pay** (printed on the invoice): PayID to `BUSINESS_PAYID`, card from the invoice's
   page, or cash. Until `BUSINESS_PAYID` is set, invoices show `[To confirm: PayID]`, and
   production refuses to issue one.
-- Paying by card, recording PayID and cash payments, overdue flags and the HubSpot company and
-  deal come next (SCRUM-85, second part). Clubs never get discount codes.
+- **Payments (part 2):** on a batch's page, **Record a PayID or cash payment** (amount, date,
+  method, reference); part payments are fine, more than is owing is refused. **By card:** where
+  Stripe is set up, invoices offer "Pay by card" on their page: `POST /api/clubs/pay` makes a
+  Checkout Session for what is still owing (expiring older open ones), and the return
+  (`/club/paid` → `POST /api/clubs/paid`), the events poller or the webhook apply it through the same
+  idempotent `applySession`. A card payment that would take the invoice past its total, or arrives
+  after it's paid, is recorded with a problem, not applied, and shown on the batch for a refund in
+  Stripe. Once payments reach the total, the invoice shows "paid" (e.g. "by PayID and card") and the
+  batch is Paid.
+- **Overdue:** an invoiced batch past its due date with something owing is flagged in the admin
+  (batch list and page). Nothing chases the club automatically.
+- The HubSpot company and deal come next. Clubs never get discount codes.
 
 ## Database (SCRUM-64)
 
