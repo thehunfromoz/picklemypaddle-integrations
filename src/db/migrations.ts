@@ -535,6 +535,36 @@ export const MIGRATIONS: readonly Migration[] = [
       $$;
     `,
   },
+  {
+    version: 15,
+    name: 'club invoice payments',
+    sql: `
+      -- SCRUM-85 (part 2). Every payment against a club invoice: PayID or cash recorded by hand,
+      -- or a card payment through Stripe Checkout (payment_id). Part payments are fine; the invoice
+      -- and its batch are Paid once the payments reach the invoice's total.
+      CREATE TABLE club_payments (
+        id           bigserial PRIMARY KEY,
+        document_id  bigint NOT NULL REFERENCES documents (id),
+        method       text NOT NULL CHECK (method IN ('payid', 'cash', 'card')),
+        amount_cents integer NOT NULL CHECK (amount_cents > 0),
+        paid_on      date NOT NULL,
+        reference    text,
+        payment_id   bigint UNIQUE REFERENCES payments (id),
+        recorded_at  timestamptz NOT NULL,
+        recorded_by  text NOT NULL,
+        CHECK ((method = 'card') = (payment_id IS NOT NULL))
+      );
+      CREATE INDEX club_payments_document_idx ON club_payments (document_id);
+
+      -- Card payments for club invoices use the same Stripe tables as orders, against the invoice.
+      ALTER TABLE stripe_sessions ALTER COLUMN order_id DROP NOT NULL;
+      ALTER TABLE stripe_sessions ADD COLUMN document_id bigint REFERENCES documents (id);
+      ALTER TABLE stripe_sessions ADD CONSTRAINT stripe_sessions_one_owner CHECK ((order_id IS NULL) <> (document_id IS NULL));
+      CREATE INDEX stripe_sessions_document ON stripe_sessions (document_id);
+      ALTER TABLE payments ADD COLUMN document_id bigint REFERENCES documents (id);
+      ALTER TABLE payments ADD CONSTRAINT payments_one_owner CHECK (order_id IS NULL OR document_id IS NULL);
+    `,
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

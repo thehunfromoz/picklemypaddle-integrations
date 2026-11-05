@@ -2,7 +2,9 @@
  * The admin's club pages (SCRUM-85): clubs and their billing details, each club's batches, and a
  * batch's page, where it is returned (issuing its invoice) or cancelled.
  */
-import { BATCH_STATUS_LABELS, MAX_BATCH_PADDLES, MAX_CLUB_NOTE, type Batch, type BatchEmail, type BatchStatus, type Club } from '../clubs/clubs.js';
+import { BATCH_STATUS_LABELS, isOverdue, MAX_BATCH_PADDLES, MAX_CLUB_NOTE, type Batch, type BatchEmail, type BatchStatus, type Club } from '../clubs/clubs.js';
+import { CLUB_PROBLEMS, MAX_PAYMENT_REFERENCE, METHOD_LABELS, type ClubPayment } from '../clubs/payments.js';
+import { PROBLEM_TEXT } from '../payments/payments.js';
 import { documentDate } from '../documents/documents.js';
 import { calendarDay, dollars, html, type Html, when } from './html.js';
 import { layout, type Flash, type PageContext } from './pages.js';
@@ -15,6 +17,8 @@ const clubBadge = (c: Club) => (c.status === 'active' ? html`<span class="badge"
 
 const BATCH_BADGE: Record<BatchStatus, string> = { collected: 'due', returned: '', invoiced: 'due', paid: '', cancelled: '' };
 const batchBadge = (s: BatchStatus) => html`<span class="badge${BATCH_BADGE[s] ? ` ${BATCH_BADGE[s]}` : ''}">${BATCH_STATUS_LABELS[s]}</span>`;
+const overdueBadge = (b: Batch, today: string) => (isOverdue(b, today) ? html` <span class="badge overdue">Overdue</span>` : '');
+const problemWords = (p: string) => CLUB_PROBLEMS[p] ?? PROBLEM_TEXT[p] ?? p;
 
 function clubFields(c?: Partial<Club>): Html {
   return html`<label>Club name<input name="name" required maxlength="120" value="${c?.name ?? ''}"></label>
@@ -25,15 +29,15 @@ function clubFields(c?: Partial<Club>): Html {
   <label>Notes (only you see them)<textarea name="notes" maxlength="${MAX_CLUB_NOTE}" rows="3">${c?.notes ?? ''}</textarea></label>`;
 }
 
-function batchRows(batches: Batch[], withClub: boolean): Html {
+function batchRows(batches: Batch[], withClub: boolean, today: string): Html {
   return html`<table class="list">
-<thead><tr><th scope="col">Batch</th>${withClub ? html`<th scope="col">Club</th>` : ''}<th scope="col">Collected</th><th scope="col" class="num">Paddles</th><th scope="col">Status</th><th scope="col">Invoice</th></tr></thead>
+<thead><tr><th scope="col">Batch</th>${withClub ? html`<th scope="col">Club</th>` : ''}<th scope="col">Collected</th><th scope="col" class="num">Paddles</th><th scope="col">Status</th><th scope="col">Invoice</th><th scope="col" class="num">Owing</th></tr></thead>
 <tbody>${batches.map(
     (b) => html`<tr><td><a href="/admin/batches/${b.reference}"><span class="ref">${b.reference}</span></a></td>${
       withClub ? html`<td><a href="/admin/clubs/${b.clubId}">${b.clubName}</a></td>` : ''
-    }<td>${calendarDay(b.collectedOn)}</td><td class="num">${b.paddleCount}</td><td>${batchBadge(b.status)}</td><td>${
+    }<td>${calendarDay(b.collectedOn)}</td><td class="num">${b.paddleCount}</td><td>${batchBadge(b.status)}${overdueBadge(b, today)}</td><td>${
       b.invoice ? html`<a href="/admin/documents/${b.invoice.number}">${b.invoice.number}</a> ${dollars(b.invoice.totalCents)}` : '—'
-    }</td></tr>`,
+    }</td><td class="num">${b.invoice && b.invoice.balanceCents > 0 ? dollars(b.invoice.balanceCents) : '—'}</td></tr>`,
   )}</tbody></table>`;
 }
 
@@ -73,7 +77,7 @@ ${flashBox(flash)}
 <p class="small">Added ${when(club.createdAt)}. Invoices go to ${club.billingName}, ${club.billingEmail}.</p>
 
 <h2>Batches</h2>
-${batches.length ? batchRows(batches, false) : html`<p class="empty">No batches yet.</p>`}
+${batches.length ? batchRows(batches, false, today) : html`<p class="empty">No batches yet.</p>`}
 ${
   club.status === 'active'
     ? html`<details class="action"><summary>Record a batch collected</summary>
@@ -104,14 +108,14 @@ ${
   );
 }
 
-export function batchesPage(ctx: PageContext, batches: Batch[], all: boolean): string {
+export function batchesPage(ctx: PageContext, batches: Batch[], all: boolean, today: string): string {
   return layout(
     ctx,
     'Batches',
     html`<p><a href="/admin/clubs">← Clubs</a></p>
 <h1>${all ? 'All batches' : 'Open batches'}</h1>
 <p class="small">${all ? html`<a href="/admin/batches">Show open batches only</a>` : html`Collected, returned or invoiced and not yet paid. <a href="/admin/batches?all=1">Show all</a>`}</p>
-${batches.length ? batchRows(batches, true) : html`<p class="empty">${all ? 'No batches yet.' : 'No open batches.'}</p>`}`,
+${batches.length ? batchRows(batches, true, today) : html`<p class="empty">${all ? 'No batches yet.' : 'No open batches.'}</p>`}`,
   );
 }
 
@@ -131,14 +135,58 @@ function emailsSection(ctx: PageContext, emails: BatchEmail[]): Html | string {
   )}</ul>`;
 }
 
-export function batchPage(ctx: PageContext, b: Batch, today: string, flash?: Flash, emails: BatchEmail[] = []): string {
+export interface BatchPayments {
+  payments: ClubPayment[];
+  flagged: { paymentIntentId: string | null; amountCents: number; problem: string | null; refundedCents: number; livemode: boolean }[];
+}
+
+function paymentsSection(ctx: PageContext, b: Batch, p: BatchPayments, today: string): Html | string {
+  if (!b.invoice) return '';
+  const owing = b.invoice.balanceCents;
+  return html`<h2>Payments</h2>
+${
+  p.payments.length
+    ? html`<table class="list"><thead><tr><th scope="col">Received</th><th scope="col">Method</th><th scope="col">Reference</th><th scope="col" class="num">Amount</th></tr></thead><tbody>${p.payments.map(
+        (x) => html`<tr><td>${calendarDay(x.paidOn)}</td><td>${METHOD_LABELS[x.method]}</td><td>${x.reference ?? '—'}</td><td class="num">${dollars(x.amountCents)}</td></tr>`,
+      )}</tbody></table>`
+    : html`<p class="empty">No payments yet.</p>`
+}
+<p>${owing > 0 ? html`Still owing: <strong>${dollars(owing)}</strong>${b.invoice.dueOn ? `, due ${documentDate(b.invoice.dueOn)}` : ''}${overdueBadge(b, today)}` : html`<strong>Paid in full.</strong>`}</p>
+${p.flagged.map(
+  (f) =>
+    f.problem === null
+      ? html`<p class="flash error">A card payment of ${dollars(f.amountCents)}${f.paymentIntentId ? ` (Stripe ${f.paymentIntentId})` : ''} was refunded in Stripe (${dollars(f.refundedCents)}), but the invoice still counts it as paid. Check the balance by hand: what a refund does to the invoice isn’t built yet.</p>`
+      : html`<p class="flash error">A card payment of ${dollars(f.amountCents)}${f.paymentIntentId ? ` (Stripe ${f.paymentIntentId})` : ''} wasn’t applied: ${problemWords(f.problem)}.${
+          f.refundedCents >= f.amountCents ? ' It has been refunded.' : ' Refund it in the Stripe dashboard.'
+        }</p>`,
+)}
+${
+  b.status === 'invoiced' && owing > 0
+    ? html`<details class="action"><summary>Record a PayID or cash payment</summary>
+<form method="post" action="/admin/batches/${b.reference}/payments">
+  ${csrfField(ctx)}
+  <label>Amount received (A$)<input name="amount" required inputmode="decimal" pattern="\\d{1,5}(\\.\\d{1,2})?" value="${(owing / 100).toFixed(2)}"></label>
+  <label>Received on<input type="date" name="paidOn" required min="${b.collectedOn}" max="${today}" value="${today}"></label>
+  <fieldset><legend>Method</legend>
+    <label class="check"><input type="radio" name="method" value="payid" checked> PayID or bank transfer</label>
+    <label class="check"><input type="radio" name="method" value="cash"> Cash</label>
+  </fieldset>
+  <label>Reference (optional), e.g. the bank’s transaction ID<input name="reference" maxlength="${MAX_PAYMENT_REFERENCE}" autocomplete="off"></label>
+  <p class="small">Part payments are fine. Card payments come in from Stripe by themselves.</p>
+  <button type="submit">Record payment</button>
+</form></details>`
+    : ''
+}`;
+}
+
+export function batchPage(ctx: PageContext, b: Batch, today: string, flash?: Flash, emails: BatchEmail[] = [], pays?: BatchPayments): string {
   const charged = b.paddleCount - b.unchangedCount;
   return layout(
     ctx,
     b.reference,
     html`<p><a href="/admin/clubs/${b.clubId}">← ${b.clubName}</a> · <a href="/admin/batches">Open batches</a></p>
 ${flashBox(flash)}
-<h1><span class="ref">${b.reference}</span> ${batchBadge(b.status)}</h1>
+<h1><span class="ref">${b.reference}</span> ${batchBadge(b.status)}${overdueBadge(b, today)}</h1>
 <dl class="facts">
   <dt>Club</dt><dd><a href="/admin/clubs/${b.clubId}">${b.clubName}</a></dd>
   <dt>Collected</dt><dd>${calendarDay(b.collectedOn)}: ${b.paddleCount} ${b.paddleCount === 1 ? 'paddle' : 'paddles'}</dd>
@@ -164,6 +212,7 @@ ${
       ? html`<p class="small">Every paddle came back unchanged, so there was nothing to invoice.</p>`
       : ''
 }
+${pays ? paymentsSection(ctx, b, pays, today) : ''}
 ${emailsSection(ctx, emails)}
 <form method="post" action="/admin/batches/${b.reference}/notes">
   ${csrfField(ctx)}

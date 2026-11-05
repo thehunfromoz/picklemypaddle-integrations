@@ -77,9 +77,13 @@ export interface Batch {
   returnedOn: string | null;
   unchangedCount: number;
   notes: string | null;
-  /** The invoice issued on return, if any. */
-  invoice: { id: string; number: string; totalCents: number; dueOn: string | null } | null;
+  /** The invoice issued on return, if any, and what is still owing on it. */
+  invoice: { id: string; number: string; totalCents: number; dueOn: string | null; balanceCents: number } | null;
 }
+
+/** An invoiced batch past its due date with something still owing (SCRUM-85 AC6: flagged, never chased). */
+export const isOverdue = (b: Batch, today: string) =>
+  b.status === 'invoiced' && !!b.invoice?.dueOn && b.invoice.dueOn < today && b.invoice.balanceCents > 0;
 
 // ── Validation ────────────────────────────────────────────────────────────────
 
@@ -196,7 +200,8 @@ export function newBatchReference(): string {
 const BATCH_SELECT = `
   SELECT b.id, b.reference, b.club_id, c.name AS club_name, b.status, b.status_changed_at, b.collected_on::text AS collected_on,
          b.paddle_count, b.returned_on::text AS returned_on, b.unchanged_count, b.notes,
-         d.id AS invoice_id, d.number AS invoice_number, d.total_cents AS invoice_total, d.due_on::text AS invoice_due
+         d.id AS invoice_id, d.number AS invoice_number, d.total_cents AS invoice_total, d.due_on::text AS invoice_due,
+         (SELECT COALESCE(sum(p.amount_cents), 0)::int FROM club_payments p WHERE p.document_id = d.id) AS invoice_paid
     FROM batches b JOIN clubs c ON c.id = b.club_id
     LEFT JOIN documents d ON d.batch_id = b.id AND d.kind = 'invoice'`;
 
@@ -216,6 +221,7 @@ interface BatchRow {
   invoice_number: string | null;
   invoice_total: number | null;
   invoice_due: string | null;
+  invoice_paid: number | null;
 }
 
 const toBatch = (r: BatchRow): Batch => ({
@@ -231,7 +237,7 @@ const toBatch = (r: BatchRow): Batch => ({
   unchangedCount: Number(r.unchanged_count),
   notes: r.notes,
   invoice: r.invoice_id && r.invoice_number
-    ? { id: String(r.invoice_id), number: r.invoice_number, totalCents: Number(r.invoice_total), dueOn: r.invoice_due }
+    ? { id: String(r.invoice_id), number: r.invoice_number, totalCents: Number(r.invoice_total), dueOn: r.invoice_due, balanceCents: Number(r.invoice_total) - Number(r.invoice_paid ?? 0) }
     : null,
 });
 
@@ -303,6 +309,8 @@ export interface ReturnDeps {
   isProduction: boolean;
   paymentTermsDays: number;
   now: Date;
+  /** Whether card payments are set up here (Stripe): the invoice then offers "Pay by card". */
+  payByCard?: boolean;
 }
 
 /**
@@ -336,7 +344,7 @@ export async function returnBatch(
       );
       if (args.unchangedCount === Number(b.paddle_count)) return { invoiceId: null };
       const invoiceId = await issueClubInvoice(q, {
-        batchId: b.id, seller: deps.seller, isProduction: deps.isProduction, paymentTermsDays: deps.paymentTermsDays, now,
+        batchId: b.id, seller: deps.seller, isProduction: deps.isProduction, paymentTermsDays: deps.paymentTermsDays, now, payByCard: deps.payByCard ?? false,
       });
       await q.query(`UPDATE batches SET status = 'invoiced', status_changed_at = $2, updated_at = $2 WHERE id = $1`, [b.id, now]);
       return { invoiceId };
