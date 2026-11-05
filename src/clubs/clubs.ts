@@ -108,7 +108,8 @@ function allowedHere(email: string, guard: EmailGuard): boolean {
 }
 
 /** Checks and tidies a club form. Throws ClubError with a message for Attila. */
-export function validateClub(input: Partial<Record<keyof ClubInput, string | null>>, guard?: EmailGuard): ClubInput {
+/** `guard` is required on purpose: a caller that wants no email rule has to say so (`isProduction: true`). */
+export function validateClub(input: Partial<Record<keyof ClubInput, string | null>>, guard: EmailGuard): ClubInput {
   const name = clean(input.name);
   const billingName = clean(input.billingName);
   const billingEmail = clean(input.billingEmail).toLowerCase();
@@ -118,7 +119,7 @@ export function validateClub(input: Partial<Record<keyof ClubInput, string | nul
   if (!name || name.length > 120) throw new ClubError('bad_name', 'Give the club’s name (up to 120 characters).');
   if (!billingName || billingName.length > 120) throw new ClubError('bad_billing_name', 'Give the billing contact’s name (up to 120 characters).');
   if (!EMAIL_RE.test(billingEmail) || billingEmail.length > 254) throw new ClubError('bad_billing_email', 'Give a valid billing email address.');
-  if (guard && !allowedHere(billingEmail, guard)) {
+  if (!allowedHere(billingEmail, guard)) {
     throw new ClubError(
       'email_not_allowed',
       'This isn’t production, so a club’s billing email must be one of your own allow-listed addresses (EMAIL_ALLOWLIST) or an example.com or .test address. A real club’s address is never saved here.',

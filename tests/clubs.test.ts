@@ -169,9 +169,8 @@ describe('club billing emails outside production', () => {
     expect(validateClub(form('jo@example.com'), none).billingEmail).toBe('jo@example.com');
   });
 
-  it('production takes any valid address, and a form with no guard is unchanged', () => {
+  it('production takes any valid address', () => {
     expect(validateClub(form('jo@realclub.com.au'), { isProduction: true, allowList: [] }).billingEmail).toBe('jo@realclub.com.au');
-    expect(validateClub(form('jo@realclub.com.au')).billingEmail).toBe('jo@realclub.com.au');
   });
 
   it('a bad address is still reported as bad, before the allow-list is mentioned', () => {
@@ -180,9 +179,10 @@ describe('club billing emails outside production', () => {
 });
 
 describe('club details', () => {
+  const prod = { isProduction: true, allowList: [] as string[] };
   const good = { name: ' Inner West PC ', billingName: 'Jo', billingEmail: 'Jo@Example.com', billingAddress: '1 Court St\r\nNewtown', abn: '51 824 753 556', notes: '' };
   it('tidies a valid form', () => {
-    expect(validateClub(good)).toEqual({ name: 'Inner West PC', billingName: 'Jo', billingEmail: 'jo@example.com', billingAddress: '1 Court St\nNewtown', abn: '51824753556', notes: null });
+    expect(validateClub(good, prod)).toEqual({ name: 'Inner West PC', billingName: 'Jo', billingEmail: 'jo@example.com', billingAddress: '1 Court St\nNewtown', abn: '51824753556', notes: null });
   });
   it.each([
     ['name', { name: '' }, 'bad_name'],
@@ -190,7 +190,7 @@ describe('club details', () => {
     ['address', { billingAddress: ' ' }, 'bad_billing_address'],
     ['ABN', { abn: '12 345 678 901' }, 'bad_abn'],
   ])('refuses a bad %s', (_what, patch, code) => {
-    expect(() => validateClub({ ...good, ...patch })).toThrow(expect.objectContaining({ code }));
+    expect(() => validateClub({ ...good, ...patch }, prod)).toThrow(expect.objectContaining({ code }));
   });
 });
 
