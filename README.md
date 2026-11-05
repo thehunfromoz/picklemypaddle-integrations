@@ -390,7 +390,8 @@ interface (`src/crm/crm.ts`), with the HubSpot implementation in `src/crm/hubspo
   outside production; `pmp_club_id`, `pmp_is_test`) linked to its billing contact (name and email
   only, so a treasurer who is also a customer keeps their other details), and each batch a **deal**
   (`<PMPB-…> (<club>)`; amount = the invoice total once invoiced, before that the paddles to
-  re-grit at A$54, A$0 if cancelled; `pmp_reference`, `pmp_paddle_count`, `pmp_is_test`) linked to
+  re-grit at the club price on the price list in force today (the invoice uses its issue date's list)
+  plus the GST the invoice will add once `GST_REGISTERED_FROM` has come, A$0 if cancelled; `pmp_reference`, `pmp_paddle_count`, `pmp_is_test`) linked to
   both. The free plan has one deal pipeline, so batches use five stages after the order ones,
   "Club batch: collected / returned / invoiced / paid / cancelled" (a second pipeline is possible
   on Starter, SCRUM-98). One `crm` job per club (`outbox.club_id`) syncs the company, contact and
