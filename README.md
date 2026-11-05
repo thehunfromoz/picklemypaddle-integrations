@@ -353,6 +353,10 @@ Attila's new-order alert goes to sales@ and holds only the reference, paddle cou
 - **Outside production** mail reaches only `EMAIL_ALLOWLIST` (plus-addressing allowed); everything
   else is recorded as `suppressed`. Subjects start `[TEST]` and a banner says it's a test order.
   Smoke-test orders send nothing. Without `RESEND_API_KEY` (your Mac) nothing leaves at all.
+  **A club's billing email follows the same rule** (SCRUM-85, after Attila's UAT of 5 Nov 2026): outside
+  production the admin refuses one that isn't on `EMAIL_ALLOWLIST` (plus-addressing allowed) or at a
+  reserved test domain (`example.com`, `.test`), so a real club's address is never saved on staging and
+  can't reach the outbox, the HubSpot test portal or Stripe. Production takes any valid address.
 - **Templates** (`src/email/templates.ts`) are written once and rendered as plain text and simple
   HTML (no remote images or tracking). `pnpm preview:emails` writes every template to
   `.email-previews/`; snapshot tests catch any unreviewed change. Facts not yet known are

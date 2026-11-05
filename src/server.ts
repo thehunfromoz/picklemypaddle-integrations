@@ -127,6 +127,7 @@ const admin = createAdminApp({
   db,
   photos,
   isProduction: config.APP_ENV === 'production',
+  emailAllowList: config.EMAIL_ALLOWLIST ?? [],
   logins: config.ADMIN_LOGINS,
   trusted: new TrustedProxies(config.ADMIN_TRUSTED_PROXIES),
   csrfKey: await serviceSecret(db, 'admin-csrf-key'),

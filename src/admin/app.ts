@@ -63,6 +63,8 @@ export interface AdminDeps {
   db: Db;
   photos: PhotoStore;
   isProduction: boolean;
+  /** EMAIL_ALLOWLIST: outside production a club's billing email has to be on it (or a test domain). */
+  emailAllowList: readonly string[];
   /** ADMIN_LOGINS: the Tailscale logins allowed in. Empty or unset = the admin answers 503. */
   logins: readonly string[] | undefined;
   /** ADMIN_TRUSTED_PROXIES: who may connect and vouch for the identity headers. */
@@ -472,7 +474,7 @@ export function createAdminApp(deps: AdminDeps) {
   app.post('/admin/clubs', async (c) => {
     const raw = clubForm(await c.req.parseBody());
     try {
-      const club = await createClub(deps.db, validateClub(raw), { isProduction: deps.isProduction, now: now() });
+      const club = await createClub(deps.db, validateClub(raw, { isProduction: deps.isProduction, allowList: deps.emailAllowList }), { isProduction: deps.isProduction, now: now() });
       log('admin_club_created', { club: club.id });
       return c.redirect(`/admin/clubs/${club.id}?done=club_created`, 303);
     } catch (err) {
@@ -490,7 +492,7 @@ export function createAdminApp(deps: AdminDeps) {
     if (!club) return c.html(notFoundPage(ctx(c), 'No such club.'), 404);
     const raw = clubForm(await c.req.parseBody());
     try {
-      await updateClub(deps.db, club.id, validateClub(raw), now());
+      await updateClub(deps.db, club.id, validateClub(raw, { isProduction: deps.isProduction, allowList: deps.emailAllowList }), now());
       log('admin_club_saved', { club: club.id });
       return c.redirect(`/admin/clubs/${club.id}?done=club_saved`, 303);
     } catch (err) {
