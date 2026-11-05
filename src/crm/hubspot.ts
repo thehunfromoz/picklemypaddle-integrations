@@ -160,21 +160,26 @@ interface Pipeline {
 
 const norm = (s: string) => s.trim().toLowerCase();
 
-export function hubspotAdapter(client: HubSpotClient): CrmAdapter & { stageIds(): Promise<Record<string, string>> } {
+export function hubspotAdapter(client: HubSpotClient): CrmAdapter & { stageIds(scope?: 'order' | 'club' | 'all'): Promise<Record<string, string>> } {
   let cached: Record<string, string> | null = null;
 
-  /** Stage IDs by key: an order status, or `club:<batch status>` (SCRUM-85). */
-  async function stageIds(): Promise<Record<string, string>> {
-    if (cached) return cached;
+  /**
+   * Stage IDs by key: an order status, or `club:<batch status>` (SCRUM-85). Only the stages the
+   * caller needs must exist, so a portal set up before clubs keeps mirroring orders, and a club
+   * sync fails on its own until the setup script has added the club stages.
+   */
+  async function stageIds(scope: 'order' | 'club' | 'all' = 'all'): Promise<Record<string, string>> {
+    const wanted = PIPELINE_STAGES.filter((s) => scope === 'all' || s.key.startsWith('club:') === (scope === 'club'));
+    if (cached && wanted.every((s) => cached![s.key])) return cached;
     const pipeline = await client.request<Pipeline>('GET', `/crm/v3/pipelines/deals/${PIPELINE_ID}`);
     const byLabel = new Map(pipeline.stages.map((s) => [norm(s.label), s.id]));
     const out: Record<string, string> = {};
     for (const stage of PIPELINE_STAGES) {
       const id = byLabel.get(norm(stage.label));
-      // A stage missing from HubSpot means the setup script hasn't run against this portal.
-      if (!id) throw new HubSpotError(null, 'stage_missing', true);
-      out[stage.key] = id;
+      if (id) out[stage.key] = id;
     }
+    // A wanted stage missing from HubSpot means the setup script hasn't run against this portal.
+    if (!wanted.every((s) => out[s.key])) throw new HubSpotError(null, 'stage_missing', true);
     cached = out;
     return out;
   }
@@ -232,6 +237,15 @@ export function hubspotAdapter(client: HubSpotClient): CrmAdapter & { stageIds()
   const link = (from: 'deals' | 'companies', fromId: string, to: 'contacts' | 'companies', toId: string) =>
     client.request('PUT', `/crm/v4/objects/${from}/${fromId}/associations/default/${to}/${toId}`);
 
+  /** Removes every link between a record and a contact; a record or link already gone is fine. */
+  const unlink = async (from: 'deals' | 'companies', fromId: string, contactId: string) => {
+    try {
+      await client.request('DELETE', `/crm/v4/objects/${from}/${fromId}/associations/contacts/${contactId}`);
+    } catch (err) {
+      if (!(err instanceof HubSpotError && err.status === 404)) throw err;
+    }
+  };
+
   // ── SCRUM-85: clubs ──
   async function upsertClubContact(c: CrmClubContact): Promise<string> {
     // Name and email only: a billing contact who is also a customer keeps their other details.
@@ -287,15 +301,19 @@ export function hubspotAdapter(client: HubSpotClient): CrmAdapter & { stageIds()
     stageIds,
 
     async syncClub(company, contact, deals, known) {
-      const stages = await stageIds();
+      const stages = await stageIds('club');
       const contactId = await upsertClubContact(contact);
       const co = await upsert('companies', known.companyId, () => findCompany(company.clubId), companyProperties(company));
+      const contactChanged = Boolean(known.contactId) && known.contactId !== contactId;
       if (co.isNew || known.contactId !== contactId) await link('companies', co.id, 'contacts', contactId);
+      // The billing contact changed: the former one is no longer tied to the club or its batches.
+      if (contactChanged) await unlink('companies', co.id, known.contactId!);
       const dealIds: Record<string, string> = {};
       for (const d of deals) {
         const deal = await upsert('deals', known.dealIds[d.reference], () => findDeal(d.reference), batchDealProperties(d, stages[`club:${d.status}`]!));
         if (deal.isNew || co.isNew) await link('deals', deal.id, 'companies', co.id);
         if (deal.isNew || known.contactId !== contactId) await link('deals', deal.id, 'contacts', contactId);
+        if (contactChanged) await unlink('deals', deal.id, known.contactId!);
         dealIds[d.reference] = deal.id;
       }
       return { companyId: co.id, contactId, dealIds } satisfies ClubIds;
@@ -303,7 +321,7 @@ export function hubspotAdapter(client: HubSpotClient): CrmAdapter & { stageIds()
 
     async sync(contact, deal, known) {
       const contactId = await upsertContact(contact);
-      const properties = dealProperties(deal, (await stageIds())[deal.status]!);
+      const properties = dealProperties(deal, (await stageIds('order'))[deal.status]!);
 
       // Update the deal we know about; if it was deleted in HubSpot, find it again or recreate it.
       let dealId = known.dealId ?? null;

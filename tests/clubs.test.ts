@@ -310,13 +310,16 @@ describe('club batches: all-or-nothing, GST end to end, settings and email edge 
 
   it('a failure after the invoice number is taken rolls everything back: no number used, no document, no email, still Collected', async () => {
     const { batch } = await setup();
-    // Make queueing the email fail, after nextNumber and the document insert have run.
-    await t.db.exec('ALTER TABLE outbox RENAME TO outbox_gone');
-    await expect(returnBatch(deps(), { reference: batch.reference, returnedOn: '2026-11-04', unchangedCount: 0 })).rejects.toThrow();
-    await t.db.exec('ALTER TABLE outbox_gone RENAME TO outbox');
+    const queuedBefore = await n('SELECT count(*)::int AS n FROM outbox'); // the CRM job from creating the club
+    // Make only the email's insert fail, after the CRM job is queued and nextNumber and the document
+    // insert have run (renaming the whole table failed earlier, at the CRM job, and proved nothing).
+    await t.db.exec(`CREATE FUNCTION refuse_email() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'email refused for the test'; END $$;
+      CREATE TRIGGER refuse_email BEFORE INSERT ON outbox FOR EACH ROW WHEN (NEW.kind = 'email') EXECUTE FUNCTION refuse_email()`);
+    await expect(returnBatch(deps(), { reference: batch.reference, returnedOn: '2026-11-04', unchangedCount: 0 })).rejects.toThrow('email refused for the test');
+    await t.db.exec('DROP TRIGGER refuse_email ON outbox');
     expect(await n(`SELECT last AS n FROM document_counters WHERE series = 'INV'`)).toBe(0);
     expect(await n('SELECT count(*)::int AS n FROM documents')).toBe(0);
-    expect(await n("SELECT count(*)::int AS n FROM outbox WHERE kind = 'email'")).toBe(0);
+    expect(await n('SELECT count(*)::int AS n FROM outbox')).toBe(queuedBefore); // no email, and no new CRM job either
     expect(await findBatch(t.db, batch.reference)).toMatchObject({ status: 'collected', returnedOn: null, unchangedCount: 0 });
   });
 

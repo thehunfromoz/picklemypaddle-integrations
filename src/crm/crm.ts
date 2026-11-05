@@ -9,6 +9,7 @@
 import { PRICE_PER_PADDLE_CENTS, STATUSES, type OrderStatus } from '../orders/model.js';
 import { discountCents, type DiscountKind } from '../orders/rules.js';
 import { BATCH_STATUSES, type BatchStatus } from '../clubs/model.js';
+import { PRICE_LISTS, priceListOn, type PriceList } from '../pricing/terms.js';
 
 export interface CrmContact {
   email: string;
@@ -210,13 +211,14 @@ export interface ClubForCrm {
   billing_email: string;
   crm_company_id: string | null;
   crm_contact_id: string | null;
-  batches: { reference: string; status: BatchStatus; paddle_count: number; unchanged_count: number; invoice_total: number | null; crm_deal_id: string | null }[];
+  batches: { reference: string; status: BatchStatus; collected_on: string; paddle_count: number; unchanged_count: number; invoice_total: number | null; crm_deal_id: string | null }[];
 }
 
-/** The club price a paddle, for a batch's estimate before it's invoiced. */
-const CLUB_ESTIMATE_CENTS = 5400;
-
-export function mapClub(c: ClubForCrm): { company: CrmCompany; contact: CrmClubContact; deals: CrmBatchDeal[] } {
+/**
+ * A batch's deal amount before it's invoiced: the paddles to re-grit at the club price in force on
+ * the day it was collected (from the dated price lists, as the invoice will use), before any GST.
+ */
+export function mapClub(c: ClubForCrm, lists: readonly PriceList[] = PRICE_LISTS): { company: CrmCompany; contact: CrmClubContact; deals: CrmBatchDeal[] } {
   const tag = (s: string) => (c.is_test ? `[TEST] ${s}` : s);
   return {
     company: { clubId: c.id, name: tag(c.name), isTest: c.is_test },
@@ -225,7 +227,7 @@ export function mapClub(c: ClubForCrm): { company: CrmCompany; contact: CrmClubC
       reference: b.reference,
       name: tag(`${b.reference} (${c.name})`),
       // Invoiced: the total as issued. Before (or with nothing invoiced): the paddles to re-grit at the club price.
-      amountCents: b.invoice_total !== null ? Number(b.invoice_total) : b.status === 'cancelled' ? 0 : (b.paddle_count - b.unchanged_count) * CLUB_ESTIMATE_CENTS,
+      amountCents: b.invoice_total !== null ? Number(b.invoice_total) : b.status === 'cancelled' ? 0 : (b.paddle_count - b.unchanged_count) * priceListOn(b.collected_on, lists).clubRemitPerPaddleCents,
       paddleCount: b.paddle_count,
       isTest: c.is_test,
       status: b.status,

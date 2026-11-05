@@ -163,9 +163,18 @@ export async function processCrm(deps: CrmDeps, batch = 10): Promise<CrmRun> {
         run.failed++;
       } else {
         const wait: number = BACKOFF_MINUTES[job.attempts - 1] ?? 720;
-        await settle(deps.db, job.id, 'pending', code, now, new Date(now.getTime() + wait * MINUTE));
-        log('crm_retrying', { ...ref, code, attempt: job.attempts, inMinutes: wait });
-        run.retrying++;
+        try {
+          await settle(deps.db, job.id, 'pending', code, now, new Date(now.getTime() + wait * MINUTE));
+          log('crm_retrying', { ...ref, code, attempt: job.attempts, inMinutes: wait });
+          run.retrying++;
+        } catch (e) {
+          // Something changed again while this job was in flight, so a newer job is already pending
+          // (one pending job per order or club). It will sync everything this one would have.
+          if ((e as { code?: string }).code !== '23505') throw e;
+          await settle(deps.db, job.id, 'suppressed', 'superseded', now);
+          log('crm_superseded', { ...ref, code, attempt: job.attempts });
+          run.skipped++;
+        }
       }
     }
   }
@@ -180,7 +189,7 @@ async function loadClub(db: Db, clubId: string): Promise<ClubForCrm | null> {
   const club = rows[0];
   if (!club) return null;
   const { rows: batches } = await db.query<ClubForCrm['batches'][number]>(
-    `SELECT b.reference, b.status, b.paddle_count, b.unchanged_count, d.total_cents AS invoice_total, b.crm_deal_id
+    `SELECT b.reference, b.status, b.collected_on::text AS collected_on, b.paddle_count, b.unchanged_count, d.total_cents AS invoice_total, b.crm_deal_id
        FROM batches b LEFT JOIN documents d ON d.batch_id = b.id AND d.kind = 'invoice' WHERE b.club_id = $1 ORDER BY b.created_at`,
     [clubId],
   );

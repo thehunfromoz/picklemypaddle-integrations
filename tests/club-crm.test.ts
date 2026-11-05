@@ -6,9 +6,9 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { cancelBatch, createBatch, createClub, returnBatch, updateClub, type ClubInput } from '../src/clubs/clubs.js';
 import { recordClubPayment } from '../src/clubs/payments.js';
-import { CLUB_STAGES } from '../src/crm/crm.js';
-import { applySetup, hubspotAdapter, hubspotClient, planSetup, portalIdOf } from '../src/crm/hubspot.js';
-import { processCrm, resyncAll, retryCrmJob, type CrmDeps } from '../src/crm/sync.js';
+import { CLUB_STAGES, mapClub, mapOrder } from '../src/crm/crm.js';
+import { applySetup, HubSpotError, hubspotAdapter, hubspotClient, planSetup, portalIdOf } from '../src/crm/hubspot.js';
+import { enqueueClubCrmSync, processCrm, resyncAll, retryCrmJob, type CrmDeps } from '../src/crm/sync.js';
 import { DEFAULT_SELLER } from '../src/documents/documents.js';
 import { makeAdmin } from './helpers/admin.js';
 import { makeApp, type TestApp } from './helpers/app.js';
@@ -100,12 +100,22 @@ describe(`Clubs in HubSpot (${DB_BACKEND})`, () => {
     const club = await createClub(t.db, CLUB, { isProduction: false, now: t.clock.now });
     await createBatch(t.db, { clubId: club.id, collectedOn: '2026-11-02', paddleCount: 3, notes: null, now: t.clock.now });
     await processCrm(deps);
+    expect(hs.calls.filter((c) => c.method === 'DELETE')).toEqual([]); // a first sync removes nothing
     await updateClub(t.db, club.id, { ...CLUB, billingName: 'Sam New', billingEmail: 'sam@test.picklemypaddle.com' }, t.clock.now);
     await processCrm(deps);
     const sam = hs.contacts.get('sam@test.picklemypaddle.com')!;
     expect([...hs.companies.values()][0]!.contacts).toContain(sam.id);
     expect([...hs.deals.values()][0]!.contacts).toContain(sam.id);
     expect((await clubRow(club.id)).crm_contact_id).toBe(sam.id);
+    // The mirror follows the database: the former treasurer is no longer tied to the club or its batches.
+    expect(hs.calls.filter((c) => c.method === 'DELETE').map((c) => c.path.replace(/\/\d+\//g, '/N/'))).toEqual([
+      '/crm/v4/objects/companies/N/associations/contacts/' + hs.contacts.get('jo@test.picklemypaddle.com')!.id,
+      '/crm/v4/objects/deals/N/associations/contacts/' + hs.contacts.get('jo@test.picklemypaddle.com')!.id,
+    ]);
+    const jo = hs.contacts.get('jo@test.picklemypaddle.com')!;
+    expect([...hs.companies.values()][0]!.contacts).not.toContain(jo.id);
+    expect([...hs.deals.values()][0]!.contacts).not.toContain(jo.id);
+    expect(hs.contacts.has('jo@test.picklemypaddle.com')).toBe(true); // the person's contact itself stays (they may be a customer)
   });
 
   it('finds its records again after a crash before the IDs were saved, and recreates ones deleted in HubSpot', async () => {
@@ -151,6 +161,64 @@ describe(`Clubs in HubSpot (${DB_BACKEND})`, () => {
     await processCrm(deps);
     expect(hs.companies.size).toBe(1);
     expect(await (await admin.get(`/admin/clubs/${club.id}`)).text()).toMatch(/HubSpot: <strong>Up to date<\/strong>/);
+  });
+
+  it('order syncs don’t need the club stages: a portal set up before clubs keeps mirroring orders, and only club syncs fail until hubspot-setup runs', async () => {
+    await setup();
+    const clubStages = hs.stages.filter((s) => s.label.startsWith('Club batch:'));
+    expect(clubStages.length).toBe(5);
+    hs.stages = hs.stages.filter((s) => !s.label.startsWith('Club batch:'));
+    const { contact, deal } = mapOrder({
+      reference: 'PMP-7K3QX', status: 'submitted', is_test: true, name: 'Sam Lee', email: 'sam@example.org', phone: null,
+      suburb: 'Newtown', state: 'NSW', postcode: '2042', paddle_count: 1, has_review: false, contact_has_review: false, crm_contact_id: null, crm_deal_id: null,
+    });
+    await expect(deps.adapter!.sync(contact, deal, { contactId: null, dealId: null } as never)).resolves.toMatchObject({ dealId: expect.any(String) });
+    expect(hs.deals.size).toBe(1);
+
+    await createClub(t.db, CLUB, { isProduction: false, now: t.clock.now });
+    expect(await processCrm(deps)).toMatchObject({ failed: 1 });
+    expect(await jobs()).toMatchObject([{ state: 'failed', last_error: 'stage_missing' }]);
+    expect(hs.companies.size).toBe(0);
+  });
+
+  it('a temporary error on a job whose club changed again meanwhile doesn’t crash the run: the queued job takes over', async () => {
+    await setup();
+    const club = await createClub(t.db, CLUB, { isProduction: false, now: t.clock.now });
+    const other = await createClub(t.db, { ...CLUB, name: 'Second PC', billingEmail: 'two@test.picklemypaddle.com' }, { isProduction: false, now: t.clock.now });
+    const real = deps.adapter!;
+    // While the first club's sync is in flight, an admin change queues another for the same club,
+    // then HubSpot answers with a temporary error.
+    deps = {
+      ...deps,
+      adapter: {
+        ...real,
+        syncClub: async (company, contact, batches, known) => {
+          if (company.clubId !== club.id) return real.syncClub!(company, contact, batches, known);
+          await enqueueClubCrmSync(t.db, club.id, t.clock.now);
+          throw new HubSpotError(503, 'hubspot_503', false);
+        },
+      },
+    };
+    const run = await processCrm(deps); // must not throw (it used to: a duplicate pending job)
+    expect(run.synced).toBe(1); // the other club, in the same pass, is still synced
+    const rows = (await t.db.query<{ club_id: string; state: string; last_error: string | null }>("SELECT club_id, state, last_error FROM outbox WHERE kind = 'crm' AND club_id IS NOT NULL ORDER BY id")).rows;
+    const mine = rows.filter((r) => r.club_id === club.id);
+    expect(mine.map((r) => r.state).sort()).toEqual(['pending', 'suppressed']);
+    expect(mine.find((r) => r.state === 'suppressed')!.last_error).toBe('superseded');
+    expect(rows.find((r) => r.club_id === other.id)!.state).toBe('sent');
+  });
+
+  it('before it is invoiced, a batch deal is priced from the price list in force on the collection day, not a fixed figure', () => {
+    const lists = [
+      { from: '2026-01-01', pricePerPaddleCents: 6000, clubRemitPerPaddleCents: 5400 },
+      { from: '2027-07-01', pricePerPaddleCents: 6500, clubRemitPerPaddleCents: 5850 },
+    ];
+    const club = (collected_on: string) => ({
+      id: 'c1', name: 'Inner West PC', is_test: false, billing_name: 'Jo Treasurer', billing_email: 'jo@x.org', crm_company_id: null, crm_contact_id: null,
+      batches: [{ reference: 'PMPB-1', status: 'collected' as const, collected_on, paddle_count: 10, unchanged_count: 2, invoice_total: null, crm_deal_id: null }],
+    });
+    expect(mapClub(club('2026-11-02'), lists).deals[0]!.amountCents).toBe(8 * 5400);
+    expect(mapClub(club('2027-07-02'), lists).deals[0]!.amountCents).toBe(8 * 5850);
   });
 
   it('syncs two clubs in the same pass, each to its own company', async () => {

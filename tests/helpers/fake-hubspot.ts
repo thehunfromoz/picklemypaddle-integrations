@@ -120,6 +120,13 @@ export function fakeHubSpot(opts: { portalId?: string } = {}): FakeHubSpot {
       c.properties = { ...c.properties, ...body.properties };
       return json(200, { id: m[1] });
     }
+    // Removes a link (HubSpot's v4 "delete associations": every label between the two records).
+    if (method === 'DELETE' && (m = path.match(/^\/crm\/v4\/objects\/(deals|companies)\/(\d+)\/associations\/(contacts)\/(\d+)$/))) {
+      const from = m[1] === 'deals' ? hs.deals.get(m[2]!) : hs.companies.get(m[2]!);
+      if (!from) return json(404);
+      from.contacts.delete(m[4]!);
+      return json(204);
+    }
     if (method === 'PUT' && (m = path.match(/^\/crm\/v4\/objects\/(deals|companies)\/(\d+)\/associations\/default\/(contacts|companies)\/(\d+)$/))) {
       const deal = m[1] === 'deals' ? hs.deals.get(m[2]!) : undefined;
       const from = deal ?? hs.companies.get(m[2]!);
