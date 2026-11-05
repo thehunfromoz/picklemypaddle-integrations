@@ -217,7 +217,8 @@ export interface ClubForCrm {
 function estimateCents(b: ClubForCrm['batches'][number], opts: ClubMapOptions): number {
   const paddles = b.paddle_count - b.unchanged_count;
   if (paddles < 1) return 0;
-  const remit = priceListOn(b.collected_on, opts.lists ?? PRICE_LISTS).clubRemitPerPaddleCents;
+  // The invoice prices on its issue date, so the estimate does too (today); without a day, the collection day.
+  const remit = priceListOn(opts.today ?? b.collected_on, opts.lists ?? PRICE_LISTS).clubRemitPerPaddleCents;
   const treatment = opts.today && opts.tax ? clubTreatment(opts.today, opts.tax) : 'not_registered';
   return clubInvoiceAmounts(paddles, remit, treatment).totalCents;
 }
@@ -232,10 +233,10 @@ export interface ClubMapOptions {
 }
 
 /**
- * A batch's deal amount before it's invoiced: the paddles to re-grit at the club price in force on
- * the day it was collected (from the dated price lists, as the invoice will use), plus the GST the
- * invoice will add once registered, worked out as the invoice does, so the amount doesn't jump when
- * the invoice is issued.
+ * A batch's deal amount before it's invoiced: the paddles to re-grit at the club price in force
+ * today (the invoice uses the price list on its issue date, SCRUM-85 AC3), plus the GST the invoice
+ * will add once registered, worked out as the invoice does, so the amount doesn't jump when the
+ * invoice is issued.
  */
 export function mapClub(c: ClubForCrm, opts: ClubMapOptions = {}): { company: CrmCompany; contact: CrmClubContact; deals: CrmBatchDeal[] } {
   const tag = (s: string) => (c.is_test ? `[TEST] ${s}` : s);

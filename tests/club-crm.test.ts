@@ -208,7 +208,7 @@ describe(`Clubs in HubSpot (${DB_BACKEND})`, () => {
     expect(rows.find((r) => r.club_id === other.id)!.state).toBe('sent');
   });
 
-  it('before it is invoiced, a batch deal is priced from the price list in force on the collection day, not a fixed figure', () => {
+  it('before it is invoiced, a batch deal is priced from the price list in force on the day it will be invoiced (as the invoice does), not a fixed figure', () => {
     const lists = [
       { from: '2026-01-01', pricePerPaddleCents: 6000, clubRemitPerPaddleCents: 5400 },
       { from: '2027-07-01', pricePerPaddleCents: 6500, clubRemitPerPaddleCents: 5850 },
@@ -217,8 +217,11 @@ describe(`Clubs in HubSpot (${DB_BACKEND})`, () => {
       id: 'c1', name: 'Inner West PC', is_test: false, billing_name: 'Jo Treasurer', billing_email: 'jo@x.org', crm_company_id: null, crm_contact_id: null,
       batches: [{ reference: 'PMPB-1', status: 'collected' as const, collected_on, paddle_count: 10, unchanged_count: 2, invoice_total: null, crm_deal_id: null }],
     });
-    expect(mapClub(club('2026-11-02'), { lists }).deals[0]!.amountCents).toBe(8 * 5400);
-    expect(mapClub(club('2027-07-02'), { lists }).deals[0]!.amountCents).toBe(8 * 5850);
+    // The invoice uses the price list on its issue date, whenever the batch was collected.
+    expect(mapClub(club('2026-11-02'), { lists, today: '2026-11-05' }).deals[0]!.amountCents).toBe(8 * 5400);
+    expect(mapClub(club('2026-11-02'), { lists, today: '2027-07-02' }).deals[0]!.amountCents).toBe(8 * 5850); // collected before the change, invoiced after
+    expect(mapClub(club('2027-07-02'), { lists, today: '2027-07-02' }).deals[0]!.amountCents).toBe(8 * 5850);
+    expect(mapClub(club('2026-11-02'), { lists }).deals[0]!.amountCents).toBe(8 * 5400); // no day given: the collection day
   });
 
   it('once GST-registered the estimate carries the GST the invoice will add on top, worked out the way the invoice does, so the amount doesn’t jump at invoicing', () => {
