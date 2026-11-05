@@ -69,6 +69,8 @@ export interface EmailPayload {
   lapsesOn?: string;
   /** Payment alert (SCRUM-83): what wasn't right with a payment. */
   problem?: string;
+  /** Payment alert for a club batch: a card payment was refunded in Stripe. */
+  refund?: boolean;
   /** Review alert: whether the customer allowed quoting (SCRUM-33). */
   permission?: boolean;
   /** SCRUM-84: the receipt or credit note the email links (documents.id). */
@@ -376,6 +378,7 @@ async function sendBatchEmail(deps: OutboxDeps, row: OutboxRow, now: Date): Prom
     club: { name: batch.name },
     invoice,
     problem: payload.problem,
+    refund: payload.refund,
     adminUrl: settings.adminUrl ? `${settings.adminUrl}/admin/batches/${batch.reference}` : null,
   };
   try {

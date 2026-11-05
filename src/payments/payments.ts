@@ -18,7 +18,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { Db, Queryable } from '../db/db.js';
 import { log } from '../log.js';
 import { TransitionError, transitionWith } from '../orders/transitions.js';
-import { enqueueOrderEmail } from '../email/outbox.js';
+import { enqueueBatchEmail, enqueueOrderEmail } from '../email/outbox.js';
 import type { OrderStatus } from '../orders/model.js';
 import { DEFAULT_SELLER, issueCreditNote, issueReceipt, type Seller } from '../documents/documents.js';
 import type { Charge, CheckoutSession, FormValue, StripeApi, StripeEvent } from './stripe.js';
@@ -237,6 +237,17 @@ export async function applySession(deps: PaymentDeps, session: CheckoutSession, 
 /** Statuses a refund in full moves to Refunded (an order with a receipt: it was paid). */
 const REFUNDABLE: ReadonlySet<OrderStatus> = new Set(['paid', 'in_queue', 'regritted', 'posted_back', 'completed', 'withdrawn']);
 
+/** Queues the alert for a refunded club card payment (see recordRefund). */
+async function enqueueClubRefundAlert(q: Queryable, documentId: string, refundedCents: number, full: boolean, now: Date): Promise<void> {
+  const { rows } = await q.query<{ batch_id: string }>(`SELECT batch_id FROM documents WHERE id = $1 AND kind = 'invoice'`, [documentId]);
+  if (!rows[0]) return;
+  const dollars = `A$${(refundedCents / 100).toFixed(2)}`;
+  await enqueueBatchEmail(q, rows[0].batch_id, 'alert_payment', now, {
+    problem: `${dollars} of a card payment was refunded in Stripe${full ? ' (in full)' : ''}, and the invoice still counts it as paid`,
+    refund: true,
+  });
+}
+
 /**
  * charge.refunded: records the refunded total against the payment. SCRUM-84: the newly refunded
  * part gets a credit note against the receipt (and the "Refund issued" email); refunded in full,
@@ -247,8 +258,8 @@ export async function recordRefund(deps: PaymentDeps, charge: Charge): Promise<b
   if (!charge.payment_intent) return false;
   const now = deps.now();
   return deps.db.tx(async (q) => {
-    const { rows } = await q.query<{ id: string; order_id: string | null; amount_cents: number; refunded_cents: number }>(
-      'SELECT id, order_id, amount_cents, refunded_cents FROM payments WHERE payment_intent_id = $1 FOR UPDATE',
+    const { rows } = await q.query<{ id: string; order_id: string | null; document_id: string | null; problem: string | null; amount_cents: number; refunded_cents: number }>(
+      'SELECT id, order_id, document_id, problem, amount_cents, refunded_cents FROM payments WHERE payment_intent_id = $1 FOR UPDATE',
       [charge.payment_intent],
     );
     const payment = rows[0];
@@ -261,6 +272,12 @@ export async function recordRefund(deps: PaymentDeps, charge: Charge): Promise<b
         payment.order_id, now, 'stripe',
         `Refund recorded from Stripe: ${dollars(charge.amount_refunded)} refunded in total${full ? ' (in full)' : ''}.`,
       ]);
+    }
+    // SCRUM-85: a club's card payment that was applied. There is no receipt to credit, and what a
+    // refund does to the invoice and batch is still to be decided, so Attila is told and the batch
+    // page says so, rather than the refund going unnoticed.
+    if (payment.document_id && !payment.problem) {
+      await enqueueClubRefundAlert(q, payment.document_id, charge.amount_refunded, full, now);
     }
     const added = charge.amount_refunded - before;
     const note = added > 0 ? await issueCreditNote(q, { paymentId: String(payment.id), cents: added, full, seller: deps.seller ?? DEFAULT_SELLER, now }) : null;
