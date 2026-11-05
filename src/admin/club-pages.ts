@@ -3,7 +3,7 @@
  * batch's page, where it is returned (issuing its invoice) or cancelled.
  */
 import { BATCH_STATUS_LABELS, isOverdue, MAX_BATCH_PADDLES, MAX_CLUB_NOTE, type Batch, type BatchEmail, type BatchStatus, type Club } from '../clubs/clubs.js';
-import { MAX_PAYMENT_REFERENCE, METHOD_LABELS, type ClubPayment } from '../clubs/payments.js';
+import { CLUB_PROBLEMS, MAX_PAYMENT_REFERENCE, METHOD_LABELS, type ClubPayment } from '../clubs/payments.js';
 import { PROBLEM_TEXT } from '../payments/payments.js';
 import { documentDate } from '../documents/documents.js';
 import { calendarDay, dollars, html, type Html, when } from './html.js';
@@ -18,11 +18,6 @@ const clubBadge = (c: Club) => (c.status === 'active' ? html`<span class="badge"
 const BATCH_BADGE: Record<BatchStatus, string> = { collected: 'due', returned: '', invoiced: 'due', paid: '', cancelled: '' };
 const batchBadge = (s: BatchStatus) => html`<span class="badge${BATCH_BADGE[s] ? ` ${BATCH_BADGE[s]}` : ''}">${BATCH_STATUS_LABELS[s]}</span>`;
 const overdueBadge = (b: Batch, today: string) => (isOverdue(b, today) ? html` <span class="badge overdue">Overdue</span>` : '');
-const CLUB_PROBLEMS: Record<string, string> = {
-  invoice_paid: 'the invoice was already paid in full',
-  invoice_missing: 'there is no such invoice',
-  amount_mismatch: 'it was more than was owing (or not in AUD)',
-};
 const problemWords = (p: string) => CLUB_PROBLEMS[p] ?? PROBLEM_TEXT[p] ?? p;
 
 function clubFields(c?: Partial<Club>): Html {
