@@ -13,6 +13,8 @@
 import type { Db, Queryable } from '../db/db.js';
 import { BACKOFF_MINUTES, MAX_ATTEMPTS } from '../email/outbox.js';
 import { log, logError } from '../log.js';
+import { sydneyDate } from '../orders/dates.js';
+import type { TaxSettings } from '../pricing/terms.js';
 import { mapClub, mapOrder, type ClubForCrm, type CrmAdapter, type OrderForCrm } from './crm.js';
 import { HubSpotError } from './hubspot.js';
 
@@ -48,6 +50,8 @@ export interface CrmDeps {
   /** The portal this environment may write to (the test portal outside production). */
   expectedPortalId: string | null;
   now: () => Date;
+  /** GST_REGISTERED_FROM, for a batch deal's estimate before it is invoiced (SCRUM-85). */
+  tax?: TaxSettings;
 }
 
 export interface CrmRun {
@@ -124,7 +128,7 @@ export async function processCrm(deps: CrmDeps, batch = 10): Promise<CrmRun> {
           run.skipped++;
           continue;
         }
-        const { company, contact, deals } = mapClub(club);
+        const { company, contact, deals } = mapClub(club, { tax: deps.tax, today: sydneyDate(now) });
         const ids = await deps.adapter.syncClub(company, contact, deals, {
           companyId: club.crm_company_id ?? undefined,
           contactId: club.crm_contact_id ?? undefined,

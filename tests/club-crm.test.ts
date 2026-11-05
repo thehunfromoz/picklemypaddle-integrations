@@ -217,8 +217,31 @@ describe(`Clubs in HubSpot (${DB_BACKEND})`, () => {
       id: 'c1', name: 'Inner West PC', is_test: false, billing_name: 'Jo Treasurer', billing_email: 'jo@x.org', crm_company_id: null, crm_contact_id: null,
       batches: [{ reference: 'PMPB-1', status: 'collected' as const, collected_on, paddle_count: 10, unchanged_count: 2, invoice_total: null, crm_deal_id: null }],
     });
-    expect(mapClub(club('2026-11-02'), lists).deals[0]!.amountCents).toBe(8 * 5400);
-    expect(mapClub(club('2027-07-02'), lists).deals[0]!.amountCents).toBe(8 * 5850);
+    expect(mapClub(club('2026-11-02'), { lists }).deals[0]!.amountCents).toBe(8 * 5400);
+    expect(mapClub(club('2027-07-02'), { lists }).deals[0]!.amountCents).toBe(8 * 5850);
+  });
+
+  it('once GST-registered the estimate carries the GST the invoice will add on top, worked out the way the invoice does, so the amount doesn’t jump at invoicing', () => {
+    const club = (paddles: number) => ({
+      id: 'c1', name: 'Inner West PC', is_test: false, billing_name: 'Jo Treasurer', billing_email: 'jo@x.org', crm_company_id: null, crm_contact_id: null,
+      batches: [{ reference: 'PMPB-1', status: 'collected' as const, collected_on: '2026-11-02', paddle_count: paddles, unchanged_count: 0, invoice_total: null, crm_deal_id: null }],
+    });
+    const tax = { gstRegisteredFrom: '2026-12-01' };
+    expect(mapClub(club(8), { tax, today: '2026-11-30' }).deals[0]!.amountCents).toBe(43200); // not registered yet
+    expect(mapClub(club(8), { tax, today: '2026-12-01' }).deals[0]!.amountCents).toBe(47520); // 43200 + 10%
+    expect(mapClub(club(23), { tax, today: '2026-12-01' }).deals[0]!.amountCents).toBe(136620); // the invoice in the SCRUM-85 tests: 124200 + 12420
+    expect(mapClub(club(1), { tax, today: '2026-12-01' }).deals[0]!.amountCents).toBe(5940); // 5400 + 540
+    expect(mapClub(club(8), { today: '2026-12-01' }).deals[0]!.amountCents).toBe(43200); // no GST_REGISTERED_FROM
+  });
+
+  it('the worker uses the environment’s GST date when it syncs a batch deal', async () => {
+    await setup();
+    deps = { ...deps, tax: { gstRegisteredFrom: '2026-11-01' } };
+    const club = await createClub(t.db, CLUB, { isProduction: false, now: t.clock.now });
+    const batch = await createBatch(t.db, { clubId: club.id, collectedOn: '2026-11-02', paddleCount: 5, notes: null, now: t.clock.now });
+    await processCrm(deps);
+    const deal = [...hs.deals.values()].find((d) => d.properties.pmp_reference === batch.reference)!;
+    expect(deal.properties.amount).toBe('297.00'); // 5 × 54.00 = 270.00, plus GST 27.00
   });
 
   it('syncs two clubs in the same pass, each to its own company', async () => {

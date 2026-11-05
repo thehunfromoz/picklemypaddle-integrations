@@ -9,7 +9,7 @@
 import { PRICE_PER_PADDLE_CENTS, STATUSES, type OrderStatus } from '../orders/model.js';
 import { discountCents, type DiscountKind } from '../orders/rules.js';
 import { BATCH_STATUSES, type BatchStatus } from '../clubs/model.js';
-import { PRICE_LISTS, priceListOn, type PriceList } from '../pricing/terms.js';
+import { clubInvoiceAmounts, clubTreatment, PRICE_LISTS, priceListOn, type PriceList, type TaxSettings } from '../pricing/terms.js';
 
 export interface CrmContact {
   email: string;
@@ -214,11 +214,30 @@ export interface ClubForCrm {
   batches: { reference: string; status: BatchStatus; collected_on: string; paddle_count: number; unchanged_count: number; invoice_total: number | null; crm_deal_id: string | null }[];
 }
 
+function estimateCents(b: ClubForCrm['batches'][number], opts: ClubMapOptions): number {
+  const paddles = b.paddle_count - b.unchanged_count;
+  if (paddles < 1) return 0;
+  const remit = priceListOn(b.collected_on, opts.lists ?? PRICE_LISTS).clubRemitPerPaddleCents;
+  const treatment = opts.today && opts.tax ? clubTreatment(opts.today, opts.tax) : 'not_registered';
+  return clubInvoiceAmounts(paddles, remit, treatment).totalCents;
+}
+
+export interface ClubMapOptions {
+  /** The dated price lists (default: the real ones). */
+  lists?: readonly PriceList[];
+  /** GST_REGISTERED_FROM: once it has come, an estimate includes the GST the invoice will add on top. */
+  tax?: TaxSettings;
+  /** The Sydney day this is worked out on; the invoice will be issued on or after it. */
+  today?: string;
+}
+
 /**
  * A batch's deal amount before it's invoiced: the paddles to re-grit at the club price in force on
- * the day it was collected (from the dated price lists, as the invoice will use), before any GST.
+ * the day it was collected (from the dated price lists, as the invoice will use), plus the GST the
+ * invoice will add once registered, worked out as the invoice does, so the amount doesn't jump when
+ * the invoice is issued.
  */
-export function mapClub(c: ClubForCrm, lists: readonly PriceList[] = PRICE_LISTS): { company: CrmCompany; contact: CrmClubContact; deals: CrmBatchDeal[] } {
+export function mapClub(c: ClubForCrm, opts: ClubMapOptions = {}): { company: CrmCompany; contact: CrmClubContact; deals: CrmBatchDeal[] } {
   const tag = (s: string) => (c.is_test ? `[TEST] ${s}` : s);
   return {
     company: { clubId: c.id, name: tag(c.name), isTest: c.is_test },
@@ -227,7 +246,7 @@ export function mapClub(c: ClubForCrm, lists: readonly PriceList[] = PRICE_LISTS
       reference: b.reference,
       name: tag(`${b.reference} (${c.name})`),
       // Invoiced: the total as issued. Before (or with nothing invoiced): the paddles to re-grit at the club price.
-      amountCents: b.invoice_total !== null ? Number(b.invoice_total) : b.status === 'cancelled' ? 0 : (b.paddle_count - b.unchanged_count) * priceListOn(b.collected_on, lists).clubRemitPerPaddleCents,
+      amountCents: b.invoice_total !== null ? Number(b.invoice_total) : b.status === 'cancelled' ? 0 : estimateCents(b, opts),
       paddleCount: b.paddle_count,
       isTest: c.is_test,
       status: b.status,

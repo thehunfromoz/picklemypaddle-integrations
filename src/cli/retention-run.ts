@@ -43,7 +43,7 @@ try {
   } else {
     const hubspot = config.HUBSPOT_ACCESS_TOKEN ? hubspotClient(config.HUBSPOT_ACCESS_TOKEN, config.HUBSPOT_API_BASE) : null;
     const crm = hubspot
-      ? { db, adapter: hubspotAdapter(hubspot), portalId: () => portalIdOf(hubspot), expectedPortalId: config.HUBSPOT_PORTAL_ID ?? null, now: () => new Date() }
+      ? { db, adapter: hubspotAdapter(hubspot), portalId: () => portalIdOf(hubspot), expectedPortalId: config.HUBSPOT_PORTAL_ID ?? null, now: () => new Date(), tax: { gstRegisteredFrom: config.GST_REGISTERED_FROM ?? null } }
       : null;
     const run = await runRetention({ db, photos: fsPhotoStore(config.PHOTO_DIR), crm }, now);
     console.log(`Deleted: photos of ${run.photos} order(s), ${run.enquiries} order(s) that never went ahead, ${run.paid} paid order(s) past 5 years.`);
