@@ -358,11 +358,11 @@ export async function addNote(db: Db, reference: string, author: string, note: s
   return rows.length === 1;
 }
 
-/** Which order (or club batch, SCRUM-85) an outbox row belongs to, and what kind it is (the retry button). */
+/** Which order (or club batch, or `club:<id>` for a club's CRM sync, SCRUM-85) an outbox row belongs to, and what kind it is (the retry button). */
 export async function outboxRow(db: Db, id: string): Promise<{ kind: 'email' | 'crm'; reference: string } | null> {
   if (!/^\d{1,18}$/.test(id)) return null;
   const { rows } = await db.query<{ kind: 'email' | 'crm'; reference: string | null }>(
-    `SELECT ob.kind, COALESCE(o.reference, b.reference) AS reference
+    `SELECT ob.kind, COALESCE(o.reference, b.reference, 'club:' || ob.club_id::text) AS reference
        FROM outbox ob LEFT JOIN orders o ON o.id = ob.order_id LEFT JOIN batches b ON b.id = ob.batch_id WHERE ob.id = $1`,
     [id],
   );

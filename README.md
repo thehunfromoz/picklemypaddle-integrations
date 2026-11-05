@@ -382,11 +382,24 @@ interface (`src/crm/crm.ts`), with the HubSpot implementation in `src/crm/hubspo
   or the service won't start, and before its first write the worker checks the key really
   belongs to that portal (`portal_mismatch` otherwise, and nothing is written).
 - **Setup as code:** `node dist/cli/hubspot-setup.js --dry-run` shows what it would change (the
-  property group and properties on deals and contacts, and the 11 stages); without `--dry-run` it
+  property group and properties on deals, contacts and companies, and the 16 stages); without `--dry-run` it
   applies them, idempotently. Stages that aren't ours are listed and left alone. **Run it after
   any change that adds a property** (before the syncs that write it: HubSpot refuses unknown
   properties, and those syncs fail until it has run; retry them, or run `crm-resync.js`).
-- **Resync:** `node dist/cli/crm-resync.js` queues every order (after an outage, or when
+- **Clubs (SCRUM-85 AC8, 4 Nov 2026):** a club is a **company** (name, `[TEST] ` prefixed
+  outside production; `pmp_club_id`, `pmp_is_test`) linked to its billing contact (name and email
+  only, so a treasurer who is also a customer keeps their other details), and each batch a **deal**
+  (`<PMPB-…> (<club>)`; amount = the invoice total once invoiced, before that the paddles to
+  re-grit at the club price on the price list in force today (the invoice uses its issue date's list)
+  plus the GST the invoice will add once `GST_REGISTERED_FROM` has come, A$0 if cancelled; `pmp_reference`, `pmp_paddle_count`, `pmp_is_test`) linked to
+  both. The free plan has one deal pipeline, so batches use five stages after the order ones,
+  "Club batch: collected / returned / invoiced / paid / cancelled" (a second pipeline is possible
+  on Starter, SCRUM-98). One `crm` job per club (`outbox.club_id`) syncs the company, contact and
+  every batch; it's queued when a club is added or edited and when a batch is recorded, returned,
+  cancelled or paid. Records are found again by `pmp_club_id` / `pmp_reference` or recreated, as
+  for orders. The club's admin page shows the latest sync, with Retry when it failed. The key
+  needs the companies scopes (`.env.example`), then run `hubspot-setup.js`.
+- **Resync:** `node dist/cli/crm-resync.js` queues every order and club (after an outage, or when
   production moves to its own portal).
 
 ## Retention and erasure (SCRUM-75)

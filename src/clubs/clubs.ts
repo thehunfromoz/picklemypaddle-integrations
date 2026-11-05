@@ -17,12 +17,10 @@ import { DocumentError, issueClubInvoice, type Seller } from '../documents/docum
 import { ISO_DATE_RE, sydneyDate } from '../orders/dates.js';
 import { REFERENCE_ALPHABET } from '../orders/model.js';
 import { isValidAbn } from '../pricing/terms.js';
+import { enqueueClubCrmSync } from '../crm/sync.js';
 
-export const CLUB_STATUSES = ['lead', 'meeting', 'agreement_sent', 'active', 'inactive'] as const;
-export type ClubStatus = (typeof CLUB_STATUSES)[number];
-
-export const BATCH_STATUSES = ['collected', 'returned', 'invoiced', 'paid', 'cancelled'] as const;
-export type BatchStatus = (typeof BATCH_STATUSES)[number];
+import { type BatchStatus, type ClubStatus } from './model.js';
+export { BATCH_STATUSES, CLUB_STATUSES, type BatchStatus, type ClubStatus } from './model.js';
 export const BATCH_STATUS_LABELS: Record<BatchStatus, string> = {
   collected: 'Collected',
   returned: 'Returned',
@@ -136,28 +134,34 @@ const toClub = (r: ClubRow): Club => ({
 
 const isUniqueViolation = (err: unknown) => (err as { code?: string })?.code === '23505';
 
-export async function createClub(db: Queryable, input: ClubInput, opts: { isProduction: boolean; now: Date }): Promise<Club> {
+export async function createClub(db: Db, input: ClubInput, opts: { isProduction: boolean; now: Date }): Promise<Club> {
   try {
-    const { rows } = await db.query<ClubRow>(
-      `INSERT INTO clubs (name, billing_name, billing_email, billing_address, abn, notes, status, is_test, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, 'active', $7, $8, $8) RETURNING *`,
-      [input.name, input.billingName, input.billingEmail, input.billingAddress, input.abn, input.notes, !opts.isProduction, opts.now],
-    );
-    return toClub(rows[0]!);
+    return await db.tx(async (q) => {
+      const { rows } = await q.query<ClubRow>(
+        `INSERT INTO clubs (name, billing_name, billing_email, billing_address, abn, notes, status, is_test, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, 'active', $7, $8, $8) RETURNING *`,
+        [input.name, input.billingName, input.billingEmail, input.billingAddress, input.abn, input.notes, !opts.isProduction, opts.now],
+      );
+      await enqueueClubCrmSync(q, rows[0]!.id, opts.now);
+      return toClub(rows[0]!);
+    });
   } catch (err) {
     if (isUniqueViolation(err)) throw new ClubError('duplicate_name', 'There’s already a club with that name.');
     throw err;
   }
 }
 
-export async function updateClub(db: Queryable, id: string, input: ClubInput, now: Date): Promise<Club | null> {
+export async function updateClub(db: Db, id: string, input: ClubInput, now: Date): Promise<Club | null> {
   try {
-    const { rows } = await db.query<ClubRow>(
-      `UPDATE clubs SET name = $2, billing_name = $3, billing_email = $4, billing_address = $5, abn = $6, notes = $7, updated_at = $8
-        WHERE id = $1 RETURNING *`,
-      [id, input.name, input.billingName, input.billingEmail, input.billingAddress, input.abn, input.notes, now],
-    );
-    return rows[0] ? toClub(rows[0]) : null;
+    return await db.tx(async (q) => {
+      const { rows } = await q.query<ClubRow>(
+        `UPDATE clubs SET name = $2, billing_name = $3, billing_email = $4, billing_address = $5, abn = $6, notes = $7, updated_at = $8
+          WHERE id = $1 RETURNING *`,
+        [id, input.name, input.billingName, input.billingEmail, input.billingAddress, input.abn, input.notes, now],
+      );
+      if (rows[0]) await enqueueClubCrmSync(q, id, now);
+      return rows[0] ? toClub(rows[0]) : null;
+    });
   } catch (err) {
     if (isUniqueViolation(err)) throw new ClubError('duplicate_name', 'There’s already a club with that name.');
     throw err;
@@ -281,11 +285,14 @@ export async function createBatch(
   for (let attempt = 0; attempt < 5; attempt++) {
     try {
       const reference = newBatchReference();
-      await db.query(
-        `INSERT INTO batches (reference, club_id, status, status_changed_at, collected_on, paddle_count, notes, created_at, updated_at)
-         VALUES ($1, $2, 'collected', $3, $4::date, $5, $6, $3, $3)`,
-        [reference, club.id, args.now, args.collectedOn, args.paddleCount, notes || null],
-      );
+      await db.tx(async (q) => {
+        await q.query(
+          `INSERT INTO batches (reference, club_id, status, status_changed_at, collected_on, paddle_count, notes, created_at, updated_at)
+           VALUES ($1, $2, 'collected', $3, $4::date, $5, $6, $3, $3)`,
+          [reference, club.id, args.now, args.collectedOn, args.paddleCount, notes || null],
+        );
+        await enqueueClubCrmSync(q, club.id, args.now);
+      });
       return (await findBatch(db, reference))!;
     } catch (err) {
       if (!isUniqueViolation(err)) throw err;
@@ -295,12 +302,15 @@ export async function createBatch(
 }
 
 /** Cancels a batch that hasn't been returned (SCRUM-85 AC2). */
-export async function cancelBatch(db: Queryable, reference: string, now: Date): Promise<void> {
-  const { rows } = await db.query(
-    `UPDATE batches SET status = 'cancelled', status_changed_at = $2, updated_at = $2 WHERE reference = $1 AND status = 'collected' RETURNING id`,
-    [reference, now],
-  );
-  if (rows.length !== 1) throw new ClubError('not_cancellable', 'Only a batch that hasn’t been returned can be cancelled.');
+export async function cancelBatch(db: Db, reference: string, now: Date): Promise<void> {
+  await db.tx(async (q) => {
+    const { rows } = await q.query<{ club_id: string }>(
+      `UPDATE batches SET status = 'cancelled', status_changed_at = $2, updated_at = $2 WHERE reference = $1 AND status = 'collected' RETURNING club_id`,
+      [reference, now],
+    );
+    if (rows.length !== 1) throw new ClubError('not_cancellable', 'Only a batch that hasn’t been returned can be cancelled.');
+    await enqueueClubCrmSync(q, rows[0]!.club_id, now);
+  });
 }
 
 export interface ReturnDeps {
@@ -329,8 +339,8 @@ export async function returnBatch(
   checkCount(args.unchangedCount, 'Paddles returned unchanged');
   try {
     return await deps.db.tx(async (q) => {
-      const { rows } = await q.query<{ id: string; collected_on: string; paddle_count: number; status: BatchStatus }>(
-        `SELECT id, collected_on::text AS collected_on, paddle_count, status FROM batches WHERE reference = $1 FOR UPDATE`,
+      const { rows } = await q.query<{ id: string; club_id: string; collected_on: string; paddle_count: number; status: BatchStatus }>(
+        `SELECT id, club_id, collected_on::text AS collected_on, paddle_count, status FROM batches WHERE reference = $1 FOR UPDATE`,
         [args.reference],
       );
       const b = rows[0];
@@ -342,6 +352,7 @@ export async function returnBatch(
         `UPDATE batches SET status = 'returned', returned_on = $2::date, unchanged_count = $3, status_changed_at = $4, updated_at = $4 WHERE id = $1`,
         [b.id, args.returnedOn, args.unchangedCount, now],
       );
+      await enqueueClubCrmSync(q, b.club_id, now);
       if (args.unchangedCount === Number(b.paddle_count)) return { invoiceId: null };
       const invoiceId = await issueClubInvoice(q, {
         batchId: b.id, seller: deps.seller, isProduction: deps.isProduction, paymentTermsDays: deps.paymentTermsDays, now, payByCard: deps.payByCard ?? false,
@@ -373,6 +384,16 @@ export interface BatchEmail {
 }
 
 /** A batch's emails, newest first, for its admin page (and the retry button on a failed one). */
+/** The club's latest HubSpot sync (SCRUM-85 AC8), for its admin page; null before the first or with no CRM. */
+export async function clubCrmSync(db: Queryable, clubId: string): Promise<BatchEmail | null> {
+  const { rows } = await db.query<{ id: string; template: string; state: BatchEmail['state']; attempts: number; last_error: string | null; created_at: Date }>(
+    `SELECT id, template, state, attempts, last_error, created_at FROM outbox WHERE club_id = $1 AND kind = 'crm' ORDER BY created_at DESC, id DESC LIMIT 1`,
+    [clubId],
+  );
+  const r = rows[0];
+  return r ? { id: String(r.id), template: r.template, state: r.state, attempts: Number(r.attempts), lastError: r.last_error, createdAt: new Date(r.created_at) } : null;
+}
+
 export async function batchEmails(db: Queryable, batchId: string): Promise<BatchEmail[]> {
   const { rows } = await db.query<{ id: string; template: string; state: BatchEmail['state']; attempts: number; last_error: string | null; created_at: Date }>(
     `SELECT id, template, state, attempts, last_error, created_at FROM outbox WHERE batch_id = $1 AND kind = 'email' ORDER BY created_at DESC, id DESC`,

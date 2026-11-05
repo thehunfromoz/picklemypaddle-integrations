@@ -118,6 +118,7 @@ const crm: CrmDeps = {
   portalId: hubspot ? () => portalIdOf(hubspot) : null,
   expectedPortalId: config.HUBSPOT_PORTAL_ID ?? null,
   now: () => new Date(),
+  tax: { gstRegisteredFrom: config.GST_REGISTERED_FROM ?? null },
 };
 
 // SCRUM-71/72: the order admin, on its own listener. The public gateway never routes here; in the

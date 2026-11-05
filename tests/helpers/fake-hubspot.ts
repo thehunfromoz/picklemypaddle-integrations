@@ -20,7 +20,9 @@ export interface FakeHubSpot {
   calls: Recorded[];
   portalId: string;
   contacts: Map<string, { id: string; properties: Record<string, string> }>;
-  deals: Map<string, { properties: Record<string, string>; contacts: Set<string> }>;
+  deals: Map<string, { properties: Record<string, string>; contacts: Set<string>; companies: Set<string> }>;
+  /** SCRUM-85: clubs as companies, with their associated contacts. */
+  companies: Map<string, { properties: Record<string, string>; contacts: Set<string> }>;
   stages: Stage[];
   groups: Set<string>;
   properties: Map<string, Record<string, unknown>>;
@@ -40,8 +42,9 @@ export function fakeHubSpot(opts: { portalId?: string } = {}): FakeHubSpot {
     portalId: opts.portalId ?? '111',
     contacts: new Map(),
     deals: new Map(),
+    companies: new Map(),
     stages: DEFAULT_STAGES.map((label, i) => ({ id: `default-${i}`, label, displayOrder: i, metadata: { probability: '0.5' } })),
-    groups: new Set(['deals:dealinformation', 'contacts:contactinformation']),
+    groups: new Set(['deals:dealinformation', 'contacts:contactinformation', 'companies:companyinformation']),
     properties: new Map(),
     failNext: [],
   };
@@ -86,7 +89,7 @@ export function fakeHubSpot(opts: { portalId?: string } = {}): FakeHubSpot {
     }
     if (method === 'POST' && path === '/crm/v3/objects/deals') {
       const dealId = id();
-      hs.deals.set(dealId, { properties: body.properties, contacts: new Set((body.associations ?? []).map((a: { to: { id: string } }) => a.to.id)) });
+      hs.deals.set(dealId, { properties: body.properties, contacts: new Set((body.associations ?? []).map((a: { to: { id: string } }) => a.to.id)), companies: new Set() });
       return json(201, { id: dealId });
     }
     if ((m = path.match(/^\/crm\/v3\/objects\/deals\/(\d+)$/))) {
@@ -101,8 +104,36 @@ export function fakeHubSpot(opts: { portalId?: string } = {}): FakeHubSpot {
         return json(204);
       }
     }
-    if (method === 'PUT' && (m = path.match(/^\/crm\/v4\/objects\/deals\/(\d+)\/associations\/default\/contacts\/(\d+)$/))) {
-      hs.deals.get(m[1]!)?.contacts.add(m[2]!);
+    if (method === 'POST' && path === '/crm/v3/objects/companies/search') {
+      const want = body.filterGroups[0].filters[0].value;
+      const found = [...hs.companies].find(([, c]) => c.properties.pmp_club_id === want);
+      return json(200, { results: found ? [{ id: found[0] }] : [] });
+    }
+    if (method === 'POST' && path === '/crm/v3/objects/companies') {
+      const companyId = id();
+      hs.companies.set(companyId, { properties: body.properties, contacts: new Set() });
+      return json(201, { id: companyId });
+    }
+    if ((m = path.match(/^\/crm\/v3\/objects\/companies\/(\d+)$/)) && method === 'PATCH') {
+      const c = hs.companies.get(m[1]!);
+      if (!c) return json(404);
+      c.properties = { ...c.properties, ...body.properties };
+      return json(200, { id: m[1] });
+    }
+    // Removes a link (HubSpot's v4 "delete associations": every label between the two records).
+    if (method === 'DELETE' && (m = path.match(/^\/crm\/v4\/objects\/(deals|companies)\/(\d+)\/associations\/(contacts)\/(\d+)$/))) {
+      const from = m[1] === 'deals' ? hs.deals.get(m[2]!) : hs.companies.get(m[2]!);
+      if (!from) return json(404);
+      from.contacts.delete(m[4]!);
+      return json(204);
+    }
+    if (method === 'PUT' && (m = path.match(/^\/crm\/v4\/objects\/(deals|companies)\/(\d+)\/associations\/default\/(contacts|companies)\/(\d+)$/))) {
+      const deal = m[1] === 'deals' ? hs.deals.get(m[2]!) : undefined;
+      const from = deal ?? hs.companies.get(m[2]!);
+      if (!from) return json(404);
+      if (m[3] === 'contacts') from.contacts.add(m[4]!);
+      else if (deal) deal.companies.add(m[4]!);
+      else return json(400, { message: 'fake HubSpot links companies only to contacts' });
       return json(200, {});
     }
 
@@ -121,8 +152,8 @@ export function fakeHubSpot(opts: { portalId?: string } = {}): FakeHubSpot {
       return json(200, s);
     }
 
-    // Properties and their groups, per object (deals, contacts): kept as "<object>:<name>".
-    if ((m = path.match(/^\/crm\/v3\/properties\/(deals|contacts)\/groups$/))) {
+    // Properties and their groups, per object (deals, contacts, companies): kept as "<object>:<name>".
+    if ((m = path.match(/^\/crm\/v3\/properties\/(deals|contacts|companies)\/groups$/))) {
       const object = m[1]!;
       if (method === 'GET') {
         return json(200, { results: [...hs.groups].filter((g) => g.startsWith(`${object}:`)).map((g) => ({ name: g.slice(object.length + 1) })) });
@@ -130,11 +161,11 @@ export function fakeHubSpot(opts: { portalId?: string } = {}): FakeHubSpot {
       hs.groups.add(`${object}:${body.name}`);
       return json(201, body);
     }
-    if ((m = path.match(/^\/crm\/v3\/properties\/(deals|contacts)$/)) && method === 'POST') {
+    if ((m = path.match(/^\/crm\/v3\/properties\/(deals|contacts|companies)$/)) && method === 'POST') {
       hs.properties.set(`${m[1]}:${body.name}`, body);
       return json(201, body);
     }
-    if ((m = path.match(/^\/crm\/v3\/properties\/(deals|contacts)\/(\w+)$/))) {
+    if ((m = path.match(/^\/crm\/v3\/properties\/(deals|contacts|companies)\/(\w+)$/))) {
       const p = hs.properties.get(`${m[1]}:${m[2]}`);
       if (!p) return json(404);
       if (method === 'PATCH') Object.assign(p, body);

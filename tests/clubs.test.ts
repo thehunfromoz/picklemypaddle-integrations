@@ -310,13 +310,16 @@ describe('club batches: all-or-nothing, GST end to end, settings and email edge 
 
   it('a failure after the invoice number is taken rolls everything back: no number used, no document, no email, still Collected', async () => {
     const { batch } = await setup();
-    // Make queueing the email fail, after nextNumber and the document insert have run.
-    await t.db.exec('ALTER TABLE outbox RENAME TO outbox_gone');
-    await expect(returnBatch(deps(), { reference: batch.reference, returnedOn: '2026-11-04', unchangedCount: 0 })).rejects.toThrow();
-    await t.db.exec('ALTER TABLE outbox_gone RENAME TO outbox');
+    const queuedBefore = await n('SELECT count(*)::int AS n FROM outbox'); // the CRM job from creating the club
+    // Make only the email's insert fail, after the CRM job is queued and nextNumber and the document
+    // insert have run (renaming the whole table failed earlier, at the CRM job, and proved nothing).
+    await t.db.exec(`CREATE FUNCTION refuse_email() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'email refused for the test'; END $$;
+      CREATE TRIGGER refuse_email BEFORE INSERT ON outbox FOR EACH ROW WHEN (NEW.kind = 'email') EXECUTE FUNCTION refuse_email()`);
+    await expect(returnBatch(deps(), { reference: batch.reference, returnedOn: '2026-11-04', unchangedCount: 0 })).rejects.toThrow('email refused for the test');
+    await t.db.exec('DROP TRIGGER refuse_email ON outbox');
     expect(await n(`SELECT last AS n FROM document_counters WHERE series = 'INV'`)).toBe(0);
     expect(await n('SELECT count(*)::int AS n FROM documents')).toBe(0);
-    expect(await n('SELECT count(*)::int AS n FROM outbox')).toBe(0);
+    expect(await n('SELECT count(*)::int AS n FROM outbox')).toBe(queuedBefore); // no email, and no new CRM job either
     expect(await findBatch(t.db, batch.reference)).toMatchObject({ status: 'collected', returnedOn: null, unchangedCount: 0 });
   });
 
@@ -329,7 +332,7 @@ describe('club batches: all-or-nothing, GST end to end, settings and email edge 
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
     expect(results.find((r) => r.status === 'rejected')).toMatchObject({ reason: { code: 'not_collected' } });
     expect(await n('SELECT count(*)::int AS n FROM documents')).toBe(1);
-    expect(await n('SELECT count(*)::int AS n FROM outbox')).toBe(1);
+    expect(await n("SELECT count(*)::int AS n FROM outbox WHERE kind = 'email'")).toBe(1);
   });
 
   it('once GST-registered, a returned batch is invoiced with GST on top, in the database and the email', async () => {
@@ -354,7 +357,7 @@ describe('club batches: all-or-nothing, GST end to end, settings and email edge 
     const sent: EmailMessage[] = [];
     await mail({ name: 'fake', send: async (m) => (sent.push(m), { id: 'e1' }) }, ['someone-else@test.picklemypaddle.com']);
     expect(sent).toHaveLength(0);
-    expect(await n(`SELECT count(*)::int AS n FROM outbox WHERE state = 'suppressed' AND last_error = 'not_allow_listed'`)).toBe(1);
+    expect(await n(`SELECT count(*)::int AS n FROM outbox WHERE kind = 'email' AND state = 'suppressed' AND last_error = 'not_allow_listed'`)).toBe(1);
     expect(await n('SELECT count(*)::int AS n FROM document_tokens')).toBe(0);
   });
 
@@ -364,15 +367,15 @@ describe('club batches: all-or-nothing, GST end to end, settings and email edge 
     const { SendError } = await import('../src/email/sender.js');
     await mail({ name: 'fake', send: async () => { throw new SendError('timeout', false); } });
     expect(await n('SELECT count(*)::int AS n FROM document_tokens')).toBe(1);
-    expect(await n(`SELECT count(*)::int AS n FROM outbox WHERE state = 'pending' AND attempts = 1`)).toBe(1);
+    expect(await n(`SELECT count(*)::int AS n FROM outbox WHERE kind = 'email' AND state = 'pending' AND attempts = 1`)).toBe(1);
 
     await t.db.query(`UPDATE outbox SET state = 'failed'`);
     const admin = await makeAdmin(t);
-    const id = (await t.db.query<{ id: string }>('SELECT id FROM outbox')).rows[0]!.id;
+    const id = (await t.db.query<{ id: string }>("SELECT id FROM outbox WHERE kind = 'email'")).rows[0]!.id;
     const retry = await admin.post(`/admin/outbox/${id}/retry`);
     expect(retry.status).toBe(303);
     expect(retry.headers.get('location')).toBe(`/admin/batches/${batch.reference}?done=retry`);
-    expect(await n(`SELECT count(*)::int AS n FROM outbox WHERE state = 'pending' AND attempts = 0`)).toBe(1);
+    expect(await n(`SELECT count(*)::int AS n FROM outbox WHERE kind = 'email' AND state = 'pending' AND attempts = 0`)).toBe(1);
   });
 
   it('an issued club invoice can’t be moved to another batch or have its due date changed', async () => {

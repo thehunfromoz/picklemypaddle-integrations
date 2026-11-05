@@ -67,7 +67,18 @@ ${
   );
 }
 
-export function clubPage(ctx: PageContext, club: Club, batches: Batch[], today: string, flash?: Flash, form?: Partial<Club>): string {
+const CRM_STATE: Record<BatchEmail['state'], string> = { pending: 'Queued', sending: 'Syncing', sent: 'Up to date', failed: 'Failed', suppressed: 'Not synced' };
+
+function crmLine(ctx: PageContext, sync: BatchEmail | null | undefined): Html | string {
+  if (!sync) return '';
+  return html`<p class="small outbox ${sync.state}">HubSpot: <strong>${CRM_STATE[sync.state]}</strong> (${when(sync.createdAt)}${sync.lastError ? ` · ${sync.lastError}` : ''})${
+    sync.state === 'failed'
+      ? html` <form class="inline" method="post" action="/admin/outbox/${sync.id}/retry">${csrfField(ctx)}<button type="submit" class="secondary">Retry</button></form>`
+      : ''
+  }</p>`;
+}
+
+export function clubPage(ctx: PageContext, club: Club, batches: Batch[], today: string, flash?: Flash, form?: Partial<Club>, sync?: BatchEmail | null): string {
   return layout(
     ctx,
     club.name,
@@ -75,6 +86,7 @@ export function clubPage(ctx: PageContext, club: Club, batches: Batch[], today: 
 ${flashBox(flash)}
 <h1>${club.name}${testBadge(club.isTest)} ${clubBadge(club)}</h1>
 <p class="small">Added ${when(club.createdAt)}. Invoices go to ${club.billingName}, ${club.billingEmail}.</p>
+${crmLine(ctx, sync)}
 
 <h2>Batches</h2>
 ${batches.length ? batchRows(batches, false, today) : html`<p class="empty">No batches yet.</p>`}
