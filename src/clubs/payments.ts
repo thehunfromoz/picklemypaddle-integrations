@@ -17,8 +17,16 @@ import { hashToken, TOKEN_RE } from '../orders/model.js';
 import type { CheckoutSession, FormValue } from '../payments/stripe.js';
 import { PaymentError, SESSION_MINUTES, type ApplyOutcome, type PaymentDeps, type PaymentSource } from '../payments/payments.js';
 import { CLUB_LINK_DAYS } from '../documents/documents.js';
+import { enqueueBatchEmail } from '../email/outbox.js';
 import { ClubError } from './clubs.js';
 import { enqueueClubCrmSync } from '../crm/sync.js';
+
+/** Why a card payment for a club invoice wasn't applied, in words (admin page and Attila's alert). */
+export const CLUB_PROBLEMS: Record<string, string> = {
+  invoice_paid: 'the invoice was already paid in full',
+  invoice_missing: 'there is no such invoice',
+  amount_mismatch: 'it was more than was owing (or not in AUD)',
+};
 
 export type ClubPaymentMethod = 'payid' | 'cash' | 'card';
 export const METHOD_LABELS: Record<ClubPaymentMethod, string> = { payid: 'PayID', cash: 'cash', card: 'card' };
@@ -99,7 +107,9 @@ export async function recordClubPayment(
 ): Promise<{ paidInFull: boolean; balanceCents: number }> {
   if (args.method !== 'payid' && args.method !== 'cash') throw new ClubError('bad_method', 'Choose PayID or cash (card payments come in from Stripe by themselves).');
   if (!Number.isInteger(args.amountCents) || args.amountCents < 1) throw new ClubError('bad_amount', 'Give the amount received, like 270 or 270.50.');
-  if (!ISO_DATE_RE.test(args.paidOn) || !new Date(`${args.paidOn}T00:00:00Z`).toISOString().startsWith(args.paidOn)) throw new ClubError('bad_date', 'Give the date it was received.');
+  const parsed = new Date(`${args.paidOn}T00:00:00Z`);
+  // 2026-13-01 matches the pattern but isn't a date: Date gives NaN and toISOString() would throw.
+  if (!ISO_DATE_RE.test(args.paidOn) || Number.isNaN(parsed.getTime()) || !parsed.toISOString().startsWith(args.paidOn)) throw new ClubError('bad_date', 'Give the date it was received.');
   if (args.paidOn > sydneyDate(args.now)) throw new ClubError('future_date', 'The date received can’t be in the future.');
   const reference = (args.reference ?? '').trim();
   if (reference.length > MAX_PAYMENT_REFERENCE) throw new ClubError('bad_reference', `The reference can be up to ${MAX_PAYMENT_REFERENCE} characters.`);
@@ -234,6 +244,9 @@ export async function applyClubSession(deps: PaymentDeps, session: CheckoutSessi
     if (inserted.length === 0) return 'already';
     if (problem) {
       log('club_payment_flagged', { batch: b?.reference ?? null, problem, source });
+      // Attila hears about it (batch reference and admin link only): a batch that is already Paid
+      // is off the open list, so the warning on its own page would go unseen.
+      if (b) await enqueueBatchEmail(q, b.batch_id, 'alert_payment', now, { problem: CLUB_PROBLEMS[problem] ?? problem });
       return 'flagged';
     }
     await q.query(

@@ -24,7 +24,8 @@ const seller = { ...DEFAULT_SELLER, payId: 'payments@picklemypaddle.com' };
 
 /** A club with a returned, invoiced batch of `paddles` (× A$54). */
 async function invoiced(paddles = 5, opts: { stripe?: boolean } = {}) {
-  stripe = fakeStripe();
+  // Charges are stamped with the test's clock, not today's date (this test failed once the real date moved on).
+  stripe = fakeStripe({ clock: { get now() { return t.clock.now; } } });
   t = await makeApp(opts.stripe ? { stripe } : {});
   t.clock.now = new Date('2026-11-04T01:00:00Z');
   const club = await createClub(t.db, { name: 'Inner West PC', billingName: 'Jo Treasurer', billingEmail: BILLING, billingAddress: '1 Court St', abn: null, notes: null }, { isProduction: false, now: t.clock.now });
@@ -56,6 +57,9 @@ describe('PayID and cash payments, recorded by hand', () => {
     await expect(pay(batch.reference, { method: 'card' })).rejects.toMatchObject({ code: 'bad_method' });
     await expect(pay(batch.reference, { paidOn: '2026-11-05' })).rejects.toMatchObject({ code: 'future_date' });
     await expect(pay(batch.reference, { paidOn: '2026-11-01' })).rejects.toMatchObject({ code: 'bad_date' });
+    // Looks like a date but isn't one: a form error, not a crash.
+    await expect(pay(batch.reference, { paidOn: '2026-13-01' })).rejects.toMatchObject({ code: 'bad_date' });
+    await expect(pay(batch.reference, { paidOn: '2026-02-30' })).rejects.toMatchObject({ code: 'bad_date' });
     await expect(pay(batch.reference, { amountCents: 0 })).rejects.toMatchObject({ code: 'bad_amount' });
     await pay(batch.reference);
     await expect(pay(batch.reference, { amountCents: 1 })).rejects.toMatchObject({ code: 'not_owing' });
@@ -163,6 +167,22 @@ describe('card payments through Stripe Checkout', () => {
     const admin = await makeAdmin(t);
     const page = await (await admin.get(`/admin/batches/${batch.reference}`)).text();
     expect(page).toContain('wasn’t applied: the invoice was already paid in full. Refund it in the Stripe dashboard.');
+    // Attila is told too: the batch is Paid, so it drops off the open list and he'd not see it otherwise.
+    const alerts = await t.db.query<{ recipient: string; payload: string | { problem: string } }>(
+      `SELECT recipient, payload FROM outbox WHERE kind = 'email' AND template = 'alert_payment' AND batch_id = $1`,
+      [(await findBatch(t.db, batch.reference))!.id],
+    );
+    expect(alerts.rows).toHaveLength(1);
+    expect(alerts.rows[0]!.recipient).toBe('sales@picklemypaddle.com');
+    const sent: EmailMessage[] = [];
+    await processOutbox({ db: t.db, sender: { name: 'fake', send: async (m) => (sent.push(m), { id: 'e' }) }, settings: { isProduction: false, allowList: ['sales@picklemypaddle.com'], siteUrl: SITE, adminUrl: 'https://admin.test' }, now: () => t.clock.now });
+    const alert = sent.find((m) => m.subject.includes('Payment to check'))!;
+    expect(alert.to).toBe('sales@picklemypaddle.com');
+    expect(alert.subject).toContain(batch.reference);
+    expect(alert.text).toContain('club batch');
+    expect(alert.text).toContain('already paid in full');
+    expect(alert.text).not.toContain('reinstated');
+    expect(alert.text).toContain(`https://admin.test/admin/batches/${batch.reference}`);
   });
 
   it('a wrong token, an order’s session id or no Stripe here gets nowhere', async () => {

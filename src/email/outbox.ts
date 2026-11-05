@@ -130,9 +130,10 @@ export async function enqueueBatchEmail(
 ): Promise<void> {
   await q.query(
     `INSERT INTO outbox (kind, batch_id, template, recipient, payload, next_attempt_at, created_at, updated_at)
-     SELECT 'email', b.id, $2::text, c.billing_email, $3::jsonb, $4::timestamptz, $4::timestamptz, $4::timestamptz
+     SELECT 'email', b.id, $2::text, CASE WHEN $2::text = 'alert_payment' THEN $5::text ELSE c.billing_email END,
+            $3::jsonb, $4::timestamptz, $4::timestamptz, $4::timestamptz
        FROM batches b JOIN clubs c ON c.id = b.club_id WHERE b.id = $1::uuid`,
-    [batchId, template, JSON.stringify(payload), now],
+    [batchId, template, JSON.stringify(payload), now, ALERT_TO],
   );
 }
 
@@ -374,6 +375,8 @@ async function sendBatchEmail(deps: OutboxDeps, row: OutboxRow, now: Date): Prom
     firstName: firstName(batch.billing_name),
     club: { name: batch.name },
     invoice,
+    problem: payload.problem,
+    adminUrl: settings.adminUrl ? `${settings.adminUrl}/admin/batches/${batch.reference}` : null,
   };
   try {
     const email = render(row.template, ctx);

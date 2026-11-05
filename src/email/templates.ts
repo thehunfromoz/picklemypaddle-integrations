@@ -280,6 +280,17 @@ function build(name: TemplateName, ctx: TemplateContext): { subject: string; blo
     case 'alert_payment': {
       // SCRUM-83: a payment that wasn't applied. Reference, what happened and the admin link only.
       const ref = need(ctx, 'reference', name);
+      if (ctx.club) {
+        // SCRUM-85: a club's card payment for a batch invoice. Nothing is reinstated; it's a refund.
+        return {
+          customer: false,
+          subject: `Payment to check: ${ref}`,
+          blocks: [
+            { p: `A Stripe card payment for club batch ${ref} (${ctx.club.name}) wasn’t applied: ${need(ctx, 'problem', name)}. The club was charged and nothing was refunded. Refund it in the Stripe dashboard.` },
+            ctx.adminUrl ? { button: { label: 'Open the batch in admin', url: ctx.adminUrl } } : { p: 'Open the batch in admin.' },
+          ],
+        };
+      }
       return {
         customer: false,
         subject: `Payment to check: ${ref}`,
