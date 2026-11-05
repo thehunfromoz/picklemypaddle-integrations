@@ -185,6 +185,35 @@ describe('card payments through Stripe Checkout', () => {
     expect(alert.text).toContain(`https://admin.test/admin/batches/${batch.reference}`);
   });
 
+  it('a card payment refunded in Stripe is never silent: Attila is alerted once and the batch page says so (what it does to the balance is still to be decided)', async () => {
+    const { batch, number } = await invoiced(2, { stripe: true });
+    const token = await tokenFor(number);
+    await api('pay', { token, number });
+    const sessionId = [...stripe.sessions.keys()].at(-1)!;
+    stripe.pay(sessionId);
+    expect(await (await api('paid', { sessionId })).json()).toEqual({ paid: true, number });
+    const pi = (await t.db.query<{ payment_intent_id: string }>('SELECT payment_intent_id FROM payments')).rows[0]!.payment_intent_id;
+
+    stripe.refund(pi, 10800);
+    await pollEvents(t.payments!);
+    await pollEvents(t.payments!); // the same refund seen again alerts nobody twice
+    const batchId = (await findBatch(t.db, batch.reference))!.id;
+    const alerts = await t.db.query<{ recipient: string }>(`SELECT recipient FROM outbox WHERE kind = 'email' AND template = 'alert_payment' AND batch_id = $1`, [batchId]);
+    expect(alerts.rows.map((r) => r.recipient)).toEqual(['sales@picklemypaddle.com']);
+    const sent: EmailMessage[] = [];
+    await processOutbox({ db: t.db, sender: { name: 'fake', send: async (m) => (sent.push(m), { id: 'e' }) }, settings: { isProduction: false, allowList: ['sales@picklemypaddle.com'], siteUrl: SITE, adminUrl: 'https://admin.test' }, now: () => t.clock.now });
+    const alert = sent.find((m) => m.subject.includes('Payment to check'))!;
+    expect(alert.text).toContain('club batch');
+    expect(alert.text).toContain('refunded in Stripe');
+    expect(alert.text).toContain('still counts');
+    expect(alert.text).not.toContain('wasn’t applied');
+
+    const admin = await makeAdmin(t);
+    const page = await (await admin.get(`/admin/batches/${batch.reference}`)).text();
+    expect(page).toContain('was refunded in Stripe');
+    expect(page).toContain('still counts it as paid');
+  });
+
   it('a wrong token, an order’s session id or no Stripe here gets nowhere', async () => {
     const { number } = await invoiced(2);
     expect((await api('pay', { token: 'x'.repeat(43), number })).status).toBe(404);

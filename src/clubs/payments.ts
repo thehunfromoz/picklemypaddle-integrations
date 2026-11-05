@@ -260,9 +260,10 @@ export async function applyClubSession(deps: PaymentDeps, session: CheckoutSessi
 }
 
 /** Card payments on a batch's invoice that weren't applied (too much, or already paid): for the admin. */
-export async function flaggedCardPayments(q: Queryable, documentId: string): Promise<{ paymentIntentId: string | null; amountCents: number; problem: string; refundedCents: number; livemode: boolean }[]> {
-  const { rows } = await q.query<{ payment_intent_id: string | null; amount_cents: number; problem: string; refunded_cents: number; livemode: boolean }>(
-    `SELECT payment_intent_id, amount_cents, problem, refunded_cents, livemode FROM payments WHERE document_id = $1 AND problem IS NOT NULL ORDER BY paid_at`,
+export async function flaggedCardPayments(q: Queryable, documentId: string): Promise<{ paymentIntentId: string | null; amountCents: number; problem: string | null; refundedCents: number; livemode: boolean }[]> {
+  // Not applied (a problem), or applied and then refunded in Stripe (no problem, refunded_cents > 0).
+  const { rows } = await q.query<{ payment_intent_id: string | null; amount_cents: number; problem: string | null; refunded_cents: number; livemode: boolean }>(
+    `SELECT payment_intent_id, amount_cents, problem, refunded_cents, livemode FROM payments WHERE document_id = $1 AND (problem IS NOT NULL OR refunded_cents > 0) ORDER BY paid_at`,
     [documentId],
   );
   return rows.map((r) => ({ paymentIntentId: r.payment_intent_id, amountCents: Number(r.amount_cents), problem: r.problem, refundedCents: Number(r.refunded_cents), livemode: r.livemode }));

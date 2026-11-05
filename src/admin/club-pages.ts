@@ -149,7 +149,7 @@ function emailsSection(ctx: PageContext, emails: BatchEmail[]): Html | string {
 
 export interface BatchPayments {
   payments: ClubPayment[];
-  flagged: { paymentIntentId: string | null; amountCents: number; problem: string; refundedCents: number; livemode: boolean }[];
+  flagged: { paymentIntentId: string | null; amountCents: number; problem: string | null; refundedCents: number; livemode: boolean }[];
 }
 
 function paymentsSection(ctx: PageContext, b: Batch, p: BatchPayments, today: string): Html | string {
@@ -165,9 +165,12 @@ ${
 }
 <p>${owing > 0 ? html`Still owing: <strong>${dollars(owing)}</strong>${b.invoice.dueOn ? `, due ${documentDate(b.invoice.dueOn)}` : ''}${overdueBadge(b, today)}` : html`<strong>Paid in full.</strong>`}</p>
 ${p.flagged.map(
-  (f) => html`<p class="flash error">A card payment of ${dollars(f.amountCents)}${f.paymentIntentId ? ` (Stripe ${f.paymentIntentId})` : ''} wasn’t applied: ${problemWords(f.problem)}.${
-    f.refundedCents >= f.amountCents ? ' It has been refunded.' : ' Refund it in the Stripe dashboard.'
-  }</p>`,
+  (f) =>
+    f.problem === null
+      ? html`<p class="flash error">A card payment of ${dollars(f.amountCents)}${f.paymentIntentId ? ` (Stripe ${f.paymentIntentId})` : ''} was refunded in Stripe (${dollars(f.refundedCents)}), but the invoice still counts it as paid. Check the balance by hand: what a refund does to the invoice isn’t built yet.</p>`
+      : html`<p class="flash error">A card payment of ${dollars(f.amountCents)}${f.paymentIntentId ? ` (Stripe ${f.paymentIntentId})` : ''} wasn’t applied: ${problemWords(f.problem)}.${
+          f.refundedCents >= f.amountCents ? ' It has been refunded.' : ' Refund it in the Stripe dashboard.'
+        }</p>`,
 )}
 ${
   b.status === 'invoiced' && owing > 0

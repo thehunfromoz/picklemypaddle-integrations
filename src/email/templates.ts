@@ -62,6 +62,8 @@ export interface TemplateContext {
   lapsesOn?: string;
   /** Payment alert (SCRUM-83): what needs Attila's attention, in a few words. */
   problem?: string;
+  /** Payment alert for a club batch: the card payment was refunded in Stripe (not "wasn't applied"). */
+  refund?: boolean;
   /** Submitted (SCRUM-63): the code on the order and what it gives, confirmed at Accept. */
   discountOffer?: DiscountBenefit & { code: string };
   /** Accepted: the GST included, and whether GST applies (from the terms frozen at Accept). */
@@ -280,6 +282,17 @@ function build(name: TemplateName, ctx: TemplateContext): { subject: string; blo
     case 'alert_payment': {
       // SCRUM-83: a payment that wasn't applied. Reference, what happened and the admin link only.
       const ref = need(ctx, 'reference', name);
+      if (ctx.club && ctx.refund) {
+        // SCRUM-85: an applied club card payment was refunded in Stripe. Nothing else has changed.
+        return {
+          customer: false,
+          subject: `Payment to check: ${ref}`,
+          blocks: [
+            { p: `A Stripe card payment for club batch ${ref} (${ctx.club.name}) was changed in Stripe: ${need(ctx, 'problem', name)}. The invoice and batch haven’t been touched, so check the balance by hand.` },
+            ctx.adminUrl ? { button: { label: 'Open the batch in admin', url: ctx.adminUrl } } : { p: 'Open the batch in admin.' },
+          ],
+        };
+      }
       if (ctx.club) {
         // SCRUM-85: a club's card payment for a batch invoice. Nothing is reinstated; it's a refund.
         return {
