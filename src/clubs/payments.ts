@@ -213,7 +213,7 @@ export async function startClubPayment(deps: PaymentDeps, inv: PayableInvoice, o
 }
 
 /**
- * Applies a completed Checkout Session for a club invoice, once. More than is owing (or a
+ * Applies a completed Checkout Session for a club invoice, once. Any other amount than is owing (or a
  * payment for an invoice already paid) is recorded with a problem and not applied, for Attila to
  * refund in the Stripe dashboard.
  */
