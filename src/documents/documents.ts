@@ -21,6 +21,7 @@
 import { createHash } from 'node:crypto';
 import type { Queryable } from '../db/db.js';
 import { enqueueBatchEmail, enqueueOrderEmail } from '../email/outbox.js';
+import { CLUB_REPLY_TO } from '../email/sender.js';
 import { sydneyDate } from '../orders/dates.js';
 import { clubInvoiceAmounts, clubTreatment, GST_PERCENT, gstIncluded, termsOn, type TaxTreatment } from '../pricing/terms.js';
 
@@ -201,7 +202,9 @@ export interface ClubInvoiceFacts {
  * paddles at the club price, "Invoice", "No GST has been charged". From it (decided 4 Nov 2026):
  * "Tax invoice", the subtotal excluding GST, GST at 10% as its own line, then the total.
  */
-export function clubInvoiceSnapshot(number: string, issuedOn: string, f: ClubInvoiceFacts, seller: Seller): DocumentSnapshot {
+export function clubInvoiceSnapshot(number: string, issuedOn: string, f: ClubInvoiceFacts, businessSeller: Seller): DocumentSnapshot {
+  // Clubs deal with Attila directly (UAT 6 Nov 2026): his address is the invoice's contact.
+  const seller: Seller = { ...businessSeller, email: CLUB_REPLY_TO };
   const treatment = clubTreatment(issuedOn, { gstRegisteredFrom: seller.gstRegisteredFrom });
   const amounts = clubInvoiceAmounts(f.paddles, f.remitPerPaddleCents, treatment);
   const exclusive = treatment === 'gst_exclusive';
@@ -231,7 +234,7 @@ export function clubInvoiceSnapshot(number: string, issuedOn: string, f: ClubInv
       f.payByCard
         ? `How to pay: PayID or bank transfer to ${payId}, with ${number} as the reference; by card, with the "Pay by card" button on this invoice's page; or in cash at your club’s next pickup or delivery.`
         : `How to pay: PayID or bank transfer to ${payId}, with ${number} as the reference; or in cash at your club’s next pickup or delivery.`,
-      'Part payments are fine: we show what is still owing.',
+      'Payment is in full for each invoice.',
     ],
   });
 }

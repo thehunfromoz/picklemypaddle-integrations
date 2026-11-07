@@ -163,7 +163,7 @@ ${
       )}</tbody></table>`
     : html`<p class="empty">No payments yet.</p>`
 }
-<p>${owing > 0 ? html`Still owing: <strong>${dollars(owing)}</strong>${b.invoice.dueOn ? `, due ${documentDate(b.invoice.dueOn)}` : ''}${overdueBadge(b, today)}` : html`<strong>Paid in full.</strong>`}</p>
+<p>${owing > 0 ? html`Unpaid: <strong>${dollars(owing)}</strong>${b.invoice.dueOn ? `, due ${documentDate(b.invoice.dueOn)}` : ''}${overdueBadge(b, today)}` : html`<strong>Paid in full.</strong>`}</p>
 ${p.flagged.map(
   (f) =>
     f.problem === null
@@ -184,7 +184,7 @@ ${
     <label class="check"><input type="radio" name="method" value="cash"> Cash</label>
   </fieldset>
   <label>Reference (optional), e.g. the bank’s transaction ID<input name="reference" maxlength="${MAX_PAYMENT_REFERENCE}" autocomplete="off"></label>
-  <p class="small">Part payments are fine. Card payments come in from Stripe by themselves.</p>
+  <p class="small">Payment is in full: the amount must match the invoice. Card payments come in from Stripe by themselves.</p>
   <button type="submit">Record payment</button>
 </form></details>`
     : ''

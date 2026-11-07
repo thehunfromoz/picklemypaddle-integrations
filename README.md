@@ -478,9 +478,9 @@ members' details, so only the club's name and billing details are held here.
   page, or cash. Until `BUSINESS_PAYID` is set, invoices show `[To confirm: PayID]`, and
   production refuses to issue one.
 - **Payments (part 2):** on a batch's page, **Record a PayID or cash payment** (amount, date,
-  method, reference); part payments are fine, more than is owing is refused. **By card:** where
+  method, reference); payment is in full for each invoice (decided 6 Nov 2026): any other amount is refused. **By card:** where
   Stripe is set up, invoices offer "Pay by card" on their page: `POST /api/clubs/pay` makes a
-  Checkout Session for what is still owing (expiring older open ones), and the return
+  Checkout Session for the invoice total (expiring older open ones), and the return
   (`/club/paid` → `POST /api/clubs/paid`), the events poller or the webhook apply it through the same
   idempotent `applySession`. A card payment that would take the invoice past its total, or arrives
   after it's paid, is recorded with a problem, not applied, and shown on the batch for a refund in

@@ -72,8 +72,8 @@ export const PROPERTY_GROUP = { name: 'picklemypaddle', label: 'PickleMyPaddle' 
 export interface PropertyDef {
   name: string;
   label: string;
-  type: 'string' | 'number' | 'bool';
-  fieldType: 'text' | 'number' | 'booleancheckbox';
+  type: 'string' | 'number' | 'bool' | 'date';
+  fieldType: 'text' | 'number' | 'booleancheckbox' | 'date';
   description: string;
   options?: { label: string; value: string; displayOrder: number }[];
 }
@@ -112,6 +112,8 @@ export const DEAL_PROPERTIES: readonly PropertyDef[] = [
     description: 'The customer left a review for this order. Set by the integrations service.',
     options: yesNo,
   },
+  // SCRUM-85 UAT (6 Nov 2026): a deal's created date is when the sync made it, not when the club's batch was collected.
+  { name: 'pmp_collected_on', label: 'Collected on', type: 'date', fieldType: 'date', description: 'The day the club batch was collected. Set by the integrations service.' },
 ];
 
 /** SCRUM-80: on the contact, so a later "discount for reviewers" can key on the customer. */
@@ -293,6 +295,7 @@ export function hubspotAdapter(client: HubSpotClient): CrmAdapter & { stageIds(s
     dealstage: stageId,
     pmp_reference: d.reference,
     pmp_paddle_count: String(d.paddleCount),
+    pmp_collected_on: d.collectedOn,
     pmp_is_test: String(d.isTest),
   });
 
