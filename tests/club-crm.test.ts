@@ -57,7 +57,7 @@ describe(`Clubs in HubSpot (${DB_BACKEND})`, () => {
     const batch = await createBatch(t.db, { clubId: club.id, collectedOn: '2026-11-02', paddleCount: 5, notes: null, now: t.clock.now });
     await processCrm(deps);
     const [dealId, deal] = [...hs.deals][0]!;
-    expect(deal.properties).toMatchObject({ dealname: `[TEST] ${batch.reference} (Inner West PC)`, amount: '270.00', pmp_reference: batch.reference, pmp_paddle_count: '5', pmp_is_test: 'true' });
+    expect(deal.properties).toMatchObject({ dealname: `[TEST] ${batch.reference} (Inner West PC)`, amount: '270.00', pmp_reference: batch.reference, pmp_paddle_count: '5', pmp_collected_on: '2026-11-02', pmp_is_test: 'true' });
     expect(stageLabel(deal.properties.dealstage!)).toBe(CLUB_STAGES.collected.label);
     expect([...deal.companies, ...deal.contacts]).toEqual([companyId, contact.id]);
 
@@ -68,8 +68,7 @@ describe(`Clubs in HubSpot (${DB_BACKEND})`, () => {
     expect(hs.deals.get(dealId)!.properties.amount).toBe('216.00');
 
     // Paid. Several changes before the worker runs make one job, not several.
-    await recordClubPayment(t.db, { batchReference: batch.reference, method: 'payid', amountCents: 10000, paidOn: '2026-11-04', reference: null, by: 'a', now: t.clock.now });
-    await recordClubPayment(t.db, { batchReference: batch.reference, method: 'cash', amountCents: 11600, paidOn: '2026-11-04', reference: null, by: 'a', now: t.clock.now });
+    await recordClubPayment(t.db, { batchReference: batch.reference, method: 'cash', amountCents: 21600, paidOn: '2026-11-04', reference: null, by: 'a', now: t.clock.now });
     expect((await jobs()).filter((j) => j.state === 'pending')).toHaveLength(1);
     hs.calls.length = 0;
     await processCrm(deps);

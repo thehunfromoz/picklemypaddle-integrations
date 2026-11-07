@@ -191,6 +191,8 @@ export interface CrmBatchDeal {
   name: string;
   amountCents: number;
   paddleCount: number;
+  /** The day the batch was collected (YYYY-MM-DD), shown on the deal's card. */
+  collectedOn: string;
   isTest: boolean;
   status: BatchStatus;
 }
@@ -249,6 +251,7 @@ export function mapClub(c: ClubForCrm, opts: ClubMapOptions = {}): { company: Cr
       // Invoiced: the total as issued. Before (or with nothing invoiced): the paddles to re-grit at the club price.
       amountCents: b.invoice_total !== null ? Number(b.invoice_total) : b.status === 'cancelled' ? 0 : estimateCents(b, opts),
       paddleCount: b.paddle_count,
+      collectedOn: b.collected_on,
       isTest: c.is_test,
       status: b.status,
     })),

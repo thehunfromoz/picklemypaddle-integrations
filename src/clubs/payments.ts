@@ -6,9 +6,9 @@
  *    still owing, the same way as orders (SCRUM-82). The payment is recognised from the Checkout
  *    return, the events poller or (production) the webhook, all through applyClubSession, which is
  *    idempotent on the session id.
- *  - Part payments are fine. Once the payments reach the invoice's total, the invoice gets its paid
- *    state (once, as the documents trigger allows) and the batch moves to Paid. A payment that
- *    would take it past the total is refused (by hand) or recorded with a problem (by card).
+ *  - No part payments (decided 6 Nov 2026: they would only add admin). A payment must be the full
+ *    amount owing; the invoice then gets its paid state (once, as the documents trigger allows) and
+ *    the batch moves to Paid. Any other amount is refused (by hand) or recorded with a problem (by card).
  */
 import type { Db, Queryable } from '../db/db.js';
 import { log } from '../log.js';
@@ -25,7 +25,7 @@ import { enqueueClubCrmSync } from '../crm/sync.js';
 export const CLUB_PROBLEMS: Record<string, string> = {
   invoice_paid: 'the invoice was already paid in full',
   invoice_missing: 'there is no such invoice',
-  amount_mismatch: 'it was more than was owing (or not in AUD)',
+  amount_mismatch: 'it was not the full amount owing (or not in AUD)',
 };
 
 export type ClubPaymentMethod = 'payid' | 'cash' | 'card';
@@ -98,8 +98,8 @@ async function settle(q: Queryable, documentId: string, batchId: string, now: Da
 export const MAX_PAYMENT_REFERENCE = 100;
 
 /**
- * Records a PayID or cash payment against a batch's invoice (SCRUM-85 AC5). Part payments are
- * fine; more than is owing is refused. Returns whether the invoice is now paid in full.
+ * Records a PayID or cash payment against a batch's invoice (SCRUM-85 AC5). Payment is in
+ * full: any other amount than what is owing is refused. Returns whether the invoice is now paid in full.
  */
 export async function recordClubPayment(
   db: Db,
@@ -125,7 +125,7 @@ export async function recordClubPayment(
     if (!b.document_id || b.status !== 'invoiced') throw new ClubError('not_owing', 'Only an invoiced batch that isn’t paid yet can take a payment.');
     if (args.paidOn < b.collected_on) throw new ClubError('bad_date', 'The date received can’t be before the batch was collected.');
     const { balanceCents } = await invoiceBalance(q, b.document_id);
-    if (args.amountCents > balanceCents) throw new ClubError('too_much', `That’s more than is owing (${dollars(balanceCents)}).`);
+    if (args.amountCents !== balanceCents) throw new ClubError('not_full', `Payment is in full for each invoice, so the amount must be ${dollars(balanceCents)}. Part payments aren’t accepted.`);
     await q.query(
       `INSERT INTO club_payments (document_id, method, amount_cents, paid_on, reference, recorded_at, recorded_by) VALUES ($1, $2, $3, $4::date, $5, $6, $7)`,
       [b.document_id, args.method, args.amountCents, args.paidOn, reference || null, args.now, args.by],
@@ -213,7 +213,7 @@ export async function startClubPayment(deps: PaymentDeps, inv: PayableInvoice, o
 }
 
 /**
- * Applies a completed Checkout Session for a club invoice, once. More than is owing (or a
+ * Applies a completed Checkout Session for a club invoice, once. Any other amount than is owing (or a
  * payment for an invoice already paid) is recorded with a problem and not applied, for Attila to
  * refund in the Stripe dashboard.
  */
@@ -235,7 +235,7 @@ export async function applyClubSession(deps: PaymentDeps, session: CheckoutSessi
     const b = rows[0];
     const amount = session.amount_total ?? 0;
     const balance = b ? (await invoiceBalance(q, documentId)).balanceCents : 0;
-    const problem = !b ? 'invoice_missing' : session.currency !== 'aud' ? 'amount_mismatch' : balance <= 0 ? 'invoice_paid' : amount > balance ? 'amount_mismatch' : null;
+    const problem = !b ? 'invoice_missing' : session.currency !== 'aud' ? 'amount_mismatch' : balance <= 0 ? 'invoice_paid' : amount !== balance ? 'amount_mismatch' : null;
     const { rows: inserted } = await q.query<{ id: string }>(
       `INSERT INTO payments (document_id, checkout_session_id, payment_intent_id, amount_cents, currency, fee_cents, paid_at, recorded_at, source, livemode, problem, refunded_cents)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) ON CONFLICT (checkout_session_id) DO NOTHING RETURNING id`,

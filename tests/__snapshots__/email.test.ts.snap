@@ -322,7 +322,7 @@ exports[`email templates > club_invoice (production) renders the same text and H
 <p style="margin:8px 0 24px"><a href="https://www.picklemypaddle.com/club/invoice?n=PMP-INV-0042#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT" style="display:inline-block;background:#4565A6;color:#ffffff;text-decoration:none;font-weight:600;font-size:16px;padding:12px 20px;border-radius:8px">View or print the invoice</a></p>
 <h2 style="margin:24px 0 8px;font-size:17px;color:#1E2E52">How to pay</h2>
 <ul style="margin:0 0 16px;padding-left:20px;color:#1E2E52"><li style="margin:0 0 4px;font-size:16px;line-height:1.5">PayID or bank transfer to payments@picklemypaddle.com, with PMP-INV-0042 as the reference</li><li style="margin:0 0 4px;font-size:16px;line-height:1.5">In cash, at your club’s next pickup or delivery</li></ul>
-<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Part payments are fine: the invoice page shows what is still owing.</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Payment is in full for each invoice.</p>
 <p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">The invoice link is private to your club: anyone who has it can see and pay this invoice, so please don’t forward it outside your committee.</p>
 <p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Thanks for working with us,<br>Attila, PickleMyPaddle</p>
 <p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.<br>https://www.picklemypaddle.com<br>Questions? Just reply to this email.<br>You’re getting this as the billing contact for Inner West Pickleball Club.</p>
@@ -350,7 +350,7 @@ HOW TO PAY
   - PayID or bank transfer to payments@picklemypaddle.com, with PMP-INV-0042 as the reference
   - In cash, at your club’s next pickup or delivery
 
-Part payments are fine: the invoice page shows what is still owing.
+Payment is in full for each invoice.
 
 The invoice link is private to your club: anyone who has it can see and pay this invoice, so please don’t forward it outside your committee.
 
@@ -382,7 +382,7 @@ exports[`email templates > club_invoice (staging) renders the same text and HTML
 <p style="margin:8px 0 24px"><a href="http://home-server:8088/club/invoice?n=PMP-INV-0042#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT" style="display:inline-block;background:#4565A6;color:#ffffff;text-decoration:none;font-weight:600;font-size:16px;padding:12px 20px;border-radius:8px">View or print the invoice</a></p>
 <h2 style="margin:24px 0 8px;font-size:17px;color:#1E2E52">How to pay</h2>
 <ul style="margin:0 0 16px;padding-left:20px;color:#1E2E52"><li style="margin:0 0 4px;font-size:16px;line-height:1.5">PayID or bank transfer to payments@picklemypaddle.com, with PMP-INV-0042 as the reference</li><li style="margin:0 0 4px;font-size:16px;line-height:1.5">In cash, at your club’s next pickup or delivery</li></ul>
-<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Part payments are fine: the invoice page shows what is still owing.</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Payment is in full for each invoice.</p>
 <p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">The invoice link is private to your club: anyone who has it can see and pay this invoice, so please don’t forward it outside your committee.</p>
 <p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Thanks for working with us,<br>Attila, PickleMyPaddle</p>
 <p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.<br>http://home-server:8088<br>Questions? Just reply to this email.<br>You’re getting this as the billing contact for Inner West Pickleball Club.</p>
@@ -412,7 +412,7 @@ HOW TO PAY
   - PayID or bank transfer to payments@picklemypaddle.com, with PMP-INV-0042 as the reference
   - In cash, at your club’s next pickup or delivery
 
-Part payments are fine: the invoice page shows what is still owing.
+Payment is in full for each invoice.
 
 The invoice link is private to your club: anyone who has it can see and pay this invoice, so please don’t forward it outside your committee.
 

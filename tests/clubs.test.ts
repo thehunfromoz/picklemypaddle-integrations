@@ -70,6 +70,10 @@ describe('club invoice wording by issue date', () => {
     expect(s.notes[0]).toBe('Due by 16 March 2027.');
     expect(s.notes[1]).toBe('How to pay: PayID or bank transfer to payments@picklemypaddle.com, with PMP-INV-0042 as the reference; or in cash at your club’s next pickup or delivery.');
     expect(s.payId).toBe('payments@picklemypaddle.com');
+    // Clubs deal with Attila directly (UAT 6 Nov 2026), and pay in full (no part payments).
+    expect(s.seller.email).toBe('attila@picklemypaddle.com');
+    expect(s.notes).toContain('Payment is in full for each invoice.');
+    expect(s.notes.join(' ')).not.toMatch(/part payment/i);
     expect(s.payByCard).toBeUndefined();
     expect(JSON.stringify(s).toLowerCase()).not.toContain('tax invoice');
   });
