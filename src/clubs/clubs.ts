@@ -14,6 +14,7 @@
 import { randomInt } from 'node:crypto';
 import type { Db, Queryable } from '../db/db.js';
 import { DocumentError, issueClubInvoice, type Seller } from '../documents/documents.js';
+import { isAllowed } from '../email/outbox.js';
 import { ISO_DATE_RE, sydneyDate } from '../orders/dates.js';
 import { REFERENCE_ALPHABET } from '../orders/model.js';
 import { isValidAbn } from '../pricing/terms.js';
@@ -87,8 +88,28 @@ export const isOverdue = (b: Batch, today: string) =>
 
 const clean = (v: string | null | undefined) => (v ?? '').trim();
 
+/** Domains reserved for tests (RFC 2606 and 6761): nobody real is ever at these. */
+const RESERVED_DOMAIN = /(^|\.)(example\.(com|org|net)|test|invalid|example|localhost)$/;
+
+/**
+ * Outside production a club's billing email must be one of Attila's own (EMAIL_ALLOWLIST) or at a
+ * reserved test domain, so a real club's address never gets into staging: it would reach the
+ * outbox, the HubSpot test portal and Stripe's Checkout. Production takes any valid address.
+ */
+export interface EmailGuard {
+  isProduction: boolean;
+  allowList: readonly string[];
+}
+
+function allowedHere(email: string, guard: EmailGuard): boolean {
+  // The same test the outbox applies before sending (plus-addressing of an allowed address counts).
+  if (isAllowed(email, guard)) return true;
+  return RESERVED_DOMAIN.test(email.slice(email.lastIndexOf('@') + 1));
+}
+
 /** Checks and tidies a club form. Throws ClubError with a message for Attila. */
-export function validateClub(input: Partial<Record<keyof ClubInput, string | null>>): ClubInput {
+/** `guard` is required on purpose: a caller that wants no email rule has to say so (`isProduction: true`). */
+export function validateClub(input: Partial<Record<keyof ClubInput, string | null>>, guard: EmailGuard): ClubInput {
   const name = clean(input.name);
   const billingName = clean(input.billingName);
   const billingEmail = clean(input.billingEmail).toLowerCase();
@@ -98,6 +119,12 @@ export function validateClub(input: Partial<Record<keyof ClubInput, string | nul
   if (!name || name.length > 120) throw new ClubError('bad_name', 'Give the club’s name (up to 120 characters).');
   if (!billingName || billingName.length > 120) throw new ClubError('bad_billing_name', 'Give the billing contact’s name (up to 120 characters).');
   if (!EMAIL_RE.test(billingEmail) || billingEmail.length > 254) throw new ClubError('bad_billing_email', 'Give a valid billing email address.');
+  if (!allowedHere(billingEmail, guard)) {
+    throw new ClubError(
+      'email_not_allowed',
+      'This isn’t production, so a club’s billing email must be one of your own allow-listed addresses (EMAIL_ALLOWLIST) or an example.com or .test address. A real club’s address is never saved here.',
+    );
+  }
   if (!billingAddress || billingAddress.length > 400) throw new ClubError('bad_billing_address', 'Give the billing address (up to 400 characters).');
   if (abn && !isValidAbn(abn)) throw new ClubError('bad_abn', 'That ABN isn’t valid: 11 digits, as on the ABN Lookup.');
   if (notes.length > MAX_CLUB_NOTE) throw new ClubError('bad_notes', `Notes can be up to ${MAX_CLUB_NOTE} characters.`);

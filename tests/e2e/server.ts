@@ -39,6 +39,7 @@ const admin = createAdminApp({
   trusted: new TrustedProxies(['127.0.0.1', '::1']),
   csrfKey: await serviceSecret(t.db, 'admin-csrf-key'),
   paymentsConfigured: true,
+  emailAllowList: ['jo@test.picklemypaddle.com'],
 });
 const server = serve({ fetch: admin.fetch, port: E2E_ADMIN_PORT, hostname: '127.0.0.1' }, (info) => {
   console.log(`e2e admin on http://127.0.0.1:${info.port}/admin (order ${reference})`);

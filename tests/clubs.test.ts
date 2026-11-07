@@ -142,10 +142,47 @@ describe('club invoice settings', () => {
   });
 });
 
+// Staging must never hold a real club's address (found in Attila's UAT, 5 Nov 2026): outside
+// production a club's billing email has to be on EMAIL_ALLOWLIST or a reserved test domain, so it
+// can't reach the outbox, HubSpot or Stripe. Production takes any valid address.
+describe('club billing emails outside production', () => {
+  const form = (billingEmail: string) => ({ name: 'Inner West PC', billingName: 'Jo', billingEmail, billingAddress: '1 Court St' });
+  const staging = { isProduction: false, allowList: ['Attila@MyHome.com.au'] };
+
+  it.each(['attila@myhome.com.au', 'ATTILA@myhome.com.au', 'attila+club2@myhome.com.au', 'jo@example.com', 'jo@club.example.org', 'jo@example.net', 'jo@club.test', 'jo@a.b.invalid'])(
+    'staging accepts %s',
+    (email) => {
+      expect(validateClub(form(email), staging).billingEmail).toBe(email.toLowerCase());
+    },
+  );
+
+  it.each(['jo@realclub.com.au', 'jo@gmail.com', 'attila@myhome.com.au.evil.com', 'xattila@myhome.com.au', 'attila+club@evil.com', 'attila@evil.myhome.com.au', 'jo@notexample.com', 'jo@example.com.au'])(
+    'staging refuses %s, and says why',
+    (email) => {
+      expect(() => validateClub(form(email), staging)).toThrow(expect.objectContaining({ code: 'email_not_allowed', message: expect.stringContaining('allow-list') }));
+    },
+  );
+
+  it('staging with an empty allow-list takes only reserved test domains', () => {
+    const none = { isProduction: false, allowList: [] };
+    expect(() => validateClub(form('attila@myhome.com.au'), none)).toThrow(expect.objectContaining({ code: 'email_not_allowed' }));
+    expect(validateClub(form('jo@example.com'), none).billingEmail).toBe('jo@example.com');
+  });
+
+  it('production takes any valid address', () => {
+    expect(validateClub(form('jo@realclub.com.au'), { isProduction: true, allowList: [] }).billingEmail).toBe('jo@realclub.com.au');
+  });
+
+  it('a bad address is still reported as bad, before the allow-list is mentioned', () => {
+    expect(() => validateClub(form('nope'), staging)).toThrow(expect.objectContaining({ code: 'bad_billing_email' }));
+  });
+});
+
 describe('club details', () => {
+  const prod = { isProduction: true, allowList: [] as string[] };
   const good = { name: ' Inner West PC ', billingName: 'Jo', billingEmail: 'Jo@Example.com', billingAddress: '1 Court St\r\nNewtown', abn: '51 824 753 556', notes: '' };
   it('tidies a valid form', () => {
-    expect(validateClub(good)).toEqual({ name: 'Inner West PC', billingName: 'Jo', billingEmail: 'jo@example.com', billingAddress: '1 Court St\nNewtown', abn: '51824753556', notes: null });
+    expect(validateClub(good, prod)).toEqual({ name: 'Inner West PC', billingName: 'Jo', billingEmail: 'jo@example.com', billingAddress: '1 Court St\nNewtown', abn: '51824753556', notes: null });
   });
   it.each([
     ['name', { name: '' }, 'bad_name'],
@@ -153,7 +190,7 @@ describe('club details', () => {
     ['address', { billingAddress: ' ' }, 'bad_billing_address'],
     ['ABN', { abn: '12 345 678 901' }, 'bad_abn'],
   ])('refuses a bad %s', (_what, patch, code) => {
-    expect(() => validateClub({ ...good, ...patch })).toThrow(expect.objectContaining({ code }));
+    expect(() => validateClub({ ...good, ...patch }, prod)).toThrow(expect.objectContaining({ code }));
   });
 });
 
@@ -440,6 +477,37 @@ describe('the admin club pages', () => {
     const doc = await (await admin.get('/admin/documents/PMP-INV-0001')).text();
     expect(doc).toContain('Club batch');
     expect(doc).toContain('Due by');
+  });
+
+  it('on staging a real club’s address is refused when adding or editing a club: nothing is saved, queued or synced', async () => {
+    t = await makeApp();
+    const admin = await makeAdmin(t, { emailAllowList: ['jo@test.picklemypaddle.com'] });
+    const real = { name: 'Real Club', billingName: 'Pat', billingEmail: 'pat@realclub.com.au', billingAddress: '1 Court St' };
+
+    const refused = await admin.post('/admin/clubs', real);
+    expect(refused.status).toBe(400);
+    const body = await refused.text();
+    expect(body).toContain('allow-list');
+    expect(body).toContain('Real Club'); // the form keeps what was typed
+    expect(Number((await t.db.query<{ n: number }>('SELECT count(*)::int AS n FROM clubs')).rows[0]!.n)).toBe(0);
+    expect(Number((await t.db.query<{ n: number }>('SELECT count(*)::int AS n FROM outbox')).rows[0]!.n)).toBe(0);
+
+    // Editing an existing club to a real address is refused too, and the old address stays.
+    const made = await admin.post('/admin/clubs', { ...real, name: 'Test Club', billingEmail: 'jo@test.picklemypaddle.com' });
+    expect(made.status).toBe(303);
+    const url = made.headers.get('location')!.replace(/\?.*$/, '');
+    const edited = await admin.post(url, { ...real, name: 'Test Club' });
+    expect(edited.status).toBe(400);
+    expect((await t.db.query<{ billing_email: string }>('SELECT billing_email FROM clubs')).rows[0]!.billing_email).toBe('jo@test.picklemypaddle.com');
+    const jobsBefore = Number((await t.db.query<{ n: number }>("SELECT count(*)::int AS n FROM outbox WHERE kind = 'crm'")).rows[0]!.n);
+    expect(jobsBefore).toBe(1); // only the one from creating the test club
+  });
+
+  it('in production the same address is accepted', async () => {
+    t = await makeApp();
+    const admin = await makeAdmin(t, { isProduction: true, emailAllowList: [] });
+    const made = await admin.post('/admin/clubs', { name: 'Real Club', billingName: 'Pat', billingEmail: 'pat@realclub.com.au', billingAddress: '1 Court St' });
+    expect(made.status).toBe(303);
   });
 
   it('edits a club, escapes what’s typed, and makes it inactive and active again', async () => {
