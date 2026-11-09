@@ -19,6 +19,7 @@
  *   GET  /admin/clubs · POST /admin/clubs      clubs: list, add (SCRUM-85)
  *   GET  /admin/clubs/:id · POST /admin/clubs/:id · POST /admin/clubs/:id/active   one club: batches, edit, (de)activate
  *   POST /admin/clubs/:id/stage · /meeting    the club pipeline: move a lead along, set its meeting date (SCRUM-93)
+ *   POST /admin/clubs/:id/agreement/send · /accept   send the club agreement; record the "I agree" reply (SCRUM-94)
  *   POST /admin/clubs/:id/batches             record a batch collected
  *   GET  /admin/batches?all=1                 open (or all) batches
  *   GET  /admin/batches/:ref · POST …/return · POST …/cancel · POST …/notes   one batch: return and invoice, cancel, notes
@@ -54,6 +55,8 @@ import { adminGuard, type AdminIdentity } from './guard.js';
 import { detailPage, filterStatuses, listPage, notFoundPage, parseFilter, type Flash, type PageContext } from './pages.js';
 import { ADMIN_CSS } from './style.js';
 import { batchesPage, batchPage, clubPage, clubsPage } from './club-pages.js';
+import { liveAgreement } from '../clubs/agreement-versions.js';
+import { agreementsOfClub, recordAcceptance, sendAgreement } from '../clubs/agreements.js';
 import { moveClub, setMeetingDate } from '../clubs/leads.js';
 import { flaggedCardPayments, paymentsOfInvoice, recordClubPayment } from '../clubs/payments.js';
 import {
@@ -114,6 +117,9 @@ const DONE: Record<string, string> = {
   club_created: 'Club added.',
   club_saved: 'Club details saved.',
   stage_moved: 'Moved along the pipeline.',
+  agreement_sent: 'The agreement is queued: its email goes out within a minute.',
+  agreement_accepted: 'Acceptance recorded.',
+  agreement_accepted_active: 'Acceptance recorded: the club is now Active.',
   meeting_saved: 'Meeting date saved.',
   club_inactive: 'The club is now inactive.',
   club_active: 'The club is active again.',
@@ -471,7 +477,7 @@ export function createAdminApp(deps: AdminDeps) {
     notes: field(body, 'notes') ?? null,
   });
   const clubPageFor = async (c: Context<Env>, club: Club, flash?: Flash, status: 200 | 400 = 200, form?: Partial<Club>) =>
-    c.html(clubPage(ctx(c), club, await listBatches(deps.db, { clubId: club.id }), sydneyDate(now()), flash, form, await clubCrmSync(deps.db, club.id)), status);
+    c.html(clubPage(ctx(c), club, await listBatches(deps.db, { clubId: club.id }), sydneyDate(now()), flash, form, await clubCrmSync(deps.db, club.id), await agreementsOfClub(deps.db, club.id), liveAgreement(deps.isProduction)), status);
   const seller = deps.seller ?? DEFAULT_SELLER;
 
   app.get('/admin/clubs', async (c) => c.html(clubsPage(ctx(c), await listClubs(deps.db), flashOf(c))));
@@ -533,6 +539,34 @@ export function createAdminApp(deps: AdminDeps) {
     try {
       await setMeetingDate(deps.db, club.id, field(await c.req.parseBody(), 'meetingOn') ?? '', now());
       return c.redirect(`/admin/clubs/${club.id}?done=meeting_saved`, 303);
+    } catch (err) {
+      if (!(err instanceof ClubError)) throw err;
+      return clubPageFor(c, club, { kind: 'error', text: err.message }, 400);
+    }
+  });
+  // SCRUM-94: send the agreement, and record the "I agree" reply.
+  app.post('/admin/clubs/:id/agreement/send', async (c) => {
+    const club = await findClub(deps.db, c.req.param('id'));
+    if (!club) return c.html(notFoundPage(ctx(c), 'No such club.'), 404);
+    try {
+      const sent = await sendAgreement(deps.db, { clubId: club.id, isProduction: deps.isProduction, now: now() });
+      log('admin_agreement_sent', { club: club.id, version: sent.label, resent: sent.resent });
+      return c.redirect(`/admin/clubs/${club.id}?done=agreement_sent`, 303);
+    } catch (err) {
+      if (!(err instanceof ClubError)) throw err;
+      return clubPageFor(c, club, { kind: 'error', text: err.message }, 400);
+    }
+  });
+  app.post('/admin/clubs/:id/agreement/accept', async (c) => {
+    const club = await findClub(deps.db, c.req.param('id'));
+    if (!club) return c.html(notFoundPage(ctx(c), 'No such club.'), 404);
+    const body = await c.req.parseBody();
+    try {
+      const r = await recordAcceptance(deps.db, {
+        clubId: club.id, version: field(body, 'version') ?? '', acceptedOn: field(body, 'acceptedOn') ?? '', acceptedBy: field(body, 'acceptedBy') ?? '', note: field(body, 'note') ?? '', now: now(),
+      });
+      log('admin_agreement_accepted', { club: club.id, active: r.becameActive });
+      return c.redirect(`/admin/clubs/${club.id}?done=${r.becameActive ? 'agreement_accepted_active' : 'agreement_accepted'}`, 303);
     } catch (err) {
       if (!(err instanceof ClubError)) throw err;
       return clubPageFor(c, club, { kind: 'error', text: err.message }, 400);

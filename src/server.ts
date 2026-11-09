@@ -8,6 +8,8 @@ import type { CrmDeps } from './crm/sync.js';
 import { linksMailer, type OutboxDeps } from './email/outbox.js';
 import { resendSender } from './email/sender.js';
 import { placeholdersIn } from './email/templates.js';
+import { agreementProblems } from './clubs/agreement-versions.js';
+import { editedAfterSending } from './clubs/agreements.js';
 import { startJobs } from './jobs.js';
 import { log, logError } from './log.js';
 import { createAdminApp } from './admin/app.js';
@@ -48,6 +50,12 @@ if (config.APP_ENV === 'production') {
     console.error(`picklemypaddle-integrations will not start.\n  - email templates still need wording: ${[...new Set(left.map((p) => p.template))].join(', ')}`);
     process.exit(78);
   }
+  // SCRUM-94: nor while the live (approved) club agreement still has a [To confirm: …].
+  const agreementLeft = agreementProblems();
+  if (agreementLeft.length > 0) {
+    console.error(`picklemypaddle-integrations will not start.\n  - ${agreementLeft.join('\n  - ')}`);
+    process.exit(78);
+  }
 }
 
 const db = createPgDb(config.DATABASE_URL);
@@ -62,6 +70,13 @@ try {
   process.exit(1);
 }
 log('database_ready', { migration: version });
+// SCRUM-94: a club agreement version is never edited once it has been sent. Production refuses to
+// run with one that was; elsewhere it's logged (a draft being tried on staging can be edited by mistake).
+const editedAgreements = await editedAfterSending(db);
+if (editedAgreements.length > 0) {
+  logError('agreement_edited_after_sending', new Error(`club agreement ${editedAgreements.join(', ')} was edited after it was sent`));
+  if (config.APP_ENV === 'production') process.exit(1);
+}
 
 const photos = fsPhotoStore(config.PHOTO_DIR);
 const outbox: OutboxDeps = {

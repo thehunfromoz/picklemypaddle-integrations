@@ -365,6 +365,135 @@ http://home-server:8088
 }
 `;
 
+exports[`email templates > club_agreement (production) renders the same text and HTML as approved 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="en-AU"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><title>Club agreement 0.1 for Inner West Pickleball Club: please reply “I agree”</title></head>
+<body style="margin:0;padding:0;background:#FBFAF6;font-family:'Work Sans',Arial,Helvetica,sans-serif">
+<table role="presentation" width="100%" style="background:#FBFAF6;border-collapse:collapse"><tr><td style="padding:24px 12px">
+<table role="presentation" width="100%" style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;border-collapse:separate">
+<tr><td style="padding:20px 24px;border-bottom:4px solid #78A472"><span style="font-family:Sora,Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#4565A6">Pickle<span style="color:#3F6B3E">My</span>Paddle</span></td></tr>
+<tr><td style="padding:24px">
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Hi Jo,</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Here is our club agreement (version 0.1, dated Wednesday 4 November 2026) for Inner West Pickleball Club, in full below. Please read it. If the club agrees, reply to this email with the words “I agree”. If not, reply and tell us which part.</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Nothing in it applies until the club has accepted it.</p>
+<p style="margin:8px 0 24px"><a href="https://www.picklemypaddle.com/club/agreement#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT" style="display:inline-block;background:#4565A6;color:#ffffff;text-decoration:none;font-weight:600;font-size:16px;padding:12px 20px;border-radius:8px">View or print the agreement</a></p>
+<p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">This link is private to your club: please keep it within your committee.</p>
+<h2 style="margin:24px 0 8px;font-size:17px;color:#1E2E52">Club partner agreement</h2>
+<h2 style="margin:24px 0 8px;font-size:17px;color:#1E2E52">1. Who this agreement is between</h2>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">1.1 This agreement is between us and the club named in the Schedule.</p>
+<ul style="margin:0 0 16px;padding-left:20px;color:#1E2E52"><li style="margin:0 0 4px;font-size:16px;line-height:1.5">a first point;</li><li style="margin:0 0 4px;font-size:16px;line-height:1.5">a second point.</li></ul>
+<h2 style="margin:24px 0 8px;font-size:17px;color:#1E2E52">Schedule: the club’s details</h2>
+<table role="presentation" style="margin:0 0 16px;border-collapse:collapse"><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Club name</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">Inner West Pickleball Club</td></tr><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Usual way of paying</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">PayID, card or cash</td></tr></table>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Thanks for working with us,<br>Attila, PickleMyPaddle</p>
+<p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.<br>https://www.picklemypaddle.com<br>Questions? Just reply to this email.<br>You’re getting this as the contact for Inner West Pickleball Club.</p>
+</td></tr></table>
+</td></tr></table>
+</body></html>
+",
+  "subject": "Club agreement 0.1 for Inner West Pickleball Club: please reply “I agree”",
+  "text": "Hi Jo,
+
+Here is our club agreement (version 0.1, dated Wednesday 4 November 2026) for Inner West Pickleball Club, in full below. Please read it. If the club agrees, reply to this email with the words “I agree”. If not, reply and tell us which part.
+
+Nothing in it applies until the club has accepted it.
+
+View or print the agreement:
+https://www.picklemypaddle.com/club/agreement#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT
+
+This link is private to your club: please keep it within your committee.
+
+CLUB PARTNER AGREEMENT
+
+1. WHO THIS AGREEMENT IS BETWEEN
+
+1.1 This agreement is between us and the club named in the Schedule.
+
+  - a first point;
+  - a second point.
+
+SCHEDULE: THE CLUB’S DETAILS
+
+  Club name: Inner West Pickleball Club
+  Usual way of paying: PayID, card or cash
+
+Thanks for working with us,
+Attila, PickleMyPaddle
+
+PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.
+https://www.picklemypaddle.com
+Questions? Just reply to this email.
+You’re getting this as the contact for Inner West Pickleball Club.
+",
+}
+`;
+
+exports[`email templates > club_agreement (staging) renders the same text and HTML as approved 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="en-AU"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><title>[TEST] Club agreement 0.1 for Inner West Pickleball Club: please reply “I agree”</title></head>
+<body style="margin:0;padding:0;background:#FBFAF6;font-family:'Work Sans',Arial,Helvetica,sans-serif">
+<table role="presentation" width="100%" style="background:#FBFAF6;border-collapse:collapse"><tr><td style="padding:24px 12px">
+<table role="presentation" width="100%" style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;border-collapse:separate">
+<tr><td style="padding:20px 24px;border-bottom:4px solid #78A472"><span style="font-family:Sora,Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#4565A6">Pickle<span style="color:#3F6B3E">My</span>Paddle</span></td></tr>
+<tr><td style="padding:24px">
+<blockquote style="margin:0 0 16px;padding:8px 16px;border-left:4px solid #78A472;color:#1E2E52;font-size:16px;line-height:1.5">TEST AGREEMENT: this email comes from the PickleMyPaddle staging site. It is not a real agreement, and nothing needs replying to.</blockquote>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Hi Jo,</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Here is our club agreement (version 0.1, dated Wednesday 4 November 2026) for Inner West Pickleball Club, in full below. Please read it. If the club agrees, reply to this email with the words “I agree”. If not, reply and tell us which part.</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Nothing in it applies until the club has accepted it.</p>
+<p style="margin:8px 0 24px"><a href="http://home-server:8088/club/agreement#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT" style="display:inline-block;background:#4565A6;color:#ffffff;text-decoration:none;font-weight:600;font-size:16px;padding:12px 20px;border-radius:8px">View or print the agreement</a></p>
+<p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">This link is private to your club: please keep it within your committee.</p>
+<h2 style="margin:24px 0 8px;font-size:17px;color:#1E2E52">Club partner agreement</h2>
+<h2 style="margin:24px 0 8px;font-size:17px;color:#1E2E52">1. Who this agreement is between</h2>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">1.1 This agreement is between us and the club named in the Schedule.</p>
+<ul style="margin:0 0 16px;padding-left:20px;color:#1E2E52"><li style="margin:0 0 4px;font-size:16px;line-height:1.5">a first point;</li><li style="margin:0 0 4px;font-size:16px;line-height:1.5">a second point.</li></ul>
+<h2 style="margin:24px 0 8px;font-size:17px;color:#1E2E52">Schedule: the club’s details</h2>
+<table role="presentation" style="margin:0 0 16px;border-collapse:collapse"><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Club name</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">Inner West Pickleball Club</td></tr><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Usual way of paying</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">PayID, card or cash</td></tr></table>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Thanks for working with us,<br>Attila, PickleMyPaddle</p>
+<p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.<br>http://home-server:8088<br>Questions? Just reply to this email.<br>You’re getting this as the contact for Inner West Pickleball Club.</p>
+</td></tr></table>
+</td></tr></table>
+</body></html>
+",
+  "subject": "[TEST] Club agreement 0.1 for Inner West Pickleball Club: please reply “I agree”",
+  "text": "  > TEST AGREEMENT: this email comes from the PickleMyPaddle staging site. It is not a real agreement, and nothing needs replying to.
+
+Hi Jo,
+
+Here is our club agreement (version 0.1, dated Wednesday 4 November 2026) for Inner West Pickleball Club, in full below. Please read it. If the club agrees, reply to this email with the words “I agree”. If not, reply and tell us which part.
+
+Nothing in it applies until the club has accepted it.
+
+View or print the agreement:
+http://home-server:8088/club/agreement#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT
+
+This link is private to your club: please keep it within your committee.
+
+CLUB PARTNER AGREEMENT
+
+1. WHO THIS AGREEMENT IS BETWEEN
+
+1.1 This agreement is between us and the club named in the Schedule.
+
+  - a first point;
+  - a second point.
+
+SCHEDULE: THE CLUB’S DETAILS
+
+  Club name: Inner West Pickleball Club
+  Usual way of paying: PayID, card or cash
+
+Thanks for working with us,
+Attila, PickleMyPaddle
+
+PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.
+http://home-server:8088
+Questions? Just reply to this email.
+You’re getting this as the contact for Inner West Pickleball Club.
+",
+}
+`;
+
 exports[`email templates > club_invoice (production) renders the same text and HTML as approved 1`] = `
 {
   "html": "<!doctype html>

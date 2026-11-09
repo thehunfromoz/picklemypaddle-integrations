@@ -118,7 +118,7 @@ export function createApp(config: Config, deps: AppDeps) {
   );
 
   // SCRUM-85: club invoices' private pages.
-  app.route('/api/clubs', clubRoutes({ db: deps.db, keys: deps.keys, trusted: deps.trusted, now: deps.now, peer: deps.peer, payments: deps.payments ?? null, siteOrigins: config.PUBLIC_SITE_ORIGIN,
+  app.route('/api/clubs', clubRoutes({ db: deps.db, keys: deps.keys, trusted: deps.trusted, isProduction: config.APP_ENV === 'production', now: deps.now, peer: deps.peer, payments: deps.payments ?? null, siteOrigins: config.PUBLIC_SITE_ORIGIN,
     lead: { isProduction: config.APP_ENV === 'production', emailAllowList: config.EMAIL_ALLOWLIST ?? [], perIpHour: config.ORDER_LIMIT_PER_IP_HOUR, perEmailDay: config.ORDER_LIMIT_PER_EMAIL_DAY, minFillSeconds: config.ORDER_MIN_FILL_SECONDS } }));
 
   // SCRUM-82: Stripe's webhook exists only in production (Stripe can't reach staging): 404 elsewhere.

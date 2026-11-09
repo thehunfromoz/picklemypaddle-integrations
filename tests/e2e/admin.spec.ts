@@ -231,3 +231,24 @@ test('a club lead: the enquiry, a meeting date and the pipeline', async ({ page 
   await page.getByRole('button', { name: 'Move to Agreement sent' }).click();
   await expect(page.locator('h1 .badge:not(.test)')).toHaveText('Agreement sent');
 });
+
+test('the club agreement: send it, then record the “I agree” reply and the club becomes Active', async ({ page }, testInfo) => {
+  const name = `E2E Agree ${testInfo.project.name}`;
+  await page.goto('/admin/clubs');
+  await page.getByRole('link', { name: new RegExp(name) }).click();
+  await expect(page.locator('h1 .badge:not(.test)')).toHaveText('Meeting arranged');
+  await expect(page.getByText('Not sent yet.')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Send agreement 0.1' }).click();
+  await expect(page.getByRole('status')).toHaveText('The agreement is queued: its email goes out within a minute.');
+  await expect(page.locator('h1 .badge:not(.test)')).toHaveText('Agreement sent');
+  await expect(page.getByText('Waiting for “I agree”')).toBeVisible();
+
+  await summary(page, 'Record an “I agree” reply').click();
+  await page.getByLabel('Who replied').fill('Jo Treasurer');
+  await page.getByLabel(/Note \(optional, only you see it\)/).fill('Replied by email');
+  await page.getByRole('button', { name: 'Record acceptance' }).click();
+  await expect(page.getByRole('status')).toHaveText('Acceptance recorded: the club is now Active.');
+  await expect(page.locator('h1 .badge:not(.test)')).toHaveText('Active');
+  await expect(page.getByRole('cell', { name: /Jo Treasurer/ })).toBeVisible();
+});

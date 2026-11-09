@@ -515,6 +515,28 @@ members' details, so only the club's name and billing details are held here.
   after its last activity, with its HubSpot company and contact (`runLeadRetention`, in the daily job
   and `retention-run`).
 
+## The club agreement (SCRUM-94, decided 4 Nov 2026)
+
+- **Versions** are numbered, dated texts in the repo (`src/clubs/agreements/`, registered in
+  `agreement-versions.ts`). v0.1 is Claude's draft for Attila's approval: `approvedOn` stays null until
+  he approves that exact text. **The live version** is the newest approved one; outside production the
+  newest is live even if a draft, so staging can try it (every email says TEST). Production only sends an
+  approved version and **refuses to start while the live version still has a `[To confirm: …]`**.
+- **A version is never edited once sent.** A hash of the text is kept at its first send
+  (`club_agreements.sha256`); a changed text with the same number is refused at send time, the database
+  freezes a sent row (only the acceptance is filled in, once), and production refuses to start if a sent
+  version was edited. A change is a new file and a new number.
+- **Send** (club page in admin): to the club's contact (the enquiry's contact, else the billing contact),
+  from sales@ with Reply-To attila@. The email has the full text, the Schedule (filled in from the club's
+  record) and a private link to a printable page (`/club/agreement#token`, `POST /api/clubs/agreement`,
+  like invoices: browser print, no PDF engine). A club at Meeting arranged moves to Agreement sent; a
+  newer version can also go to an Active club, whose accepted version stays on record until it accepts the new one.
+- **Record the reply** by hand (replies are read in Gmail; nothing is parsed): version, date of the reply,
+  who replied and a note. The club becomes Active (it needs its billing details first).
+- **Pickups** (SCRUM-96) call `requireAcceptedAgreement(db, clubId)`: a club that hasn't accepted a
+  version can't request one.
+- v0.1 says payment is in full for each invoice (no part payments, decided 7 Nov 2026).
+
 ## Database (SCRUM-64)
 
 PostgreSQL 18, one server per app, never shared. `DATABASE_URL` is required and secret. Versioned
