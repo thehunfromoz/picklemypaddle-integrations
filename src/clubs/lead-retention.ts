@@ -45,16 +45,22 @@ export async function staleLeads(db: Db, now: Date): Promise<StaleLead[]> {
   return rows;
 }
 
-/** The contact is deleted unless a customer with that address still has an order (the contact is shared). */
-async function contactStillNeeded(db: Db, email: string | null): Promise<boolean> {
-  if (!email) return false;
-  const lower = email.trim().toLowerCase();
+/** The contact is deleted unless an order, or another club, still uses it (a HubSpot contact is one per address, shared). */
+async function contactStillNeeded(db: Db, lead: StaleLead): Promise<boolean> {
+  const lower = (lead.contact_email ?? '').trim().toLowerCase();
   const plain = lower.replace(/\+[^@]*@/, '@');
-  const { rows } = await db.query<{ n: number | string }>(
+  const { rows: orders } = await db.query<{ n: number | string }>(
     'SELECT count(*) AS n FROM orders WHERE email_norm IN ($1, $2) AND NOT is_smoke AND erased_at IS NULL',
     [lower, plain],
   );
-  return Number(rows[0]?.n ?? 0) > 0;
+  if (Number(orders[0]?.n ?? 0) > 0) return true;
+  // Another club may share this contact (the same person writing for two clubs, or a customer's billing contact).
+  const { rows: clubs } = await db.query<{ n: number | string }>(
+    `SELECT count(*) AS n FROM clubs
+      WHERE id <> $1::uuid AND (crm_contact_id = $2 OR lower(billing_email) IN ($3, $4) OR lower(contact_email) IN ($3, $4))`,
+    [lead.id, lead.crm_contact_id, lower, plain],
+  );
+  return Number(clubs[0]?.n ?? 0) > 0;
 }
 
 export async function runLeadRetention(deps: LeadRetentionDeps, now: Date): Promise<{ leads: number; waiting: number }> {
@@ -65,7 +71,7 @@ export async function runLeadRetention(deps: LeadRetentionDeps, now: Date): Prom
       if (crm?.adapter && (lead.crm_company_id || lead.crm_contact_id)) {
         if ((await checkPortal(crm)) === 'mismatch') throw new Error('crm_portal_mismatch');
         if (lead.crm_company_id) await crm.adapter.deleteCompany?.(lead.crm_company_id);
-        if (lead.crm_contact_id && !(await contactStillNeeded(deps.db, lead.contact_email))) await crm.adapter.deleteContact(lead.crm_contact_id);
+        if (lead.crm_contact_id && !(await contactStillNeeded(deps.db, lead))) await crm.adapter.deleteContact(lead.crm_contact_id);
       }
       await deps.db.query('DELETE FROM clubs WHERE id = $1', [lead.id]);
       out.leads++;

@@ -187,6 +187,12 @@ export interface CrmClubContact {
   email: string;
   firstName: string;
   lastName: string;
+  /**
+   * SCRUM-93: a lead's contact is whoever filled in the public form, so anyone could type another
+   * person's address. An existing HubSpot contact is then left as it is (only a new one gets the
+   * name); billing contacts, entered by Attila, always set it.
+   */
+  fromPublicForm?: boolean;
 }
 
 /** A batch as a deal: amount = the invoice total (an estimate at the club price before), stage = batch status. */
@@ -254,7 +260,7 @@ export function mapClub(c: ClubForCrm, opts: ClubMapOptions = {}): { company: Cr
   if (!contactEmail) throw new Error('a club needs a billing or contact email to be mirrored');
   return {
     company: { clubId: c.id, name: tag(c.name), isTest: c.is_test, stage: STATUS_LABELS[c.status] },
-    contact: { email: contactEmail.trim().toLowerCase(), ...splitName(c.billing_name ?? c.contact_name ?? c.name) },
+    contact: { email: contactEmail.trim().toLowerCase(), ...splitName(c.billing_name ?? c.contact_name ?? c.name), ...(c.billing_email ? {} : { fromPublicForm: true }) },
     deals: c.batches.map((b) => ({
       reference: b.reference,
       name: tag(`${b.reference} (${c.name})`),

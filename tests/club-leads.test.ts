@@ -101,6 +101,9 @@ describe('POST /api/clubs/lead', () => {
     const ack = sent.find((m) => m.subject.includes('Thanks for getting in touch'))!;
     expect(ack.subject).toMatch(/^\[TEST\] /);
     expect(ack.replyTo).toBe('attila@picklemypaddle.com');
+    // Nothing the submitter typed but their first name: anyone can enter someone else's address.
+    expect(ack.subject).toBe('[TEST] Thanks for getting in touch about your club');
+    expect(ack.text).not.toContain('Inner West');
     expect(ack.text).toContain('within 1 business day');
     expect(ack.text).toContain('Hi Jo');
     const alert = sent.find((m) => m.subject.includes('Club enquiry'))!;
@@ -164,6 +167,11 @@ describe('POST /api/clubs/lead', () => {
     expect(mails.map((m) => m.template)).toEqual(['club_lead_ack', 'alert_club_lead', 'alert_club_lead']);
     const dup = typeof mails[2]!.payload === 'string' ? JSON.parse(mails[2]!.payload) : mails[2]!.payload;
     expect(dup.duplicate).toBe(true);
+    // A repeat enquiry is not activity: anyone can type a club's name, so it can't keep a lead from deletion.
+    await t.db.query(`UPDATE clubs SET last_activity_at = '2025-01-01T00:00:00Z'`);
+    t.clock.now = new Date('2026-11-09T01:00:00Z');
+    expect((await send({ contactEmail: 'attila+club3@test.picklemypaddle.com' })).status).toBe(201);
+    expect(Number((await t.db.query<{ n: number }>(`SELECT count(*)::int AS n FROM clubs WHERE last_activity_at < '2026-01-01'`)).rows[0]!.n)).toBe(1);
   });
 });
 
@@ -219,7 +227,7 @@ describe('clubs in the CRM', () => {
   it('a lead is a company at its stage with its contact (no billing details yet)', () => {
     const m = mapClub({ id: 'c1', name: 'Inner West PC', status: 'lead', is_test: true, billing_name: null, billing_email: null, contact_name: 'Jo Treasurer', contact_email: 'Jo@Example.com', crm_company_id: null, crm_contact_id: null, batches: [] });
     expect(m.company).toEqual({ clubId: 'c1', name: '[TEST] Inner West PC', isTest: true, stage: 'Lead' });
-    expect(m.contact).toEqual({ email: 'jo@example.com', firstName: 'Jo', lastName: 'Treasurer' });
+    expect(m.contact).toEqual({ email: 'jo@example.com', firstName: 'Jo', lastName: 'Treasurer', fromPublicForm: true });
   });
 });
 
@@ -311,6 +319,32 @@ describe('a lead in HubSpot, and deleted after 12 months with no activity', () =
     expect(await findClub(t.db, customer.id)).not.toBeNull();
     expect(await findClub(t.db, lead)).toBeNull();
     expect(await findClub(t.db, touched)).not.toBeNull();
+  });
+
+  it('keeps a HubSpot contact another club or an order still uses, and deletes only the lead’s own company', async () => {
+    const { hs, deps } = await withHubSpot();
+    const lead = await newLead('Lead Club', 'attila+shared@test.picklemypaddle.com');
+    // The same person is also the billing contact of a customer club.
+    await createClub(t.db, { name: 'Customer PC', billingName: 'Jo', billingEmail: 'attila+shared@test.picklemypaddle.com', billingAddress: '1 Court St', abn: null, notes: null }, { isProduction: false, now: t.clock.now });
+    await processCrm(deps);
+    expect(hs.contacts.size).toBe(1); // one HubSpot contact for the one address
+    await backdate(lead, '2025-01-01T00:00:00Z');
+    expect(await runLeadRetention({ db: t.db, crm: deps }, t.clock.now)).toEqual({ leads: 1, waiting: 0 });
+    expect(hs.contacts.size).toBe(1);
+    expect(hs.companies.size).toBe(1); // the customer's
+  });
+
+  it('a name typed into the public form never overwrites a HubSpot contact that already exists', async () => {
+    const { hs, deps } = await withHubSpot();
+    // A customer's billing contact is already in HubSpot under their own name.
+    await createClub(t.db, { name: 'Customer PC', billingName: 'Real Treasurer', billingEmail: 'attila+shared@test.picklemypaddle.com', billingAddress: '1 Court St', abn: null, notes: null }, { isProduction: false, now: t.clock.now });
+    await processCrm(deps);
+    // Someone else types that address and a different name into the lead form.
+    await newLead('Other Club', 'attila+shared@test.picklemypaddle.com');
+    await processCrm(deps);
+    const contact = hs.contacts.get('attila+shared@test.picklemypaddle.com')!;
+    expect(contact.properties).toMatchObject({ firstname: 'Real', lastname: 'Treasurer' });
+    expect(hs.companies.size).toBe(2);
   });
 
   it('waits when HubSpot can’t be reached, so nothing is left behind there, then deletes next time', async () => {

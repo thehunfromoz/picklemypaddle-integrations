@@ -101,10 +101,9 @@ export async function createLead(
     const { rows } = await db.query<{ id: string }>('SELECT id FROM clubs WHERE lower(name) = lower($1)', [input.clubName]);
     const id = rows[0]?.id;
     if (!id) throw err;
-    await db.tx(async (q) => {
-      await enqueueClubEmail(q, id, 'alert_club_lead', opts.now, { duplicate: true });
-      await q.query('UPDATE clubs SET last_activity_at = $2 WHERE id = $1', [id, opts.now]);
-    });
+    // No last_activity_at bump: anyone can type a club's name, so a repeat enquiry must not keep a
+    // lead from its 12-month deletion. Attila acting on it (any move or edit) does.
+    await enqueueClubEmail(db, id, 'alert_club_lead', opts.now, { duplicate: true });
     return { clubId: id, created: false };
   }
 }

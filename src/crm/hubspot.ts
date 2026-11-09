@@ -251,6 +251,15 @@ export function hubspotAdapter(client: HubSpotClient): CrmAdapter & { stageIds(s
 
   // ── SCRUM-85: clubs ──
   async function upsertClubContact(c: CrmClubContact): Promise<string> {
+    if (c.fromPublicForm) {
+      // A name typed into the public form never overwrites one that's already in HubSpot.
+      const existing = await client.request<{ results: { id: string }[] }>('POST', '/crm/v3/objects/contacts/search', {
+        filterGroups: [{ filters: [{ propertyName: 'email', operator: 'EQ', value: c.email }] }],
+        properties: ['email'],
+        limit: 1,
+      });
+      if (existing.results?.[0]?.id) return existing.results[0].id;
+    }
     // Name and email only: a billing contact who is also a customer keeps their other details.
     const r = await client.request<{ results: { id: string }[] }>('POST', '/crm/v3/objects/contacts/batch/upsert', {
       inputs: [{ idProperty: 'email', id: c.email, properties: { email: c.email, firstname: c.firstName, lastname: c.lastName } }],

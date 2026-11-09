@@ -398,13 +398,13 @@ function build(name: TemplateName, ctx: TemplateContext): { subject: string; blo
 
     case 'club_lead_ack': {
       // SCRUM-93: the acknowledgement to whoever filled in the Clubs page form.
-      const club = need(ctx, 'club', name);
-      return {
+            return {
         customer: true,
-        subject: `Thanks for getting in touch about ${club.name}`,
+        // Nothing but the first name is the submitter's own text: anyone can type someone else's address.
+        subject: 'Thanks for getting in touch about your club',
         blocks: [
           { p: `Hi ${need(ctx, 'firstName', name)},` },
-          { p: `Thanks for telling us about ${club.name}. We’ll reply within 1 business day with a few times for a short chat about re-gripping your members’ paddles.` },
+          { p: `Thanks for telling us about your club. We’ll reply within 1 business day with a few times for a short chat about re-gripping your members’ paddles.` },
           { p: 'If there’s anything you forgot to say, just reply to this email.' },
           { p: 'Talk soon,\nAttila, PickleMyPaddle' },
         ],
