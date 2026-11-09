@@ -194,16 +194,33 @@ describe('the pipeline', () => {
     expect((await findClub(t.db, id))!.status).toBe('agreement_sent');
   });
 
-  it('Active needs the billing details, and the database insists too', async () => {
+  it('Active needs the billing details and an accepted agreement (recording the reply is how a club becomes Active); the database insists on billing too', async () => {
     const id = await lead();
     await moveClub(t.db, id, 'meeting', t.clock.now);
     await moveClub(t.db, id, 'agreement_sent', t.clock.now);
+    // Not by a move: acceptance is the way in.
+    await expect(moveClub(t.db, id, 'active', t.clock.now)).rejects.toMatchObject({ code: 'bad_move' });
+    await moveClub(t.db, id, 'inactive', t.clock.now);
     await expect(moveClub(t.db, id, 'active', t.clock.now)).rejects.toMatchObject({ code: 'billing_needed' });
-    await expect(t.db.query(`UPDATE clubs SET status = 'active' WHERE id = $1`, [id])).rejects.toThrow(/clubs_billing_when_active/);
     await t.db.query(`UPDATE clubs SET billing_name = 'Jo', billing_email = 'jo@test.picklemypaddle.com', billing_address = '1 Court St' WHERE id = $1`, [id]);
-    expect(await moveClub(t.db, id, 'active', t.clock.now)).toEqual({ from: 'agreement_sent', to: 'active' });
-    // An Active club can be given batches as before.
+    await expect(moveClub(t.db, id, 'active', t.clock.now)).rejects.toMatchObject({ code: 'agreement_needed' });
+    expect(await setClubActive(t.db, id, true, t.clock.now)).toBe(false);
+    expect((await findClub(t.db, id))!.status).toBe('inactive');
+    await t.db.query(`UPDATE clubs SET billing_name = NULL WHERE id = $1`, [id]);
+    await expect(t.db.query(`UPDATE clubs SET status = 'active' WHERE id = $1`, [id])).rejects.toThrow(/clubs_billing_when_active/);
+  });
+
+  it('a club made in admin (no enquiry) is a customer already: it can be made inactive and active again; one with batches too', async () => {
+    t = await makeApp();
+    const c = await createClub(t.db, { name: 'Old PC', billingName: 'Jo', billingEmail: 'jo@test.picklemypaddle.com', billingAddress: '1 Court St', abn: null, notes: null }, { isProduction: false, now: t.clock.now });
+    expect(await setClubActive(t.db, c.id, false, t.clock.now)).toBe(true);
+    expect(await moveClub(t.db, c.id, 'active', t.clock.now)).toEqual({ from: 'inactive', to: 'active' });
+    // A club that came in through the form, with batches (an earlier customer), may be reactivated too.
+    const id = await lead();
+    await t.db.query(`UPDATE clubs SET billing_name = 'Jo', billing_email = 'jo@test.picklemypaddle.com', billing_address = '1 Court St', status = 'active' WHERE id = $1`, [id]);
     await createBatch(t.db, { clubId: id, collectedOn: '2026-10-25', paddleCount: 3, notes: null, now: t.clock.now });
+    expect(await setClubActive(t.db, id, false, t.clock.now)).toBe(true);
+    expect(await setClubActive(t.db, id, true, t.clock.now)).toBe(true);
   });
 
   it('a lead that isn’t going ahead can be closed without billing details, and reopened; it can’t be made Active without them', async () => {

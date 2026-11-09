@@ -31,6 +31,7 @@ export const TEMPLATES = [
   'club_invoice',
   'club_lead_ack',
   'alert_club_lead',
+  'club_agreement',
 ] as const;
 export type TemplateName = (typeof TEMPLATES)[number];
 
@@ -94,6 +95,15 @@ export interface TemplateContext {
   club?: { name: string };
   /** SCRUM-93: an enquiry from the Clubs page's form (the club's contact, not its billing contact). */
   enquiry?: boolean;
+  /** SCRUM-94: the club agreement, with its text, the Schedule and the private printable page. */
+  agreement?: {
+    title: string;
+    label: string;
+    dated: string;
+    sections: { heading: string; blocks: ({ p: string } | { list: string[] })[] }[];
+    schedule: [string, string][];
+    url: string;
+  };
   /** SCRUM-93 alert: the club was already on file, so this is a second enquiry. */
   duplicate?: boolean;
   /** SCRUM-85: a club invoice, from its frozen snapshot, and its private page (view, print, pay by card). */
@@ -213,6 +223,7 @@ const paddleLine = (p: PaddleFacts) => (p.model ? `${p.brand} ${p.model}` : p.br
 const tournament = (n: number) =>
   `A reminder: re-gritted paddles aren’t allowed in sanctioned tournaments, so keep ${plural(n, 'this one', 'these')} for social and club play.`;
 const TEST_BANNER = 'TEST ORDER: this email comes from the PickleMyPaddle staging site. Nothing is charged or posted.';
+const AGREEMENT_TEST_BANNER = 'TEST AGREEMENT: this email comes from the PickleMyPaddle staging site. It is not a real agreement, and nothing needs replying to.';
 const ENQUIRY_TEST_BANNER = 'TEST ENQUIRY: this email comes from the PickleMyPaddle staging site. No real club has made an enquiry.';
 const CLUB_TEST_BANNER = 'TEST INVOICE: this email comes from the PickleMyPaddle staging site. Nothing is owed or charged.';
 
@@ -224,7 +235,8 @@ function need<K extends keyof TemplateContext>(ctx: TemplateContext, key: K, tem
 
 function footer(ctx: TemplateContext, forCustomer: boolean): Block[] {
   const lines = ['PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.', ctx.siteUrl];
-  if (forCustomer && ctx.enquiry) lines.push('Questions? Just reply to this email.', 'You’re getting this because you filled in the “Talk to us about your club” form on our Clubs page.');
+  if (forCustomer && ctx.agreement) lines.push('Questions? Just reply to this email.', `You’re getting this as the contact for ${ctx.club?.name ?? 'your club'}.`);
+  else if (forCustomer && ctx.enquiry) lines.push('Questions? Just reply to this email.', 'You’re getting this because you filled in the “Talk to us about your club” form on our Clubs page.');
   else if (forCustomer && ctx.club) lines.push('Questions? Just reply to this email.', `You’re getting this as the billing contact for ${ctx.club.name}.`);
   else if (forCustomer) lines.push('Questions? Just reply to this email.', 'You’re getting this because an order was placed with this email address.');
   return [{ small: lines.join('\n') }];
@@ -411,6 +423,32 @@ function build(name: TemplateName, ctx: TemplateContext): { subject: string; blo
       };
     }
 
+    case 'club_agreement': {
+      // SCRUM-94: the full text, so it can be read in the email; the page is for printing.
+      const a = need(ctx, 'agreement', name);
+      const club = need(ctx, 'club', name);
+      const sectionBlocks: Block[] = a.sections.flatMap((s) => [
+        { h: s.heading } as Block,
+        ...s.blocks.map((b): Block => ('p' in b ? { p: b.p } : { list: b.list })),
+      ]);
+      return {
+        customer: true,
+        subject: `Club agreement ${a.label} for ${club.name}: please reply “I agree”`,
+        blocks: [
+          { p: `Hi ${need(ctx, 'firstName', name)},` },
+          { p: `Here is our club agreement (version ${a.label}, dated ${longDate(a.dated)}) for ${club.name}, in full below. Please read it. If the club agrees, reply to this email with the words “I agree”. If not, reply and tell us which part.` },
+          { p: 'Nothing in it applies until the club has accepted it.' },
+          { button: { label: 'View or print the agreement', url: a.url } },
+          { small: 'This link is private to your club: please keep it within your committee.' },
+          { h: a.title },
+          ...sectionBlocks,
+          { h: 'Schedule: the club’s details' },
+          { kv: a.schedule },
+          { p: 'Thanks for working with us,\nAttila, PickleMyPaddle' },
+        ],
+      };
+    }
+
     case 'alert_club_lead': {
       // SCRUM-93: club name and the admin link only; the details are in admin.
       const club = need(ctx, 'club', name);
@@ -592,7 +630,7 @@ function build(name: TemplateName, ctx: TemplateContext): { subject: string; blo
 export function render(name: TemplateName, ctx: TemplateContext): RenderedEmail {
   const built = build(name, ctx);
   const subject = ctx.test ? `[TEST] ${built.subject}` : built.subject;
-  const blocks: Block[] = [...(ctx.test ? [{ quote: ctx.enquiry ? ENQUIRY_TEST_BANNER : ctx.club ? CLUB_TEST_BANNER : TEST_BANNER }] : []), ...built.blocks, ...footer(ctx, built.customer)];
+  const blocks: Block[] = [...(ctx.test ? [{ quote: ctx.agreement ? AGREEMENT_TEST_BANNER : ctx.enquiry ? ENQUIRY_TEST_BANNER : ctx.club ? CLUB_TEST_BANNER : TEST_BANNER }] : []), ...built.blocks, ...footer(ctx, built.customer)];
   return { subject, text: toText(blocks), html: toHtml(blocks, subject) };
 }
 
@@ -659,6 +697,21 @@ export function sampleContext(name: TemplateName, test: boolean): TemplateContex
           club: { name: 'Inner West Pickleball Club' },
           enquiry: true,
           adminUrl: 'https://pmp-prod.tail8bc7ae.ts.net/admin/clubs/00000000-0000-4000-8000-000000000001',
+        }
+      : {}),
+    ...(name === 'club_agreement'
+      ? {
+          reference: undefined,
+          firstName: 'Jo',
+          club: { name: 'Inner West Pickleball Club' },
+          agreement: {
+            title: 'Club partner agreement',
+            label: '0.1',
+            dated: '2026-11-04',
+            sections: [{ heading: '1. Who this agreement is between', blocks: [{ p: '1.1 This agreement is between us and the club named in the Schedule.' }, { list: ['a first point;', 'a second point.'] }] }],
+            schedule: [['Club name', 'Inner West Pickleball Club'], ['Usual way of paying', 'PayID, card or cash']] as [string, string][],
+            url: `${site}/club/agreement#${'T'.repeat(43)}`,
+          },
         }
       : {}),
     review: { quote: 'Feels brand new: the spin is back. Quick turnaround too.', firstName: 'Sam', suburb: 'Newtown', permission: true },

@@ -21,6 +21,7 @@ import type { LinksMailer } from '../orders/status.js';
 import { ALERT_TO, CLUB_REPLY_TO, SendError, type EmailSender } from './sender.js';
 import type { DocumentSnapshot } from '../documents/documents.js';
 import { render, type TemplateContext, type TemplateName } from './templates.js';
+import { versionByNumber } from '../clubs/agreement-versions.js';
 import type { DiscountKind } from '../orders/rules.js';
 
 export interface MailSettings {
@@ -80,6 +81,8 @@ export interface EmailPayload {
   refundFull?: boolean;
   /** Club enquiry alert (SCRUM-93): the club was already on file. */
   duplicate?: boolean;
+  /** Club agreement (SCRUM-94): the club_agreements row this email sends. */
+  agreementId?: string;
 }
 
 // ── Allow-list ────────────────────────────────────────────────────────────────
@@ -445,12 +448,38 @@ async function sendClubEmail(deps: OutboxDeps, row: OutboxRow, now: Date): Promi
     return 'failed';
   }
   const payload: EmailPayload = typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload;
+  let tokenId: string | null = null;
+  let agreement: TemplateContext['agreement'];
+  if (payload.agreementId) {
+    const { rows: ag } = await db.query<{ id: string; version: number; schedule: [string, string][] | string }>(
+      'SELECT id, version, schedule FROM club_agreements WHERE id = $1 AND club_id = $2',
+      [payload.agreementId, row.club_id],
+    );
+    const a = ag[0];
+    const v = a ? versionByNumber(Number(a.version)) : null;
+    if (!a || !v) {
+      await settle(db, row.id, { state: 'failed', error: 'agreement_missing' }, now);
+      return 'failed';
+    }
+    const token = newStatusToken();
+    const { rows: t } = await db.query<{ id: string }>(
+      'INSERT INTO club_agreement_tokens (agreement_id, token_hash, created_at) VALUES ($1, $2, $3) RETURNING id',
+      [a.id, hashToken(token), now],
+    );
+    tokenId = String(t[0]!.id);
+    agreement = {
+      title: v.title, label: v.label, dated: v.dated, sections: v.sections,
+      schedule: typeof a.schedule === 'string' ? (JSON.parse(a.schedule) as [string, string][]) : a.schedule,
+      url: `${settings.siteUrl}/club/agreement#${token}`,
+    };
+  }
   const ctx: TemplateContext = {
     test: !settings.isProduction,
     siteUrl: settings.siteUrl,
     firstName: firstName(club.contact_name ?? club.billing_name ?? club.name),
     club: { name: club.name },
-    enquiry: true,
+    enquiry: !agreement,
+    agreement,
     duplicate: payload.duplicate,
     adminUrl: settings.adminUrl ? `${settings.adminUrl}/admin/clubs/${row.club_id}` : null,
   };
@@ -463,6 +492,8 @@ async function sendClubEmail(deps: OutboxDeps, row: OutboxRow, now: Date): Promi
   } catch (err) {
     const code = err instanceof SendError ? err.code : `render:${(err as Error)?.name ?? 'error'}`;
     const permanent = err instanceof SendError ? err.permanent : true;
+    // As for invoices: delete the link's token only when the email certainly didn't go.
+    if (tokenId && permanent) await db.query('DELETE FROM club_agreement_tokens WHERE id = $1', [tokenId]).catch(() => undefined);
     if (permanent || row.attempts >= MAX_ATTEMPTS) {
       await settle(db, row.id, { state: 'failed', error: code }, now);
       logError('email_failed', err, { ...ref, code, attempt: row.attempts });

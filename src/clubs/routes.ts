@@ -3,6 +3,7 @@
  *
  *   POST /api/clubs/invoice { token, number } → a club invoice (with what's owing), for its printable page, or 404
  *   POST /api/clubs/pay     { token, number } → { url } of a fresh Stripe Checkout page for what's owing
+ *   POST /api/clubs/agreement { token }       → the club agreement as it was sent, for its printable page, or 404 (SCRUM-94)
  *   POST /api/clubs/paid    { sessionId }      → { paid, number } once back from Checkout
  *   GET  /api/clubs/lead/form                  → { open, formToken } when the "Talk to us" form loads (SCRUM-93)
  *   POST /api/clubs/lead    { …form fields }   → 201 { ok: true } and a lead in admin, or 400 { errors }
@@ -20,6 +21,7 @@ import { StripeError } from '../payments/stripe.js';
 import { invoiceBalance, invoiceForToken, paymentsOfInvoice, startClubPayment, METHOD_LABELS } from './payments.js';
 import { log } from '../log.js';
 import { checkFormToken, checkLimit, clientIp, hashKey, issueFormToken, recordEvent, type AbuseKeys, type Limit, type TrustedProxies } from '../orders/abuse.js';
+import { agreementForToken } from './agreements.js';
 import { createLead, MAX_LEAD_MESSAGE, validateLead, type LeadForm } from './leads.js';
 
 export interface ClubRouteDeps {
@@ -37,6 +39,8 @@ export interface ClubRouteDeps {
    * minimum fill time, per-address and per-email limits). Without it the routes aren't mounted.
    */
   lead?: { isProduction: boolean; emailAllowList: readonly string[]; perIpHour: number; perEmailDay: number; minFillSeconds: number };
+  /** Whether this is production (a test page banner otherwise). Defaults to production: the safe side. */
+  isProduction?: boolean;
   now?: () => Date;
   peer?: (c: Context) => string;
 }
@@ -87,6 +91,16 @@ export function clubRoutes(deps: ClubRouteDeps) {
     const balance = await invoiceBalance(deps.db, inv.id);
     const payments = (await paymentsOfInvoice(deps.db, inv.id)).map((p) => ({ method: METHOD_LABELS[p.method], amountCents: p.amountCents, paidOn: p.paidOn }));
     return c.json({ ...doc, balanceCents: balance.balanceCents, payments, canPayByCard: !!deps.payments && balance.balanceCents > 0 });
+  });
+
+  // SCRUM-94: the printable page of the agreement a club was emailed. A wrong, revoked or old link gets the same answer.
+  app.post('/agreement', small, async (c) => {
+    const at = now();
+    const over = await limited(c, at);
+    if (over) return over;
+    const body = (await c.req.json().catch(() => null)) as { token?: unknown } | null;
+    const view = await agreementForToken(deps.db, body?.token, at, { isProduction: deps.isProduction ?? true });
+    return view ? c.json(view) : c.json({ ...INVALID_LINK, message: 'This agreement link isn’t valid. Use the link in the latest agreement email, or reply to it and we’ll send a new one.' }, 404);
   });
 
   app.post('/pay', small, async (c) => {

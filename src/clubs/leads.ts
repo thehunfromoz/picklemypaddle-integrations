@@ -14,7 +14,7 @@ import type { Db, Queryable } from '../db/db.js';
 import { enqueueClubCrmSync } from '../crm/sync.js';
 import { enqueueClubEmail } from '../email/outbox.js';
 import { ISO_DATE_RE } from '../orders/dates.js';
-import { allowedHere, ClubError, type ClubStatus, type EmailGuard } from './clubs.js';
+import { allowedHere, ClubError, CUSTOMER_SQL, type ClubStatus, type EmailGuard } from './clubs.js';
 import { CLUB_STATUSES, STATUS_LABELS } from './model.js';
 
 export const MAX_LEAD_MESSAGE = 2000;
@@ -118,7 +118,8 @@ export async function createLead(
 export const MOVES: Readonly<Record<ClubStatus, readonly ClubStatus[]>> = {
   lead: ['meeting', 'inactive'],
   meeting: ['lead', 'agreement_sent', 'inactive'],
-  agreement_sent: ['meeting', 'active', 'inactive'],
+  // Active comes from recording the club's "I agree" reply (SCRUM-94), not from a move.
+  agreement_sent: ['meeting', 'inactive'],
   active: ['inactive'],
   inactive: ['lead', 'active'],
 };
@@ -138,6 +139,9 @@ export async function moveClub(db: Db, id: string, to: unknown, now: Date): Prom
     if (!MOVES[c.status].includes(to)) throw new ClubError('bad_move', `A club can’t go from ${STATUS_LABELS[c.status]} to ${STATUS_LABELS[to]}.`);
     if (to === 'active' && !(c.billing_name && c.billing_email && c.billing_address)) {
       throw new ClubError('billing_needed', 'Add the club’s billing details (Edit the club) before making it Active: invoices go there.');
+    }
+    if (to === 'active' && !(await q.query<{ ok: boolean }>(`SELECT ${CUSTOMER_SQL} AS ok FROM clubs WHERE id = $1::uuid`, [id])).rows[0]?.ok) {
+      throw new ClubError('agreement_needed', 'A club becomes Active when you record its “I agree” reply (Send agreement, on the club page).');
     }
     await q.query('UPDATE clubs SET status = $2, updated_at = $3, last_activity_at = $3 WHERE id = $1::uuid', [id, to, now]);
     await enqueueClubCrmSync(q, id, now);

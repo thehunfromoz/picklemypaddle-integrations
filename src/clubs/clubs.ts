@@ -229,13 +229,21 @@ export async function updateClub(db: Db, id: string, input: ClubInput, now: Date
   }
 }
 
+/**
+ * A club that may be Active: it has accepted an agreement (SCRUM-94), or it is a customer from
+ * before agreements (it was made in admin, so it has no enquiry contact, or it already had batches).
+ * A club that came in through the form becomes Active by recording its "I agree".
+ */
+export const CUSTOMER_SQL = `(clubs.contact_email IS NULL OR EXISTS (SELECT 1 FROM club_agreements a WHERE a.club_id = clubs.id AND a.accepted_on IS NOT NULL)
+  OR EXISTS (SELECT 1 FROM batches b WHERE b.club_id = clubs.id))`;
+
 /** Active or inactive (SCRUM-85 AC1). An inactive club keeps its batches; new ones can't be added. */
 export async function setClubActive(db: Queryable, id: string, active: boolean, now: Date): Promise<boolean> {
   // Reactivating needs the billing details (a lead that never had any can't become Active this way).
   const { rows } = await db.query(
     `UPDATE clubs SET status = $2, updated_at = $3, last_activity_at = $3
       WHERE id = $1 AND status IN ('active', 'inactive')
-        AND ($2 = 'inactive' OR (billing_name IS NOT NULL AND billing_email IS NOT NULL AND billing_address IS NOT NULL)) RETURNING id`,
+        AND ($2 = 'inactive' OR (billing_name IS NOT NULL AND billing_email IS NOT NULL AND billing_address IS NOT NULL AND ${CUSTOMER_SQL})) RETURNING id`,
     [id, active ? 'active' : 'inactive', now],
   );
   return rows.length === 1;

@@ -3,6 +3,8 @@
  * batch's page, where it is returned (issuing its invoice) or cancelled.
  */
 import { BATCH_STATUS_LABELS, isOverdue, MAX_BATCH_PADDLES, MAX_CLUB_NOTE, type Batch, type BatchEmail, type BatchStatus, type Club, type ClubStatus } from '../clubs/clubs.js';
+import type { AgreementVersion } from '../clubs/agreement-versions.js';
+import { MAX_ACCEPTED_BY, MAX_ACCEPTED_NOTE, type ClubAgreement } from '../clubs/agreements.js';
 import { MOVES, STATUS_LABELS } from '../clubs/leads.js';
 import { CLUB_PROBLEMS, MAX_PAYMENT_REFERENCE, METHOD_LABELS, type ClubPayment } from '../clubs/payments.js';
 import { PROBLEM_TEXT } from '../payments/payments.js';
@@ -137,7 +139,50 @@ ${
 }`;
 }
 
-export function clubPage(ctx: PageContext, club: Club, batches: Batch[], today: string, flash?: Flash, form?: Partial<Club>, sync?: BatchEmail | null): string {
+/** The club agreement: send the live version, and record the reply (SCRUM-94). */
+function agreementSection(ctx: PageContext, club: Club, agreements: ClubAgreement[], live: AgreementVersion | null, today: string): Html | string {
+  const canSend = club.status === 'meeting' || club.status === 'agreement_sent' || club.status === 'active';
+  if (!canSend && agreements.length === 0) return '';
+  const waiting = agreements.filter((a) => !a.acceptedOn);
+  const sendable = live && !agreements.some((a) => a.version === live.version && a.acceptedOn);
+  return html`<h2>Agreement</h2>
+${
+  agreements.length
+    ? html`<table class="list"><thead><tr><th scope="col">Version</th><th scope="col">Sent</th><th scope="col">To</th><th scope="col">Accepted</th></tr></thead><tbody>${agreements.map(
+        (a) => html`<tr><td>${a.label}</td><td>${when(a.sentAt)}</td><td>${a.sentTo}</td><td>${
+          a.acceptedOn ? html`${calendarDay(a.acceptedOn)}, ${a.acceptedBy}${a.acceptedNote ? html` <span class="small">(${a.acceptedNote})</span>` : ''}` : 'Waiting for “I agree”'
+        }</td></tr>`,
+      )}</tbody></table>`
+    : html`<p class="empty">Not sent yet.</p>`
+}
+${
+  canSend && sendable
+    ? html`<form method="post" action="/admin/clubs/${club.id}/agreement/send" class="inline">
+  ${csrfField(ctx)}
+  <button type="submit" class="secondary">${agreements.some((a) => a.version === live.version) ? `Send agreement ${live.label} again` : `Send agreement ${live.label}`}</button>
+</form>
+<p class="small">The email has the full text, a printable page and asks the club to reply “I agree”.${live.approvedOn ? '' : ' This version isn’t approved yet: only staging sends it.'}</p>`
+    : canSend && !live
+      ? html`<p class="small">There’s no approved agreement to send yet.</p>`
+      : ''
+}
+${
+  waiting.length && (club.status === 'agreement_sent' || club.status === 'active')
+    ? html`<details class="action"><summary>Record an “I agree” reply</summary>
+<form method="post" action="/admin/clubs/${club.id}/agreement/accept">
+  ${csrfField(ctx)}
+  <label>Version<select name="version">${waiting.map((a) => html`<option value="${a.version}">${a.label}</option>`)}</select></label>
+  <label>Date of the reply<input type="date" name="acceptedOn" required max="${today}" value="${today}"></label>
+  <label>Who replied<input name="acceptedBy" required maxlength="${MAX_ACCEPTED_BY}" autocomplete="off"></label>
+  <label>Note (optional, only you see it)<textarea name="note" maxlength="${MAX_ACCEPTED_NOTE}" rows="2"></textarea></label>
+  <p class="small">${club.status === 'agreement_sent' ? 'The club becomes Active (it needs its billing details first).' : 'The club stays Active.'}</p>
+  <button type="submit">Record acceptance</button>
+</form></details>`
+    : ''
+}`;
+}
+
+export function clubPage(ctx: PageContext, club: Club, batches: Batch[], today: string, flash?: Flash, form?: Partial<Club>, sync?: BatchEmail | null, agreements: ClubAgreement[] = [], live: AgreementVersion | null = null): string {
   return layout(
     ctx,
     club.name,
@@ -149,6 +194,7 @@ ${flashBox(flash)}
 }</p>
 ${crmLine(ctx, sync)}
 ${pipelineSection(ctx, club)}
+${agreementSection(ctx, club, agreements, live, today)}
 
 <h2>Batches</h2>
 ${batches.length ? batchRows(batches, false, today) : html`<p class="empty">No batches yet.</p>`}

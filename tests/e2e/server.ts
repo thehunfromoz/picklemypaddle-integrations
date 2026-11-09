@@ -9,7 +9,7 @@
 import { serve } from '@hono/node-server';
 import { createAdminApp } from '../../src/admin/app.js';
 import { serviceSecret, TrustedProxies } from '../../src/orders/abuse.js';
-import { createLead } from '../../src/clubs/leads.js';
+import { createLead, moveClub } from '../../src/clubs/leads.js';
 import { makeApp, orderForm, post } from '../helpers/app.js';
 import { fakeStripe } from '../helpers/fake-stripe.js';
 import { applySession, startPayment } from '../../src/payments/payments.js';
@@ -31,6 +31,16 @@ for (const email of ['e2e-1@test.picklemypaddle.com', 'e2e-2@test.picklemypaddle
   references.push(((await placed.json()) as { reference: string }).reference);
 }
 const reference = references.join(', ');
+// SCRUM-94: a club per browser project already at Meeting arranged, with billing details, ready for its agreement.
+for (const project of ['desktop', 'phone']) {
+  const { clubId } = await createLead(
+    t.db,
+    { clubName: `E2E Agree ${project}`, suburb: 'Newtown', contactName: 'Jo Treasurer', contactEmail: 'jo@test.picklemypaddle.com', contactPhone: null, memberCount: 30, message: null, preferredTimes: null },
+    { isProduction: false, now: new Date() },
+  );
+  await moveClub(t.db, clubId, 'meeting', new Date());
+  await t.db.query(`UPDATE clubs SET billing_name = 'Jo Treasurer', billing_email = 'jo@test.picklemypaddle.com', billing_address = '1 Court St' WHERE id = $1`, [clubId]);
+}
 // SCRUM-93: one lead per browser project (desktop, phone) for the pipeline walk-through.
 for (const project of ['desktop', 'phone']) {
   await createLead(

@@ -607,6 +607,64 @@ export const MIGRATIONS: readonly Migration[] = [
       UPDATE clubs SET last_activity_at = updated_at;
     `,
   },
+  {
+    version: 18,
+    name: 'club agreements',
+    sql: `
+      -- SCRUM-94. One row per club per agreement version: when it was emailed (and what the
+      -- text's hash was then), and, once Attila records the "I agree" reply, who accepted it and
+      -- when. A club's accepted version is the highest one accepted; a newer version sent to an
+      -- Active club leaves the old one on record until it is accepted.
+      CREATE TABLE club_agreements (
+        id                   bigserial PRIMARY KEY,
+        club_id              uuid NOT NULL REFERENCES clubs (id) ON DELETE CASCADE,
+        version              integer NOT NULL CHECK (version >= 1),
+        sha256               text NOT NULL CHECK (sha256 ~ '^[0-9a-f]{64}$'),
+        sent_at              timestamptz NOT NULL,
+        sent_to              text NOT NULL,
+        schedule             jsonb NOT NULL,
+        accepted_on          date,
+        accepted_by          text CHECK (accepted_by IS NULL OR char_length(accepted_by) BETWEEN 1 AND 120),
+        accepted_note        text CHECK (accepted_note IS NULL OR char_length(accepted_note) <= 1000),
+        accepted_recorded_at timestamptz,
+        UNIQUE (club_id, version),
+        CHECK ((accepted_on IS NULL) = (accepted_by IS NULL) AND (accepted_on IS NULL) = (accepted_recorded_at IS NULL))
+      );
+
+      -- What was sent is never changed: the text (its hash), the version and the first send's date
+      -- are frozen, and so is everything once the club has accepted. Until then a re-send to a
+      -- corrected address may update who it went to and the Schedule it showed. The acceptance is
+      -- filled in once.
+      CREATE OR REPLACE FUNCTION club_agreements_frozen() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN
+        IF NEW.club_id IS DISTINCT FROM OLD.club_id OR NEW.version IS DISTINCT FROM OLD.version
+           OR NEW.sha256 IS DISTINCT FROM OLD.sha256 OR NEW.sent_at IS DISTINCT FROM OLD.sent_at THEN
+          RAISE EXCEPTION 'a sent agreement is never edited: send a new version';
+        END IF;
+        IF OLD.accepted_on IS NOT NULL AND (NEW.sent_to IS DISTINCT FROM OLD.sent_to OR NEW.schedule IS DISTINCT FROM OLD.schedule) THEN
+          RAISE EXCEPTION 'an accepted agreement is never edited: send a new version';
+        END IF;
+        IF OLD.accepted_on IS NOT NULL AND (NEW.accepted_on IS DISTINCT FROM OLD.accepted_on
+           OR NEW.accepted_by IS DISTINCT FROM OLD.accepted_by OR NEW.accepted_note IS DISTINCT FROM OLD.accepted_note) THEN
+          RAISE EXCEPTION 'an acceptance is recorded once';
+        END IF;
+        RETURN NEW;
+      END
+      $$;
+      CREATE TRIGGER club_agreements_frozen BEFORE UPDATE ON club_agreements
+        FOR EACH ROW EXECUTE FUNCTION club_agreements_frozen();
+
+      -- The private link in the agreement email (the printable page): only a hash of each token is kept.
+      CREATE TABLE club_agreement_tokens (
+        id           bigserial PRIMARY KEY,
+        agreement_id bigint NOT NULL REFERENCES club_agreements (id) ON DELETE CASCADE,
+        token_hash   bytea NOT NULL UNIQUE,
+        created_at   timestamptz NOT NULL DEFAULT now(),
+        revoked_at   timestamptz
+      );
+      CREATE INDEX club_agreement_tokens_agreement_idx ON club_agreement_tokens (agreement_id);
+    `,
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;
