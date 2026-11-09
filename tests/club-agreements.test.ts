@@ -129,6 +129,22 @@ describe('sending', () => {
     expect(Number((await t.db.query<{ n: number }>(`SELECT count(*)::int AS n FROM outbox WHERE template = 'club_agreement'`)).rows[0]!.n)).toBe(2);
   });
 
+  it('a re-send to a corrected address goes there and records it, with the Schedule as it now is; once accepted nothing about it changes', async () => {
+    const id = await meetingClub({ contactEmail: 'attila+typo@test.picklemypaddle.com' });
+    await send(id);
+    await t.db.query(`UPDATE clubs SET contact_email = 'attila+fixed@test.picklemypaddle.com' WHERE id = $1`, [id]);
+    await addBilling(id);
+    expect(await send(id)).toMatchObject({ resent: true, sentTo: 'attila+fixed@test.picklemypaddle.com' });
+    const [row] = await agreementsOfClub(t.db, id);
+    expect(row!.sentTo).toBe('attila+fixed@test.picklemypaddle.com');
+    const mails = (await sendMail()).filter((m) => m.subject.includes('Club agreement'));
+    expect(mails.map((m) => m.to)).toEqual(['attila+typo@test.picklemypaddle.com', 'attila+fixed@test.picklemypaddle.com']);
+    expect(mails[1]!.text).toContain('Jo Treasurer, jo@test.picklemypaddle.com');
+    expect(mails[1]!.text).not.toContain('To be given before the first invoice');
+    await recordAcceptance(t.db, { clubId: id, version: '1', acceptedOn: '2026-11-09', acceptedBy: 'Jo', note: '', now: t.clock.now });
+    await expect(t.db.query(`UPDATE club_agreements SET sent_to = 'x@y.com'`)).rejects.toThrow(/accepted agreement is never edited/);
+  });
+
   it('a version is never edited once sent: a changed text is refused, the database freezes the row, and production would not start', async () => {
     const id = await meetingClub();
     const v1 = AGREEMENT_VERSIONS[0]!;
@@ -140,7 +156,7 @@ describe('sending', () => {
     await expect(send(other.rows[0]!.id, { versions: [edited] })).rejects.toMatchObject({ code: 'version_edited' });
     expect(await editedAfterSending(t.db, [edited])).toEqual(['0.1']);
     await expect(t.db.query(`UPDATE club_agreements SET sha256 = repeat('a', 64)`)).rejects.toThrow(/never edited/);
-    await expect(t.db.query(`UPDATE club_agreements SET sent_to = 'x@y.com'`)).rejects.toThrow(/never edited/);
+    await expect(t.db.query(`UPDATE club_agreements SET sent_at = now()`)).rejects.toThrow(/never edited/);
   });
 });
 

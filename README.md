@@ -531,6 +531,7 @@ members' details, so only the club's name and billing details are held here.
   record) and a private link to a printable page (`/club/agreement#token`, `POST /api/clubs/agreement`,
   like invoices: browser print, no PDF engine). A club at Meeting arranged moves to Agreement sent; a
   newer version can also go to an Active club, whose accepted version stays on record until it accepts the new one.
+- **Becoming Active:** a club that came in through the form becomes Active only by recording its "I agree" reply (no move, no Reactivate); a club made in admin before agreements, or one with batches, is a customer already and can be reactivated.
 - **Record the reply** by hand (replies are read in Gmail; nothing is parsed): version, date of the reply,
   who replied and a note. The club becomes Active (it needs its billing details first).
 - **Pickups** (SCRUM-96) call `requireAcceptedAgreement(db, clubId)`: a club that hasn't accepted a

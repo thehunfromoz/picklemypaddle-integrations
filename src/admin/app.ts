@@ -515,7 +515,7 @@ export function createAdminApp(deps: AdminDeps) {
     if (!club) return c.html(notFoundPage(ctx(c), 'No such club.'), 404);
     const active = field(await c.req.parseBody(), 'active') === 'yes';
     if (!(await setClubActive(deps.db, club.id, active, now()))) {
-      return clubPageFor(c, club, { kind: 'error', text: active ? 'Add the club’s billing details (Edit the club) before making it Active.' : 'Only an Active club can be made inactive here.' }, 400);
+      return clubPageFor(c, club, { kind: 'error', text: active ? 'A club becomes Active when you record its “I agree” reply, and it needs its billing details first.' : 'Only an Active club can be made inactive here.' }, 400);
     }
     log('admin_club_active', { club: club.id, active });
     return c.redirect(`/admin/clubs/${club.id}?done=${active ? 'club_active' : 'club_inactive'}`, 303);

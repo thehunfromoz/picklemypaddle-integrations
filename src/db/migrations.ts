@@ -631,13 +631,18 @@ export const MIGRATIONS: readonly Migration[] = [
         CHECK ((accepted_on IS NULL) = (accepted_by IS NULL) AND (accepted_on IS NULL) = (accepted_recorded_at IS NULL))
       );
 
-      -- What was sent is never changed: only the acceptance is filled in (once).
+      -- What was sent is never changed: the text (its hash), the version and the first send's date
+      -- are frozen, and so is everything once the club has accepted. Until then a re-send to a
+      -- corrected address may update who it went to and the Schedule it showed. The acceptance is
+      -- filled in once.
       CREATE OR REPLACE FUNCTION club_agreements_frozen() RETURNS trigger LANGUAGE plpgsql AS $$
       BEGIN
         IF NEW.club_id IS DISTINCT FROM OLD.club_id OR NEW.version IS DISTINCT FROM OLD.version
-           OR NEW.sha256 IS DISTINCT FROM OLD.sha256 OR NEW.sent_at IS DISTINCT FROM OLD.sent_at
-           OR NEW.sent_to IS DISTINCT FROM OLD.sent_to OR NEW.schedule IS DISTINCT FROM OLD.schedule THEN
+           OR NEW.sha256 IS DISTINCT FROM OLD.sha256 OR NEW.sent_at IS DISTINCT FROM OLD.sent_at THEN
           RAISE EXCEPTION 'a sent agreement is never edited: send a new version';
+        END IF;
+        IF OLD.accepted_on IS NOT NULL AND (NEW.sent_to IS DISTINCT FROM OLD.sent_to OR NEW.schedule IS DISTINCT FROM OLD.schedule) THEN
+          RAISE EXCEPTION 'an accepted agreement is never edited: send a new version';
         END IF;
         IF OLD.accepted_on IS NOT NULL AND (NEW.accepted_on IS DISTINCT FROM OLD.accepted_on
            OR NEW.accepted_by IS DISTINCT FROM OLD.accepted_by OR NEW.accepted_note IS DISTINCT FROM OLD.accepted_note) THEN

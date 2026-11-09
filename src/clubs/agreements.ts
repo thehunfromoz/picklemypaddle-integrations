@@ -145,7 +145,10 @@ export async function sendAgreement(
     if (mine[0]?.accepted_on) throw new ClubError('already_accepted', `This club has already accepted agreement ${live.label}.`);
     let agreementId = mine[0]?.id;
     const resent = !!agreementId;
-    if (!agreementId) {
+    if (agreementId) {
+      // A re-send (say to a corrected address) records who it went to and the Schedule it showed this time.
+      await q.query('UPDATE club_agreements SET sent_to = $2, schedule = $3::jsonb WHERE id = $1', [agreementId, to, JSON.stringify(scheduleFor(club))]);
+    } else {
       const { rows: ins } = await q.query<{ id: string }>(
         `INSERT INTO club_agreements (club_id, version, sha256, sent_at, sent_to, schedule) VALUES ($1::uuid, $2, $3, $4, $5, $6::jsonb) RETURNING id`,
         [club.id, live.version, sha, args.now, to, JSON.stringify(scheduleFor(club))],
