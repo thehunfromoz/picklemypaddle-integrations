@@ -4,7 +4,7 @@
  * moves, and that nothing about members or a street address is kept.
  */
 import { afterEach, describe, expect, it } from 'vitest';
-import { createBatch, createClub, findClub, validateClub } from '../src/clubs/clubs.js';
+import { createBatch, createClub, findClub, setClubActive, validateClub } from '../src/clubs/clubs.js';
 import { createLead, MOVES, moveClub, setMeetingDate, validateLead, type LeadForm } from '../src/clubs/leads.js';
 import { CLUB_STATUSES } from '../src/clubs/model.js';
 import { mapClub } from '../src/crm/crm.js';
@@ -199,11 +199,39 @@ describe('the pipeline', () => {
     await moveClub(t.db, id, 'meeting', t.clock.now);
     await moveClub(t.db, id, 'agreement_sent', t.clock.now);
     await expect(moveClub(t.db, id, 'active', t.clock.now)).rejects.toMatchObject({ code: 'billing_needed' });
-    await expect(t.db.query(`UPDATE clubs SET status = 'active' WHERE id = $1`, [id])).rejects.toThrow(/clubs_billing_when_customer/);
+    await expect(t.db.query(`UPDATE clubs SET status = 'active' WHERE id = $1`, [id])).rejects.toThrow(/clubs_billing_when_active/);
     await t.db.query(`UPDATE clubs SET billing_name = 'Jo', billing_email = 'jo@test.picklemypaddle.com', billing_address = '1 Court St' WHERE id = $1`, [id]);
     expect(await moveClub(t.db, id, 'active', t.clock.now)).toEqual({ from: 'agreement_sent', to: 'active' });
     // An Active club can be given batches as before.
     await createBatch(t.db, { clubId: id, collectedOn: '2026-10-25', paddleCount: 3, notes: null, now: t.clock.now });
+  });
+
+  it('a lead that isn’t going ahead can be closed without billing details, and reopened; it can’t be made Active without them', async () => {
+    const id = await lead();
+    expect(await moveClub(t.db, id, 'inactive', t.clock.now)).toEqual({ from: 'lead', to: 'inactive' });
+    expect((await findClub(t.db, id))!.status).toBe('inactive');
+    // The old Reactivate control can't skip the billing details either.
+    expect(await setClubActive(t.db, id, true, t.clock.now)).toBe(false);
+    await expect(moveClub(t.db, id, 'active', t.clock.now)).rejects.toMatchObject({ code: 'billing_needed' });
+    expect(await moveClub(t.db, id, 'lead', t.clock.now)).toEqual({ from: 'inactive', to: 'lead' });
+    // From each open stage too.
+    await moveClub(t.db, id, 'meeting', t.clock.now);
+    expect(await moveClub(t.db, id, 'inactive', t.clock.now)).toMatchObject({ to: 'inactive' });
+  });
+
+  it('the admin shows no Active/Reactivate control on a lead, reports a refused reactivation, and closes a lead without an error', async () => {
+    const id = await lead();
+    const admin = await makeAdmin(t);
+    const page = await (await admin.get(`/admin/clubs/${id}`)).text();
+    expect(page).not.toContain('Reactivate');
+    expect(page).not.toContain('Make inactive');
+    expect((await admin.post(`/admin/clubs/${id}/active`, { active: 'yes' })).status).toBe(400);
+    expect((await admin.post(`/admin/clubs/${id}/stage`, { to: 'inactive' })).status).toBe(303);
+    const closed = await (await admin.get(`/admin/clubs/${id}`)).text();
+    expect(closed).toContain('Reopen as a lead');
+    const refused = await admin.post(`/admin/clubs/${id}/active`, { active: 'yes' });
+    expect(refused.status).toBe(400);
+    expect(await refused.text()).toContain('billing details');
   });
 
   it('records a meeting date, and clears it', async () => {
@@ -288,6 +316,18 @@ describe('a lead in HubSpot, and deleted after 12 months with no activity', () =
     await processCrm(deps);
     expect(hs.companies.get(companyId)!.properties.pmp_club_stage).toBe('Meeting arranged');
     expect(hs.companies.size).toBe(1);
+  });
+
+  it('an inactive lead (not going ahead) is deleted after 12 months too; an inactive customer never is', async () => {
+    const { deps } = await withHubSpot();
+    const lead = await newLead('Closed Lead', 'attila+c1@test.picklemypaddle.com');
+    await moveClub(t.db, lead, 'inactive', t.clock.now);
+    const customer = await createClub(t.db, { name: 'Old PC', billingName: 'Jo', billingEmail: 'jo@test.picklemypaddle.com', billingAddress: '1 Court St', abn: null, notes: null }, { isProduction: false, now: t.clock.now });
+    await setClubActive(t.db, customer.id, false, t.clock.now);
+    for (const id of [lead, customer.id]) await backdate(id, '2024-01-01T00:00:00Z');
+    expect(await runLeadRetention({ db: t.db, crm: deps }, t.clock.now)).toEqual({ leads: 1, waiting: 0 });
+    expect(await findClub(t.db, lead)).toBeNull();
+    expect(await findClub(t.db, customer.id)).not.toBeNull();
   });
 
   it('deletes a lead 12 months after its last activity, with its HubSpot company and contact, and nothing sooner', async () => {

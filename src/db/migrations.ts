@@ -588,8 +588,9 @@ export const MIGRATIONS: readonly Migration[] = [
       ALTER TABLE clubs ALTER COLUMN billing_name DROP NOT NULL;
       ALTER TABLE clubs ALTER COLUMN billing_email DROP NOT NULL;
       ALTER TABLE clubs ALTER COLUMN billing_address DROP NOT NULL;
-      ALTER TABLE clubs ADD CONSTRAINT clubs_billing_when_customer CHECK (
-        status IN ('lead', 'meeting', 'agreement_sent')
+      -- Only an Active club needs them: a lead that is not going ahead is Inactive without any.
+      ALTER TABLE clubs ADD CONSTRAINT clubs_billing_when_active CHECK (
+        status <> 'active'
         OR (billing_name IS NOT NULL AND billing_email IS NOT NULL AND billing_address IS NOT NULL)
       );
       ALTER TABLE clubs ADD COLUMN suburb text;

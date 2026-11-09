@@ -162,7 +162,9 @@ ${
   <label>Notes (optional, only you see them)<textarea name="notes" maxlength="${MAX_CLUB_NOTE}" rows="2"></textarea></label>
   <button type="submit">Record batch</button>
 </form></details>`
-    : html`<p class="small">This club is inactive: reactivate it to record a new batch.</p>`
+    : club.status === 'inactive'
+      ? html`<p class="small">This club is inactive: reactivate it to record a new batch.</p>`
+      : html`<p class="small">Batches can be recorded once the club is Active.</p>`
 }
 
 <details class="action"${form ? html` open` : ''}><summary>Edit the club’s details</summary>
@@ -173,12 +175,16 @@ ${
   <button type="submit">Save</button>
 </form></details>
 
-<form method="post" action="/admin/clubs/${club.id}/active">
+${
+  isCustomer(club)
+    ? html`<form method="post" action="/admin/clubs/${club.id}/active">
   ${csrfField(ctx)}
   <input type="hidden" name="active" value="${club.status === 'active' ? 'no' : 'yes'}">
   <button type="submit"${club.status === 'active' ? html` class="danger"` : ''}>${club.status === 'active' ? 'Make inactive' : 'Reactivate'}</button>
 </form>
-<p class="small">An inactive club keeps its batches and invoices; it just can’t have new batches.</p>`,
+<p class="small">An inactive club keeps its batches and invoices; it just can’t have new batches.</p>`
+    : ''
+}`,
   );
 }
 
