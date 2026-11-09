@@ -1,8 +1,8 @@
 /**
- * Paying club invoices (SCRUM-85, part 2): PayID and cash recorded by hand (part payments, the
- * balance, Paid once it reaches the total), card through a faked Stripe Checkout (start, the
- * return, the poller, part-paid invoices, a payment that arrives after it's been paid), and the
- * overdue flag in the admin.
+ * Paying club invoices (SCRUM-85, part 2): PayID and cash recorded by hand (the full amount only; Paid
+ * once it is received), card through a faked Stripe Checkout (start, the
+ * return, the poller, a payment that arrives after it's been paid), and the overdue flag in the
+ * admin. No part payments (decided 6 Nov 2026).
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { createBatch, createClub, findBatch, isOverdue, returnBatch } from '../src/clubs/clubs.js';
@@ -39,21 +39,26 @@ const pay = (reference: string, over: Partial<Parameters<typeof recordClubPaymen
   recordClubPayment(t.db, { batchReference: reference, method: 'payid', amountCents: 27000, paidOn: '2026-11-04', reference: 'TX123', by: 'attila@test', now: t.clock.now, ...over });
 
 describe('PayID and cash payments, recorded by hand', () => {
-  it('part payments show the balance; the last one makes the invoice and the batch Paid', async () => {
+  it('payment is in full: the whole amount makes the invoice and the batch Paid', async () => {
     const { batch, invoiceId, number } = await invoiced(5); // A$270
-    expect(await pay(batch.reference, { amountCents: 10000 })).toEqual({ paidInFull: false, balanceCents: 17000 });
-    expect(await findBatch(t.db, batch.reference)).toMatchObject({ status: 'invoiced', invoice: { balanceCents: 17000 } });
-    expect((await documentByNumber(t.db, number))!.paid).toBeNull();
-
-    expect(await pay(batch.reference, { method: 'cash', amountCents: 17000, paidOn: '2026-11-04', reference: null })).toEqual({ paidInFull: true, balanceCents: 0 });
+    expect(await pay(batch.reference, { method: 'cash', amountCents: 27000, paidOn: '2026-11-04', reference: null })).toEqual({ paidInFull: true, balanceCents: 0 });
     expect(await findBatch(t.db, batch.reference)).toMatchObject({ status: 'paid', invoice: { balanceCents: 0 } });
-    expect((await documentByNumber(t.db, number))!.paid).toEqual({ on: '2026-11-04', method: 'PayID and cash' });
+    expect((await documentByNumber(t.db, number))!.paid).toEqual({ on: '2026-11-04', method: 'cash' });
     expect(await invoiceBalance(t.db, invoiceId)).toEqual({ totalCents: 27000, paidCents: 27000, balanceCents: 0 });
   });
 
-  it('refuses more than is owing, card by hand, a future date, a date before collection, and a batch not invoiced', async () => {
+  it('no part payments (UAT 6 Nov 2026): a short or an over amount is refused and nothing is recorded', async () => {
+    const { batch, invoiceId, number } = await invoiced(5);
+    await expect(pay(batch.reference, { amountCents: 10000 })).rejects.toMatchObject({ code: 'not_full', message: expect.stringContaining('must be A$270') });
+    await expect(pay(batch.reference, { amountCents: 26999 })).rejects.toMatchObject({ code: 'not_full' });
+    expect(await invoiceBalance(t.db, invoiceId)).toEqual({ totalCents: 27000, paidCents: 0, balanceCents: 27000 });
+    expect(await findBatch(t.db, batch.reference)).toMatchObject({ status: 'invoiced' });
+    expect((await documentByNumber(t.db, number))!.paid).toBeNull();
+  });
+
+  it('refuses a wrong amount, card by hand, a future date, a date before collection, and a batch not invoiced', async () => {
     const { batch } = await invoiced(5);
-    await expect(pay(batch.reference, { amountCents: 27001 })).rejects.toMatchObject({ code: 'too_much' });
+    await expect(pay(batch.reference, { amountCents: 27001 })).rejects.toMatchObject({ code: 'not_full' });
     await expect(pay(batch.reference, { method: 'card' })).rejects.toMatchObject({ code: 'bad_method' });
     await expect(pay(batch.reference, { paidOn: '2026-11-05' })).rejects.toMatchObject({ code: 'future_date' });
     await expect(pay(batch.reference, { paidOn: '2026-11-01' })).rejects.toMatchObject({ code: 'bad_date' });
@@ -72,17 +77,14 @@ describe('PayID and cash payments, recorded by hand', () => {
   it('the admin records a payment, shows what is owing and flags an overdue invoice', async () => {
     const { batch } = await invoiced(5);
     const admin = await makeAdmin(t);
-    const r = await admin.post(`/admin/batches/${batch.reference}/payments`, { amount: '100', paidOn: '2026-11-04', method: 'payid', reference: 'TX1' });
-    expect(r.status).toBe(303);
-    expect(r.headers.get('location')).toContain('done=payment_recorded');
     let page = await (await admin.get(`/admin/batches/${batch.reference}`)).text();
-    expect(page).toContain('Still owing: <strong>A$170</strong>');
-    expect(page).toContain('TX1');
+    expect(page).toContain('Unpaid: <strong>A$270</strong>');
+    expect(page).not.toContain('Part payments are fine');
     expect(page).not.toContain('Overdue');
 
-    const bad = await admin.post(`/admin/batches/${batch.reference}/payments`, { amount: '500', paidOn: '2026-11-04', method: 'cash' });
+    const bad = await admin.post(`/admin/batches/${batch.reference}/payments`, { amount: '100', paidOn: '2026-11-04', method: 'payid', reference: 'TX1' });
     expect(bad.status).toBe(400);
-    expect(await bad.text()).toContain('That’s more than is owing (A$170).');
+    expect(await bad.text()).toContain('Payment is in full for each invoice, so the amount must be A$270. Part payments aren’t accepted.');
 
     // Two weeks and a day later: overdue, in the batch list and on its page.
     t.clock.now = new Date('2026-11-19T01:00:00Z');
@@ -91,7 +93,7 @@ describe('PayID and cash payments, recorded by hand', () => {
     page = await (await admin.get(`/admin/batches/${batch.reference}`)).text();
     expect(page).toContain('Overdue');
 
-    const done = await admin.post(`/admin/batches/${batch.reference}/payments`, { amount: '170', paidOn: '2026-11-19', method: 'cash' });
+    const done = await admin.post(`/admin/batches/${batch.reference}/payments`, { amount: '270', paidOn: '2026-11-19', method: 'cash' });
     expect(done.headers.get('location')).toContain('done=payment_paid');
     page = await (await admin.get(`/admin/batches/${batch.reference}`)).text();
     expect(page).toContain('Paid in full.');
@@ -112,20 +114,19 @@ describe('card payments through Stripe Checkout', () => {
     return new RegExp(`/club/invoice\\?n=${number}#([A-Za-z0-9_-]{43})`).exec(m.text)![1]!;
   }
 
-  it('pays what is owing by card: the page offers it, Checkout is for the balance, the return applies it', async () => {
+  it('pays the invoice by card: the page offers it, Checkout is for the full total, the return applies it', async () => {
     const { batch, number } = await invoiced(5, { stripe: true });
     const token = await tokenFor(number);
-    await pay(batch.reference, { amountCents: 7000 }); // a PayID part payment first
 
     const view = (await (await api('invoice', { token, number })).json()) as { balanceCents: number; canPayByCard: boolean; payments: unknown[]; snapshot: { payByCard?: boolean } };
-    expect(view).toMatchObject({ balanceCents: 20000, canPayByCard: true, payments: [{ method: 'PayID', amountCents: 7000, paidOn: '2026-11-04' }] });
+    expect(view).toMatchObject({ balanceCents: 27000, canPayByCard: true, payments: [] });
     expect(view.snapshot.payByCard).toBe(true);
 
     const started = await api('pay', { token, number });
     expect(started.status).toBe(200);
     expect((await started.json()) as { url: string }).toMatchObject({ url: expect.stringContaining('checkout') });
     const [sessionId, session] = [...stripe.sessions.entries()].at(-1)!;
-    expect(session.params.get('line_items[0][price_data][unit_amount]')).toBe('20000');
+    expect(session.params.get('line_items[0][price_data][unit_amount]')).toBe('27000');
     expect(session.params.get('client_reference_id')).toMatch(/^club-inv-\d+$/);
     expect(session.params.get('success_url')).toBe(`${SITE}/club/paid?session_id={CHECKOUT_SESSION_ID}`);
     expect(session.params.get('success_url')).not.toContain(token);
@@ -135,7 +136,7 @@ describe('card payments through Stripe Checkout', () => {
     const back = await api('paid', { sessionId });
     expect(await back.json()).toEqual({ paid: true, number });
     expect(await findBatch(t.db, batch.reference)).toMatchObject({ status: 'paid', invoice: { balanceCents: 0 } });
-    expect((await documentByNumber(t.db, number))!.paid).toEqual({ on: '2026-11-04', method: 'PayID and card' });
+    expect((await documentByNumber(t.db, number))!.paid).toEqual({ on: '2026-11-04', method: 'card' });
     // The same return again, or the poller seeing the event, changes nothing.
     expect(await (await api('paid', { sessionId })).json()).toEqual({ paid: true, number });
     await pollEvents(t.payments!);

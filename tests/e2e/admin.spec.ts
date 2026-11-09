@@ -189,20 +189,21 @@ test('adds a club, records a batch, returns it and opens its invoice', async ({ 
   await expect(page.locator('.doc-meta')).toContainText('Club batch');
   await expect(page.getByText('No GST has been charged')).toBeVisible();
 
-  // A part payment by PayID, then the rest in cash: the batch is Paid and the invoice says so.
+  // No part payments: A$100 is refused; the full A$270 in cash makes the batch Paid and the invoice says so.
   await page.goBack();
   await summary(page, 'Record a PayID or cash payment').click();
   await page.getByLabel('Amount received (A$)').fill('100');
   await page.getByLabel(/Reference/).fill('TX-E2E-1');
   await page.getByRole('button', { name: 'Record payment' }).click();
-  await expect(page.getByRole('status')).toHaveText('Payment recorded.');
-  await expect(page.getByText('Still owing: A$170')).toBeVisible();
+  await expect(page.getByText('Part payments aren’t accepted.')).toBeVisible();
+  await expect(page.getByText('Unpaid: A$270')).toBeVisible();
   await summary(page, 'Record a PayID or cash payment').click();
+  await page.getByLabel('Amount received (A$)').fill('270');
   await page.getByLabel('Cash').check();
   await page.getByRole('button', { name: 'Record payment' }).click();
   await expect(page.getByRole('status')).toHaveText('Payment recorded: the invoice is paid in full and the batch is Paid.');
   await expect(page.locator('h1 .badge').first()).toHaveText('Paid');
   await page.locator('dl.facts a', { hasText: /^PMP-INV-\d{4}$/ }).click();
   await expect(page.locator('article.doc h1')).toHaveText('Invoice: paid');
-  await expect(page.locator('.doc-paid')).toContainText('Paid in full by PayID and cash');
+  await expect(page.locator('.doc-paid')).toContainText('Paid in full by cash');
 });

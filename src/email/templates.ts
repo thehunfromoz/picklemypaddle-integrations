@@ -381,7 +381,7 @@ function build(name: TemplateName, ctx: TemplateContext): { subject: string; blo
             ...(inv.payByCard ? ['By card, with the button above'] : []),
             'In cash, at your club’s next pickup or delivery',
           ] },
-          { p: 'Part payments are fine: the invoice page shows what is still owing.' },
+          { p: 'Payment is in full for each invoice.' },
           { small: 'The invoice link is private to your club: anyone who has it can see and pay this invoice, so please don’t forward it outside your committee.' },
           { p: 'Thanks for working with us,\nAttila, PickleMyPaddle' },
         ],
