@@ -45,14 +45,25 @@ export class ClubError extends Error {
 export interface Club {
   id: string;
   name: string;
-  billingName: string;
-  billingEmail: string;
-  billingAddress: string;
+  /** Null until the club is a customer (SCRUM-93): a lead has a contact, not billing details yet. */
+  billingName: string | null;
+  billingEmail: string | null;
+  billingAddress: string | null;
   abn: string | null;
   notes: string | null;
   status: ClubStatus;
   isTest: boolean;
   createdAt: Date;
+  /** SCRUM-93: what the club told us in the "Talk to us" form. Never members' details. */
+  suburb: string | null;
+  contactName: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  memberCount: number | null;
+  leadMessage: string | null;
+  preferredTimes: string | null;
+  meetingOn: string | null;
+  lastActivityAt: Date;
 }
 
 export interface ClubInput {
@@ -101,7 +112,7 @@ export interface EmailGuard {
   allowList: readonly string[];
 }
 
-function allowedHere(email: string, guard: EmailGuard): boolean {
+export function allowedHere(email: string, guard: EmailGuard): boolean {
   // The same test the outbox applies before sending (plus-addressing of an allowed address counts).
   if (isAllowed(email, guard)) return true;
   return RESERVED_DOMAIN.test(email.slice(email.lastIndexOf('@') + 1));
@@ -136,15 +147,29 @@ export function validateClub(input: Partial<Record<keyof ClubInput, string | nul
 interface ClubRow {
   id: string;
   name: string;
-  billing_name: string;
-  billing_email: string;
-  billing_address: string;
+  billing_name: string | null;
+  billing_email: string | null;
+  billing_address: string | null;
   abn: string | null;
   notes: string | null;
   status: ClubStatus;
   is_test: boolean;
   created_at: Date;
+  suburb: string | null;
+  contact_name: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
+  club_size: number | null;
+  lead_message: string | null;
+  preferred_times: string | null;
+  meeting_on: string | null;
+  last_activity_at: Date;
 }
+
+/** Every column the Club type reads, with the meeting date as text (no driver makes a moment of it). */
+export const CLUB_COLUMNS = `id, name, billing_name, billing_email, billing_address, abn, notes, status, is_test, created_at,
+  suburb, contact_name, contact_email, contact_phone, club_size, lead_message, preferred_times, meeting_on::text AS meeting_on, last_activity_at`;
+const CLUB_COLUMNS_C = CLUB_COLUMNS.split(',').map((c) => (c.trim().startsWith('meeting_on::') ? 'c.meeting_on::text AS meeting_on' : `c.${c.trim()}`)).join(', ');
 
 const toClub = (r: ClubRow): Club => ({
   id: r.id,
@@ -157,6 +182,15 @@ const toClub = (r: ClubRow): Club => ({
   status: r.status,
   isTest: r.is_test,
   createdAt: new Date(r.created_at),
+  suburb: r.suburb,
+  contactName: r.contact_name,
+  contactEmail: r.contact_email,
+  contactPhone: r.contact_phone,
+  memberCount: r.club_size === null ? null : Number(r.club_size),
+  leadMessage: r.lead_message,
+  preferredTimes: r.preferred_times,
+  meetingOn: r.meeting_on,
+  lastActivityAt: new Date(r.last_activity_at),
 });
 
 const isUniqueViolation = (err: unknown) => (err as { code?: string })?.code === '23505';
@@ -166,7 +200,7 @@ export async function createClub(db: Db, input: ClubInput, opts: { isProduction:
     return await db.tx(async (q) => {
       const { rows } = await q.query<ClubRow>(
         `INSERT INTO clubs (name, billing_name, billing_email, billing_address, abn, notes, status, is_test, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, 'active', $7, $8, $8) RETURNING *`,
+         VALUES ($1, $2, $3, $4, $5, $6, 'active', $7, $8, $8) RETURNING ${CLUB_COLUMNS}`,
         [input.name, input.billingName, input.billingEmail, input.billingAddress, input.abn, input.notes, !opts.isProduction, opts.now],
       );
       await enqueueClubCrmSync(q, rows[0]!.id, opts.now);
@@ -182,8 +216,8 @@ export async function updateClub(db: Db, id: string, input: ClubInput, now: Date
   try {
     return await db.tx(async (q) => {
       const { rows } = await q.query<ClubRow>(
-        `UPDATE clubs SET name = $2, billing_name = $3, billing_email = $4, billing_address = $5, abn = $6, notes = $7, updated_at = $8
-          WHERE id = $1 RETURNING *`,
+        `UPDATE clubs SET name = $2, billing_name = $3, billing_email = $4, billing_address = $5, abn = $6, notes = $7, updated_at = $8, last_activity_at = $8
+          WHERE id = $1 RETURNING ${CLUB_COLUMNS}`,
         [id, input.name, input.billingName, input.billingEmail, input.billingAddress, input.abn, input.notes, now],
       );
       if (rows[0]) await enqueueClubCrmSync(q, id, now);
@@ -197,8 +231,11 @@ export async function updateClub(db: Db, id: string, input: ClubInput, now: Date
 
 /** Active or inactive (SCRUM-85 AC1). An inactive club keeps its batches; new ones can't be added. */
 export async function setClubActive(db: Queryable, id: string, active: boolean, now: Date): Promise<boolean> {
+  // Reactivating needs the billing details (a lead that never had any can't become Active this way).
   const { rows } = await db.query(
-    `UPDATE clubs SET status = $2, updated_at = $3 WHERE id = $1 AND status IN ('active', 'inactive') RETURNING id`,
+    `UPDATE clubs SET status = $2, updated_at = $3, last_activity_at = $3
+      WHERE id = $1 AND status IN ('active', 'inactive')
+        AND ($2 = 'inactive' OR (billing_name IS NOT NULL AND billing_email IS NOT NULL AND billing_address IS NOT NULL)) RETURNING id`,
     [id, active ? 'active' : 'inactive', now],
   );
   return rows.length === 1;
@@ -208,13 +245,13 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 export async function findClub(db: Queryable, id: string): Promise<Club | null> {
   if (!UUID_RE.test(id)) return null;
-  const { rows } = await db.query<ClubRow>('SELECT * FROM clubs WHERE id = $1', [id]);
+  const { rows } = await db.query<ClubRow>(`SELECT ${CLUB_COLUMNS} FROM clubs WHERE id = $1`, [id]);
   return rows[0] ? toClub(rows[0]) : null;
 }
 
 export async function listClubs(db: Queryable): Promise<(Club & { openBatches: number })[]> {
   const { rows } = await db.query<ClubRow & { open_batches: number }>(
-    `SELECT c.*, (SELECT count(*)::int FROM batches b WHERE b.club_id = c.id AND b.status IN ('collected', 'returned', 'invoiced')) AS open_batches
+    `SELECT ${CLUB_COLUMNS_C}, (SELECT count(*)::int FROM batches b WHERE b.club_id = c.id AND b.status IN ('collected', 'returned', 'invoiced')) AS open_batches
        FROM clubs c ORDER BY (c.status = 'inactive'), lower(c.name)`,
   );
   return rows.map((r) => ({ ...toClub(r), openBatches: Number(r.open_batches) }));

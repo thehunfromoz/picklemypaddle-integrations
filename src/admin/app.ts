@@ -18,6 +18,7 @@
  *   GET  /admin/codes/:id · POST /admin/codes/:id/active · POST /admin/codes/:id/note   one code: uses, (de)activate, note
  *   GET  /admin/clubs · POST /admin/clubs      clubs: list, add (SCRUM-85)
  *   GET  /admin/clubs/:id · POST /admin/clubs/:id · POST /admin/clubs/:id/active   one club: batches, edit, (de)activate
+ *   POST /admin/clubs/:id/stage · /meeting    the club pipeline: move a lead along, set its meeting date (SCRUM-93)
  *   POST /admin/clubs/:id/batches             record a batch collected
  *   GET  /admin/batches?all=1                 open (or all) batches
  *   GET  /admin/batches/:ref · POST …/return · POST …/cancel · POST …/notes   one batch: return and invoice, cancel, notes
@@ -53,6 +54,7 @@ import { adminGuard, type AdminIdentity } from './guard.js';
 import { detailPage, filterStatuses, listPage, notFoundPage, parseFilter, type Flash, type PageContext } from './pages.js';
 import { ADMIN_CSS } from './style.js';
 import { batchesPage, batchPage, clubPage, clubsPage } from './club-pages.js';
+import { moveClub, setMeetingDate } from '../clubs/leads.js';
 import { flaggedCardPayments, paymentsOfInvoice, recordClubPayment } from '../clubs/payments.js';
 import {
   batchEmails, cancelBatch, clubCrmSync, ClubError, createBatch, createClub, findBatch, findClub, listBatches, listClubs, returnBatch, setBatchNote, setClubActive, updateClub, validateClub,
@@ -111,6 +113,8 @@ const DONE: Record<string, string> = {
   reinstated: 'Reinstated: the order is Paid, with the late payment as its payment.',
   club_created: 'Club added.',
   club_saved: 'Club details saved.',
+  stage_moved: 'Moved along the pipeline.',
+  meeting_saved: 'Meeting date saved.',
   club_inactive: 'The club is now inactive.',
   club_active: 'The club is active again.',
   batch_created: 'Batch recorded.',
@@ -504,9 +508,35 @@ export function createAdminApp(deps: AdminDeps) {
     const club = await findClub(deps.db, c.req.param('id'));
     if (!club) return c.html(notFoundPage(ctx(c), 'No such club.'), 404);
     const active = field(await c.req.parseBody(), 'active') === 'yes';
-    await setClubActive(deps.db, club.id, active, now());
+    if (!(await setClubActive(deps.db, club.id, active, now()))) {
+      return clubPageFor(c, club, { kind: 'error', text: active ? 'Add the club’s billing details (Edit the club) before making it Active.' : 'Only an Active club can be made inactive here.' }, 400);
+    }
     log('admin_club_active', { club: club.id, active });
     return c.redirect(`/admin/clubs/${club.id}?done=${active ? 'club_active' : 'club_inactive'}`, 303);
+  });
+  // SCRUM-93: the pipeline. Moves that aren't allowed come back with the reason.
+  app.post('/admin/clubs/:id/stage', async (c) => {
+    const club = await findClub(deps.db, c.req.param('id'));
+    if (!club) return c.html(notFoundPage(ctx(c), 'No such club.'), 404);
+    try {
+      const moved = await moveClub(deps.db, club.id, field(await c.req.parseBody(), 'to') ?? '', now());
+      log('admin_club_moved', { club: club.id, from: moved.from, to: moved.to });
+      return c.redirect(`/admin/clubs/${club.id}?done=stage_moved`, 303);
+    } catch (err) {
+      if (!(err instanceof ClubError)) throw err;
+      return clubPageFor(c, club, { kind: 'error', text: err.message }, 400);
+    }
+  });
+  app.post('/admin/clubs/:id/meeting', async (c) => {
+    const club = await findClub(deps.db, c.req.param('id'));
+    if (!club) return c.html(notFoundPage(ctx(c), 'No such club.'), 404);
+    try {
+      await setMeetingDate(deps.db, club.id, field(await c.req.parseBody(), 'meetingOn') ?? '', now());
+      return c.redirect(`/admin/clubs/${club.id}?done=meeting_saved`, 303);
+    } catch (err) {
+      if (!(err instanceof ClubError)) throw err;
+      return clubPageFor(c, club, { kind: 'error', text: err.message }, 400);
+    }
   });
   app.post('/admin/clubs/:id/batches', async (c) => {
     const club = await findClub(deps.db, c.req.param('id'));

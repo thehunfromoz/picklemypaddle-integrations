@@ -490,6 +490,31 @@ members' details, so only the club's name and billing details are held here.
   (batch list and page). Nothing chases the club automatically.
 - The HubSpot company and deal come next. Clubs never get discount codes.
 
+## Club leads and the pipeline (SCRUM-93, decided 4 and 9 Nov 2026)
+
+- **The form:** the Clubs page's "Talk to us about your club" posts to `POST /api/clubs/lead`
+  (`GET /api/clubs/lead/form` gives the form token). Club name, suburb, contact name, email and a
+  rough size are required; phone, message and preferred times are optional. It has the order form's
+  abuse protections: a honeypot (`website`), a 3-second minimum fill time (a bot gets a normal 201 and
+  nothing is saved), and per-address (5 an hour) and per-email (3 a day, plus-addresses counted as one)
+  limits. Nothing about members and no street address is asked for or kept, and the table has no
+  such columns.
+- **A lead is a club** (`clubs.status` lead, meeting, agreement_sent, then active or inactive), not a
+  table of its own. Billing details are only required from Active on (a database check), so they are
+  empty until Attila adds them. The migration leaves every existing club untouched.
+- **Emails:** the contact gets an acknowledgement ("we'll reply within 1 business day with times"),
+  Attila an alert with the club name and the admin link only, both from sales@ with Reply-To attila@.
+  A club already on file (same name) gets no second record and no acknowledgement, but Attila is still
+  alerted. Outside production the contact's address must be allow-listed or a reserved test domain (the
+  rule for a club's billing email), so a real person's address never reaches staging, the outbox or HubSpot.
+- **Admin:** Clubs lists leads by stage above the customers; a lead's page shows the enquiry, sets a
+  meeting date and moves the lead one step along (or back, or out to Inactive). Active needs the
+  billing details first.
+- **HubSpot:** a lead is a company (with its "Club stage") and its contact, one-way like the rest.
+- **Retention:** a club that never became a customer (no billing details, no batches) is deleted 12 months
+  after its last activity, with its HubSpot company and contact (`runLeadRetention`, in the daily job
+  and `retention-run`).
+
 ## Database (SCRUM-64)
 
 PostgreSQL 18, one server per app, never shared. `DATABASE_URL` is required and secret. Versioned

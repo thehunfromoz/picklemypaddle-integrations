@@ -8,7 +8,7 @@
  */
 import { PRICE_PER_PADDLE_CENTS, STATUSES, type OrderStatus } from '../orders/model.js';
 import { discountCents, type DiscountKind } from '../orders/rules.js';
-import { BATCH_STATUSES, type BatchStatus } from '../clubs/model.js';
+import { BATCH_STATUSES, STATUS_LABELS, type BatchStatus, type ClubStatus } from '../clubs/model.js';
 import { clubInvoiceAmounts, clubTreatment, PRICE_LISTS, priceListOn, type PriceList, type TaxSettings } from '../pricing/terms.js';
 
 export interface CrmContact {
@@ -86,6 +86,8 @@ export interface CrmAdapter {
   /** Permanent deletion (erasure on request and retention, SCRUM-75). Gone already is fine. */
   deleteContact(id: string): Promise<void>;
   deleteDeal(id: string): Promise<void>;
+  /** SCRUM-93: a club that never became a customer is deleted with its contact (lead retention). */
+  deleteCompany?(id: string): Promise<void>;
   /** Erasure of a paid order kept for tax (SCRUM-75): leaves only the deal's name, reference and amount. */
   stripDeal(id: string): Promise<void>;
   /** The contact for this email, if the CRM has one (erasure, when no ID was stored). */
@@ -176,6 +178,8 @@ export interface CrmCompany {
   /** `[TEST] …` for clubs made outside production. */
   name: string;
   isTest: boolean;
+  /** The pipeline stage in words (SCRUM-93): Lead, Meeting arranged, … */
+  stage: string;
 }
 
 /** The club's billing contact: name and email only. */
@@ -183,6 +187,12 @@ export interface CrmClubContact {
   email: string;
   firstName: string;
   lastName: string;
+  /**
+   * SCRUM-93: a lead's contact is whoever filled in the public form, so anyone could type another
+   * person's address. An existing HubSpot contact is then left as it is (only a new one gets the
+   * name); billing contacts, entered by Attila, always set it.
+   */
+  fromPublicForm?: boolean;
 }
 
 /** A batch as a deal: amount = the invoice total (an estimate at the club price before), stage = batch status. */
@@ -209,8 +219,12 @@ export interface ClubForCrm {
   id: string;
   name: string;
   is_test: boolean;
-  billing_name: string;
-  billing_email: string;
+  status: ClubStatus;
+  /** Null for a lead (SCRUM-93); the contact is then whoever filled in the form. */
+  billing_name: string | null;
+  billing_email: string | null;
+  contact_name: string | null;
+  contact_email: string | null;
   crm_company_id: string | null;
   crm_contact_id: string | null;
   batches: { reference: string; status: BatchStatus; collected_on: string; paddle_count: number; unchanged_count: number; invoice_total: number | null; crm_deal_id: string | null }[];
@@ -242,9 +256,11 @@ export interface ClubMapOptions {
  */
 export function mapClub(c: ClubForCrm, opts: ClubMapOptions = {}): { company: CrmCompany; contact: CrmClubContact; deals: CrmBatchDeal[] } {
   const tag = (s: string) => (c.is_test ? `[TEST] ${s}` : s);
+  const contactEmail = c.billing_email ?? c.contact_email;
+  if (!contactEmail) throw new Error('a club needs a billing or contact email to be mirrored');
   return {
-    company: { clubId: c.id, name: tag(c.name), isTest: c.is_test },
-    contact: { email: c.billing_email.trim().toLowerCase(), ...splitName(c.billing_name) },
+    company: { clubId: c.id, name: tag(c.name), isTest: c.is_test, stage: STATUS_LABELS[c.status] },
+    contact: { email: contactEmail.trim().toLowerCase(), ...splitName(c.billing_name ?? c.contact_name ?? c.name), ...(c.billing_email ? {} : { fromPublicForm: true }) },
     deals: c.batches.map((b) => ({
       reference: b.reference,
       name: tag(`${b.reference} (${c.name})`),

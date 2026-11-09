@@ -577,6 +577,36 @@ export const MIGRATIONS: readonly Migration[] = [
       CREATE UNIQUE INDEX outbox_crm_club_pending_key ON outbox (club_id) WHERE kind = 'crm' AND state = 'pending';
     `,
   },
+  {
+    version: 17,
+    name: 'club leads',
+    sql: `
+      -- SCRUM-93. A lead is a club record before it is a customer (status lead, meeting,
+      -- agreement_sent), so the billing details are only required from Active on. A club's
+      -- members' details are never held: only the one contact who writes to us, and what they
+      -- tell us about the club. Existing clubs are all Active and are untouched.
+      ALTER TABLE clubs ALTER COLUMN billing_name DROP NOT NULL;
+      ALTER TABLE clubs ALTER COLUMN billing_email DROP NOT NULL;
+      ALTER TABLE clubs ALTER COLUMN billing_address DROP NOT NULL;
+      -- Only an Active club needs them: a lead that is not going ahead is Inactive without any.
+      ALTER TABLE clubs ADD CONSTRAINT clubs_billing_when_active CHECK (
+        status <> 'active'
+        OR (billing_name IS NOT NULL AND billing_email IS NOT NULL AND billing_address IS NOT NULL)
+      );
+      ALTER TABLE clubs ADD COLUMN suburb text;
+      ALTER TABLE clubs ADD COLUMN contact_name text;
+      ALTER TABLE clubs ADD COLUMN contact_email text;
+      ALTER TABLE clubs ADD COLUMN contact_phone text;
+      ALTER TABLE clubs ADD COLUMN club_size integer CHECK (club_size BETWEEN 1 AND 100000);
+      ALTER TABLE clubs ADD COLUMN lead_message text;
+      ALTER TABLE clubs ADD COLUMN preferred_times text;
+      ALTER TABLE clubs ADD COLUMN meeting_on date;
+      -- The last time anyone did anything with the club: a lead that never becomes Active is
+      -- deleted 12 months after it (the retention job).
+      ALTER TABLE clubs ADD COLUMN last_activity_at timestamptz NOT NULL DEFAULT now();
+      UPDATE clubs SET last_activity_at = updated_at;
+    `,
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

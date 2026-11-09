@@ -207,3 +207,27 @@ test('adds a club, records a batch, returns it and opens its invoice', async ({ 
   await expect(page.locator('article.doc h1')).toHaveText('Invoice: paid');
   await expect(page.locator('.doc-paid')).toContainText('Paid in full by cash');
 });
+
+test('a club lead: the enquiry, a meeting date and the pipeline', async ({ page }, testInfo) => {
+  const name = `E2E Lead ${testInfo.project.name}`;
+  await page.goto('/admin/clubs');
+  await expect(page.getByRole('heading', { name: 'Leads and pipeline' })).toBeVisible();
+  await page.getByRole('link', { name: new RegExp(name) }).click();
+  await expect(page.locator('h1')).toContainText(name);
+  await expect(page.locator('h1 .badge:not(.test)')).toHaveText('Lead');
+  await expect(page.getByText('Keen to talk about re-gripping.')).toBeVisible();
+  await expect(page.getByText('Weekday evenings')).toBeVisible();
+
+  await page.getByLabel('Meeting date').fill('2026-11-12');
+  await page.getByRole('button', { name: 'Save meeting date' }).click();
+  await expect(page.getByRole('status')).toHaveText('Meeting date saved.');
+  await expect(page.getByText('meeting on')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Move to Meeting arranged' }).click();
+  await expect(page.getByRole('status')).toHaveText('Moved along the pipeline.');
+  await expect(page.locator('h1 .badge:not(.test)')).toHaveText('Meeting arranged');
+
+  // Active needs billing details first: the move isn't offered from here, only the next stage.
+  await page.getByRole('button', { name: 'Move to Agreement sent' }).click();
+  await expect(page.locator('h1 .badge:not(.test)')).toHaveText('Agreement sent');
+});

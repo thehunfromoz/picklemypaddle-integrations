@@ -2,7 +2,8 @@
  * The admin's club pages (SCRUM-85): clubs and their billing details, each club's batches, and a
  * batch's page, where it is returned (issuing its invoice) or cancelled.
  */
-import { BATCH_STATUS_LABELS, isOverdue, MAX_BATCH_PADDLES, MAX_CLUB_NOTE, type Batch, type BatchEmail, type BatchStatus, type Club } from '../clubs/clubs.js';
+import { BATCH_STATUS_LABELS, isOverdue, MAX_BATCH_PADDLES, MAX_CLUB_NOTE, type Batch, type BatchEmail, type BatchStatus, type Club, type ClubStatus } from '../clubs/clubs.js';
+import { MOVES, STATUS_LABELS } from '../clubs/leads.js';
 import { CLUB_PROBLEMS, MAX_PAYMENT_REFERENCE, METHOD_LABELS, type ClubPayment } from '../clubs/payments.js';
 import { PROBLEM_TEXT } from '../payments/payments.js';
 import { documentDate } from '../documents/documents.js';
@@ -13,7 +14,8 @@ const csrfField = (ctx: PageContext) => html`<input type="hidden" name="_csrf" v
 const flashBox = (flash?: Flash) =>
   flash ? html`<p class="flash ${flash.kind}" role="${flash.kind === 'error' ? 'alert' : 'status'}">${flash.text}</p>` : '';
 const testBadge = (isTest: boolean) => (isTest ? html` <span class="badge test">TEST</span>` : '');
-const clubBadge = (c: Club) => (c.status === 'active' ? html`<span class="badge">Active</span>` : html`<span class="badge">Inactive</span>`);
+const clubBadge = (c: Club) => html`<span class="badge${c.status === 'lead' || c.status === 'meeting' || c.status === 'agreement_sent' ? ' due' : ''}">${STATUS_LABELS[c.status]}</span>`;
+const isCustomer = (c: Club) => c.status === 'active' || c.status === 'inactive';
 
 const BATCH_BADGE: Record<BatchStatus, string> = { collected: 'due', returned: '', invoiced: 'due', paid: '', cancelled: '' };
 const batchBadge = (s: BatchStatus) => html`<span class="badge${BATCH_BADGE[s] ? ` ${BATCH_BADGE[s]}` : ''}">${BATCH_STATUS_LABELS[s]}</span>`;
@@ -42,6 +44,8 @@ function batchRows(batches: Batch[], withClub: boolean, today: string): Html {
 }
 
 export function clubsPage(ctx: PageContext, clubs: (Club & { openBatches: number })[], flash?: Flash, form?: Partial<Club>): string {
+  const leads = clubs.filter((c) => !isCustomer(c));
+  const customers = clubs.filter(isCustomer);
   return layout(
     ctx,
     'Clubs',
@@ -49,9 +53,20 @@ export function clubsPage(ctx: PageContext, clubs: (Club & { openBatches: number
 ${flashBox(flash)}
 <h1>Clubs</h1>
 <p class="small">Clubs keep their members’ details: only the club’s name and billing details are held here. Clubs never get discount codes.</p>
+<h2>Leads and pipeline</h2>
 ${
-  clubs.length
-    ? html`<ul class="orders">${clubs.map(
+  leads.length
+    ? html`<ul class="orders">${leads.map(
+        (c) => html`<li><a href="/admin/clubs/${c.id}"><span><span class="ref">${c.name}</span>${testBadge(c.isTest)} <span class="small">${c.contactName ?? '—'}${c.suburb ? ` · ${c.suburb}` : ''}${
+          c.meetingOn ? ` · meeting ${calendarDay(c.meetingOn)}` : ''
+        } · asked ${when(c.createdAt)}</span></span>${clubBadge(c)}</a></li>`,
+      )}</ul>`
+    : html`<p class="empty">No leads yet. Clubs ask from the “Talk to us about your club” form on the Clubs page.</p>`
+}
+<h2>Clubs</h2>
+${
+  customers.length
+    ? html`<ul class="orders">${customers.map(
         (c) => html`<li><a href="/admin/clubs/${c.id}"><span><span class="ref">${c.name}</span>${testBadge(c.isTest)} <span class="small">${c.billingName} · ${
           c.openBatches === 1 ? '1 open batch' : `${c.openBatches} open batches`
         }</span></span>${clubBadge(c)}</a></li>`,
@@ -78,6 +93,50 @@ function crmLine(ctx: PageContext, sync: BatchEmail | null | undefined): Html | 
   }</p>`;
 }
 
+const FORWARD: Partial<Record<ClubStatus, ClubStatus>> = { lead: 'meeting', meeting: 'agreement_sent', agreement_sent: 'active' };
+const moveLabel = (from: ClubStatus, to: ClubStatus): string =>
+  to === 'inactive' ? 'Not going ahead (Inactive)' : from === 'inactive' ? 'Reopen as a lead' : FORWARD[from] === to ? `Move to ${STATUS_LABELS[to]}` : `Back to ${STATUS_LABELS[to]}`;
+
+/** A lead's details, its meeting date and the moves along the pipeline (SCRUM-93). */
+function pipelineSection(ctx: PageContext, club: Club): Html | string {
+  const open = club.status === 'lead' || club.status === 'meeting' || club.status === 'agreement_sent';
+  const moves = MOVES[club.status].filter((s) => !(isCustomer(club) && s === 'active'));
+  const asked = club.suburb || club.contactName || club.leadMessage || club.memberCount !== null;
+  return html`${
+    asked
+      ? html`<h2>The enquiry</h2><dl class="facts">
+  <dt>Contact</dt><dd>${club.contactName ?? '—'}${club.contactEmail ? html`, <a href="mailto:${club.contactEmail}">${club.contactEmail}</a>` : ''}${club.contactPhone ? `, ${club.contactPhone}` : ''}</dd>
+  <dt>Suburb</dt><dd>${club.suburb ?? '—'}</dd>
+  <dt>Rough size</dt><dd>${club.memberCount !== null ? `about ${club.memberCount} members play` : '—'}</dd>
+  <dt>Preferred times</dt><dd>${club.preferredTimes ?? '—'}</dd>
+  <dt>Message</dt><dd>${club.leadMessage ?? '—'}</dd>
+</dl>`
+      : ''
+  }
+${
+  open
+    ? html`<h2>Pipeline</h2>
+<p>Now: <strong>${STATUS_LABELS[club.status]}</strong>${club.meetingOn ? html`, meeting on <strong>${calendarDay(club.meetingOn)}</strong>` : ''}.</p>
+<form method="post" action="/admin/clubs/${club.id}/meeting" class="inline">
+  ${csrfField(ctx)}
+  <label>Meeting date<input type="date" name="meetingOn" value="${club.meetingOn ?? ''}"></label>
+  <button type="submit" class="secondary">Save meeting date</button>
+</form>`
+    : ''
+}
+${
+  open || club.status === 'inactive'
+    ? html`<div class="actions">${moves
+        .filter((s) => club.status !== 'inactive' || s === 'lead')
+        .map(
+          (s) => html`<form method="post" action="/admin/clubs/${club.id}/stage" class="inline">${csrfField(ctx)}<input type="hidden" name="to" value="${s}"><button type="submit"${
+            s === 'inactive' ? html` class="danger"` : html` class="secondary"`
+          }>${moveLabel(club.status, s)}</button></form>`,
+        )}</div>`
+    : ''
+}`;
+}
+
 export function clubPage(ctx: PageContext, club: Club, batches: Batch[], today: string, flash?: Flash, form?: Partial<Club>, sync?: BatchEmail | null): string {
   return layout(
     ctx,
@@ -85,8 +144,11 @@ export function clubPage(ctx: PageContext, club: Club, batches: Batch[], today: 
     html`<p><a href="/admin/clubs">← Clubs</a></p>
 ${flashBox(flash)}
 <h1>${club.name}${testBadge(club.isTest)} ${clubBadge(club)}</h1>
-<p class="small">Added ${when(club.createdAt)}. Invoices go to ${club.billingName}, ${club.billingEmail}.</p>
+<p class="small">Added ${when(club.createdAt)}. ${
+  club.billingEmail ? html`Invoices go to ${club.billingName}, ${club.billingEmail}.` : html`No billing details yet: add them (Edit the club) before making it Active.`
+}</p>
 ${crmLine(ctx, sync)}
+${pipelineSection(ctx, club)}
 
 <h2>Batches</h2>
 ${batches.length ? batchRows(batches, false, today) : html`<p class="empty">No batches yet.</p>`}
@@ -100,7 +162,9 @@ ${
   <label>Notes (optional, only you see them)<textarea name="notes" maxlength="${MAX_CLUB_NOTE}" rows="2"></textarea></label>
   <button type="submit">Record batch</button>
 </form></details>`
-    : html`<p class="small">This club is inactive: reactivate it to record a new batch.</p>`
+    : club.status === 'inactive'
+      ? html`<p class="small">This club is inactive: reactivate it to record a new batch.</p>`
+      : html`<p class="small">Batches can be recorded once the club is Active.</p>`
 }
 
 <details class="action"${form ? html` open` : ''}><summary>Edit the club’s details</summary>
@@ -111,12 +175,16 @@ ${
   <button type="submit">Save</button>
 </form></details>
 
-<form method="post" action="/admin/clubs/${club.id}/active">
+${
+  isCustomer(club)
+    ? html`<form method="post" action="/admin/clubs/${club.id}/active">
   ${csrfField(ctx)}
   <input type="hidden" name="active" value="${club.status === 'active' ? 'no' : 'yes'}">
   <button type="submit"${club.status === 'active' ? html` class="danger"` : ''}>${club.status === 'active' ? 'Make inactive' : 'Reactivate'}</button>
 </form>
-<p class="small">An inactive club keeps its batches and invoices; it just can’t have new batches.</p>`,
+<p class="small">An inactive club keeps its batches and invoices; it just can’t have new batches.</p>`
+    : ''
+}`,
   );
 }
 

@@ -13,6 +13,7 @@ import { hubspotAdapter, hubspotClient, portalIdOf } from '../crm/hubspot.js';
 import { createPgDb } from '../db/db.js';
 import { sydneyDate } from '../orders/dates.js';
 import { fsPhotoStore } from '../orders/photos.js';
+import { runLeadRetention, staleLeads } from '../clubs/lead-retention.js';
 import { retentionOrders, rulesDue, runRetention, upcomingDeletions } from '../orders/retention.js';
 
 let config;
@@ -39,6 +40,11 @@ try {
       console.log('Coming up in the next 14 days:');
       for (const u of soon) console.log(`  ${u.due} ${u.reference}: ${u.rule}`);
     }
+    const stale = await staleLeads(db, now);
+    if (stale.length) {
+      console.log('Club leads with no activity for 12 months (due now):');
+      for (const s of stale) console.log(`  ${s.name}`);
+    }
     console.log('Dry run: nothing was deleted.');
   } else {
     const hubspot = config.HUBSPOT_ACCESS_TOKEN ? hubspotClient(config.HUBSPOT_ACCESS_TOKEN, config.HUBSPOT_API_BASE) : null;
@@ -47,6 +53,9 @@ try {
       : null;
     const run = await runRetention({ db, photos: fsPhotoStore(config.PHOTO_DIR), crm }, now);
     console.log(`Deleted: photos of ${run.photos} order(s), ${run.enquiries} order(s) that never went ahead, ${run.paid} paid order(s) past 5 years.`);
+    const leads = await runLeadRetention({ db, crm }, now);
+    console.log(`Deleted: ${leads.leads} club lead(s) with no activity for 12 months.`);
+    if (leads.waiting) console.log(`${leads.waiting} due lead(s) are waiting for HubSpot; they'll be tried again on the next run.`);
     if (run.waiting) console.log(`${run.waiting} due order(s) are waiting for HubSpot; they'll be tried again on the next run.`);
   }
 } finally {
