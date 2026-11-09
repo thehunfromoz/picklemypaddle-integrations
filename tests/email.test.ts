@@ -58,7 +58,7 @@ describe('email templates', () => {
       it(`${name} (${test ? 'staging' : 'production'}) renders the same text and HTML as approved`, () => {
         const e = render(name, sampleContext(name, test));
         expect(e.subject.startsWith('[TEST] ')).toBe(test);
-        expect(/TEST (ORDER|INVOICE)/.test(e.text)).toBe(test);
+        expect(/TEST (ORDER|INVOICE|ENQUIRY)/.test(e.text)).toBe(test);
         expect(e).toMatchSnapshot();
       });
     }

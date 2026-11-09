@@ -187,7 +187,7 @@ export async function processCrm(deps: CrmDeps, batch = 10): Promise<CrmRun> {
 
 async function loadClub(db: Db, clubId: string): Promise<ClubForCrm | null> {
   const { rows } = await db.query<Omit<ClubForCrm, 'batches'>>(
-    'SELECT id, name, is_test, billing_name, billing_email, crm_company_id, crm_contact_id FROM clubs WHERE id = $1',
+    'SELECT id, name, status, is_test, billing_name, billing_email, contact_name, contact_email, crm_company_id, crm_contact_id FROM clubs WHERE id = $1',
     [clubId],
   );
   const club = rows[0];

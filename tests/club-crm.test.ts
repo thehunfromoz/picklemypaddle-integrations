@@ -47,7 +47,7 @@ describe(`Clubs in HubSpot (${DB_BACKEND})`, () => {
     expect(await processCrm(deps)).toMatchObject({ synced: 1 });
 
     const [companyId, company] = [...hs.companies][0]!;
-    expect(company.properties).toEqual({ name: '[TEST] Inner West PC', pmp_club_id: club.id, pmp_is_test: 'true' });
+    expect(company.properties).toEqual({ name: '[TEST] Inner West PC', pmp_club_id: club.id, pmp_club_stage: 'Active', pmp_is_test: 'true' });
     const contact = hs.contacts.get('jo@test.picklemypaddle.com')!;
     expect(contact.properties).toEqual({ email: 'jo@test.picklemypaddle.com', firstname: 'Jo', lastname: 'Treasurer' });
     expect([...company.contacts]).toEqual([contact.id]);
@@ -213,7 +213,7 @@ describe(`Clubs in HubSpot (${DB_BACKEND})`, () => {
       { from: '2027-07-01', pricePerPaddleCents: 6500, clubRemitPerPaddleCents: 5850 },
     ];
     const club = (collected_on: string) => ({
-      id: 'c1', name: 'Inner West PC', is_test: false, billing_name: 'Jo Treasurer', billing_email: 'jo@x.org', crm_company_id: null, crm_contact_id: null,
+      id: 'c1', name: 'Inner West PC', status: 'active' as const, is_test: false, billing_name: 'Jo Treasurer', billing_email: 'jo@x.org', contact_name: null, contact_email: null, crm_company_id: null, crm_contact_id: null,
       batches: [{ reference: 'PMPB-1', status: 'collected' as const, collected_on, paddle_count: 10, unchanged_count: 2, invoice_total: null, crm_deal_id: null }],
     });
     // The invoice uses the price list on its issue date, whenever the batch was collected.
@@ -225,7 +225,7 @@ describe(`Clubs in HubSpot (${DB_BACKEND})`, () => {
 
   it('once GST-registered the estimate carries the GST the invoice will add on top, worked out the way the invoice does, so the amount doesn’t jump at invoicing', () => {
     const club = (paddles: number) => ({
-      id: 'c1', name: 'Inner West PC', is_test: false, billing_name: 'Jo Treasurer', billing_email: 'jo@x.org', crm_company_id: null, crm_contact_id: null,
+      id: 'c1', name: 'Inner West PC', status: 'active' as const, is_test: false, billing_name: 'Jo Treasurer', billing_email: 'jo@x.org', contact_name: null, contact_email: null, crm_company_id: null, crm_contact_id: null,
       batches: [{ reference: 'PMPB-1', status: 'collected' as const, collected_on: '2026-11-02', paddle_count: paddles, unchanged_count: 0, invoice_total: null, crm_deal_id: null }],
     });
     const tax = { gstRegisteredFrom: '2026-12-01' };

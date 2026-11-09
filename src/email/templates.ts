@@ -29,6 +29,8 @@ export const TEMPLATES = [
   'payment_received',
   'refund_issued',
   'club_invoice',
+  'club_lead_ack',
+  'alert_club_lead',
 ] as const;
 export type TemplateName = (typeof TEMPLATES)[number];
 
@@ -90,6 +92,10 @@ export interface TemplateContext {
   review?: { quote: string; firstName: string; suburb: string; permission: boolean };
   /** SCRUM-85: club emails. `reference` is then the batch's (PMPB-…), `firstName` the billing contact's. */
   club?: { name: string };
+  /** SCRUM-93: an enquiry from the Clubs page's form (the club's contact, not its billing contact). */
+  enquiry?: boolean;
+  /** SCRUM-93 alert: the club was already on file, so this is a second enquiry. */
+  duplicate?: boolean;
   /** SCRUM-85: a club invoice, from its frozen snapshot, and its private page (view, print, pay by card). */
   invoice?: {
     number: string;
@@ -207,6 +213,7 @@ const paddleLine = (p: PaddleFacts) => (p.model ? `${p.brand} ${p.model}` : p.br
 const tournament = (n: number) =>
   `A reminder: re-gritted paddles aren’t allowed in sanctioned tournaments, so keep ${plural(n, 'this one', 'these')} for social and club play.`;
 const TEST_BANNER = 'TEST ORDER: this email comes from the PickleMyPaddle staging site. Nothing is charged or posted.';
+const ENQUIRY_TEST_BANNER = 'TEST ENQUIRY: this email comes from the PickleMyPaddle staging site. No real club has made an enquiry.';
 const CLUB_TEST_BANNER = 'TEST INVOICE: this email comes from the PickleMyPaddle staging site. Nothing is owed or charged.';
 
 function need<K extends keyof TemplateContext>(ctx: TemplateContext, key: K, template: TemplateName): NonNullable<TemplateContext[K]> {
@@ -217,7 +224,8 @@ function need<K extends keyof TemplateContext>(ctx: TemplateContext, key: K, tem
 
 function footer(ctx: TemplateContext, forCustomer: boolean): Block[] {
   const lines = ['PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.', ctx.siteUrl];
-  if (forCustomer && ctx.club) lines.push('Questions? Just reply to this email.', `You’re getting this as the billing contact for ${ctx.club.name}.`);
+  if (forCustomer && ctx.enquiry) lines.push('Questions? Just reply to this email.', 'You’re getting this because you filled in the “Talk to us about your club” form on our Clubs page.');
+  else if (forCustomer && ctx.club) lines.push('Questions? Just reply to this email.', `You’re getting this as the billing contact for ${ctx.club.name}.`);
   else if (forCustomer) lines.push('Questions? Just reply to this email.', 'You’re getting this because an order was placed with this email address.');
   return [{ small: lines.join('\n') }];
 }
@@ -388,6 +396,36 @@ function build(name: TemplateName, ctx: TemplateContext): { subject: string; blo
       };
     }
 
+    case 'club_lead_ack': {
+      // SCRUM-93: the acknowledgement to whoever filled in the Clubs page form.
+      const club = need(ctx, 'club', name);
+      return {
+        customer: true,
+        subject: `Thanks for getting in touch about ${club.name}`,
+        blocks: [
+          { p: `Hi ${need(ctx, 'firstName', name)},` },
+          { p: `Thanks for telling us about ${club.name}. We’ll reply within 1 business day with a few times for a short chat about re-gripping your members’ paddles.` },
+          { p: 'If there’s anything you forgot to say, just reply to this email.' },
+          { p: 'Talk soon,\nAttila, PickleMyPaddle' },
+        ],
+      };
+    }
+
+    case 'alert_club_lead': {
+      // SCRUM-93: club name and the admin link only; the details are in admin.
+      const club = need(ctx, 'club', name);
+      return {
+        customer: false,
+        subject: `Club enquiry: ${club.name}`,
+        blocks: [
+          { p: ctx.duplicate
+            ? `Another enquiry from ${club.name}, which is already on file. No acknowledgement was sent. Promise: a reply within 1 business day with meeting times.`
+            : `New club enquiry from ${club.name}. Promise: a reply within 1 business day with meeting times.` },
+          ctx.adminUrl ? { button: { label: 'Open the club in admin', url: ctx.adminUrl } } : { p: 'Open the club in admin.' },
+        ],
+      };
+    }
+
     case 'alert_submitted': {
       // Reference, count and admin link only: no customer details or photos (SCRUM-69 AC4).
       const ref = need(ctx, 'reference', name);
@@ -554,7 +592,7 @@ function build(name: TemplateName, ctx: TemplateContext): { subject: string; blo
 export function render(name: TemplateName, ctx: TemplateContext): RenderedEmail {
   const built = build(name, ctx);
   const subject = ctx.test ? `[TEST] ${built.subject}` : built.subject;
-  const blocks: Block[] = [...(ctx.test ? [{ quote: ctx.club ? CLUB_TEST_BANNER : TEST_BANNER }] : []), ...built.blocks, ...footer(ctx, built.customer)];
+  const blocks: Block[] = [...(ctx.test ? [{ quote: ctx.enquiry ? ENQUIRY_TEST_BANNER : ctx.club ? CLUB_TEST_BANNER : TEST_BANNER }] : []), ...built.blocks, ...footer(ctx, built.customer)];
   return { subject, text: toText(blocks), html: toHtml(blocks, subject) };
 }
 
@@ -612,6 +650,15 @@ export function sampleContext(name: TemplateName, test: boolean): TemplateContex
             payId: 'payments@picklemypaddle.com',
             payByCard: false,
           },
+        }
+      : {}),
+    ...(name === 'club_lead_ack' || name === 'alert_club_lead'
+      ? {
+          reference: undefined,
+          firstName: 'Jo',
+          club: { name: 'Inner West Pickleball Club' },
+          enquiry: true,
+          adminUrl: 'https://pmp-prod.tail8bc7ae.ts.net/admin/clubs/00000000-0000-4000-8000-000000000001',
         }
       : {}),
     review: { quote: 'Feels brand new: the spin is back. Quick turnaround too.', firstName: 'Sam', suburb: 'Newtown', permission: true },

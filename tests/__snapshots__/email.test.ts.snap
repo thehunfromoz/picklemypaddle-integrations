@@ -119,6 +119,65 @@ You’re getting this because an order was placed with this email address.
 }
 `;
 
+exports[`email templates > alert_club_lead (production) renders the same text and HTML as approved 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="en-AU"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><title>Club enquiry: Inner West Pickleball Club</title></head>
+<body style="margin:0;padding:0;background:#FBFAF6;font-family:'Work Sans',Arial,Helvetica,sans-serif">
+<table role="presentation" width="100%" style="background:#FBFAF6;border-collapse:collapse"><tr><td style="padding:24px 12px">
+<table role="presentation" width="100%" style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;border-collapse:separate">
+<tr><td style="padding:20px 24px;border-bottom:4px solid #78A472"><span style="font-family:Sora,Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#4565A6">Pickle<span style="color:#3F6B3E">My</span>Paddle</span></td></tr>
+<tr><td style="padding:24px">
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">New club enquiry from Inner West Pickleball Club. Promise: a reply within 1 business day with meeting times.</p>
+<p style="margin:8px 0 24px"><a href="https://pmp-prod.tail8bc7ae.ts.net/admin/clubs/00000000-0000-4000-8000-000000000001" style="display:inline-block;background:#4565A6;color:#ffffff;text-decoration:none;font-weight:600;font-size:16px;padding:12px 20px;border-radius:8px">Open the club in admin</a></p>
+<p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.<br>https://www.picklemypaddle.com</p>
+</td></tr></table>
+</td></tr></table>
+</body></html>
+",
+  "subject": "Club enquiry: Inner West Pickleball Club",
+  "text": "New club enquiry from Inner West Pickleball Club. Promise: a reply within 1 business day with meeting times.
+
+Open the club in admin:
+https://pmp-prod.tail8bc7ae.ts.net/admin/clubs/00000000-0000-4000-8000-000000000001
+
+PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.
+https://www.picklemypaddle.com
+",
+}
+`;
+
+exports[`email templates > alert_club_lead (staging) renders the same text and HTML as approved 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="en-AU"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><title>[TEST] Club enquiry: Inner West Pickleball Club</title></head>
+<body style="margin:0;padding:0;background:#FBFAF6;font-family:'Work Sans',Arial,Helvetica,sans-serif">
+<table role="presentation" width="100%" style="background:#FBFAF6;border-collapse:collapse"><tr><td style="padding:24px 12px">
+<table role="presentation" width="100%" style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;border-collapse:separate">
+<tr><td style="padding:20px 24px;border-bottom:4px solid #78A472"><span style="font-family:Sora,Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#4565A6">Pickle<span style="color:#3F6B3E">My</span>Paddle</span></td></tr>
+<tr><td style="padding:24px">
+<blockquote style="margin:0 0 16px;padding:8px 16px;border-left:4px solid #78A472;color:#1E2E52;font-size:16px;line-height:1.5">TEST ENQUIRY: this email comes from the PickleMyPaddle staging site. No real club has made an enquiry.</blockquote>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">New club enquiry from Inner West Pickleball Club. Promise: a reply within 1 business day with meeting times.</p>
+<p style="margin:8px 0 24px"><a href="https://pmp-prod.tail8bc7ae.ts.net/admin/clubs/00000000-0000-4000-8000-000000000001" style="display:inline-block;background:#4565A6;color:#ffffff;text-decoration:none;font-weight:600;font-size:16px;padding:12px 20px;border-radius:8px">Open the club in admin</a></p>
+<p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.<br>http://home-server:8088</p>
+</td></tr></table>
+</td></tr></table>
+</body></html>
+",
+  "subject": "[TEST] Club enquiry: Inner West Pickleball Club",
+  "text": "  > TEST ENQUIRY: this email comes from the PickleMyPaddle staging site. No real club has made an enquiry.
+
+New club enquiry from Inner West Pickleball Club. Promise: a reply within 1 business day with meeting times.
+
+Open the club in admin:
+https://pmp-prod.tail8bc7ae.ts.net/admin/clubs/00000000-0000-4000-8000-000000000001
+
+PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.
+http://home-server:8088
+",
+}
+`;
+
 exports[`email templates > alert_payment (production) renders the same text and HTML as approved 1`] = `
 {
   "html": "<!doctype html>
@@ -423,6 +482,81 @@ PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Syd
 http://home-server:8088
 Questions? Just reply to this email.
 You’re getting this as the billing contact for Inner West Pickleball Club.
+",
+}
+`;
+
+exports[`email templates > club_lead_ack (production) renders the same text and HTML as approved 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="en-AU"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><title>Thanks for getting in touch about Inner West Pickleball Club</title></head>
+<body style="margin:0;padding:0;background:#FBFAF6;font-family:'Work Sans',Arial,Helvetica,sans-serif">
+<table role="presentation" width="100%" style="background:#FBFAF6;border-collapse:collapse"><tr><td style="padding:24px 12px">
+<table role="presentation" width="100%" style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;border-collapse:separate">
+<tr><td style="padding:20px 24px;border-bottom:4px solid #78A472"><span style="font-family:Sora,Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#4565A6">Pickle<span style="color:#3F6B3E">My</span>Paddle</span></td></tr>
+<tr><td style="padding:24px">
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Hi Jo,</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Thanks for telling us about Inner West Pickleball Club. We’ll reply within 1 business day with a few times for a short chat about re-gripping your members’ paddles.</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">If there’s anything you forgot to say, just reply to this email.</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Talk soon,<br>Attila, PickleMyPaddle</p>
+<p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.<br>https://www.picklemypaddle.com<br>Questions? Just reply to this email.<br>You’re getting this because you filled in the “Talk to us about your club” form on our Clubs page.</p>
+</td></tr></table>
+</td></tr></table>
+</body></html>
+",
+  "subject": "Thanks for getting in touch about Inner West Pickleball Club",
+  "text": "Hi Jo,
+
+Thanks for telling us about Inner West Pickleball Club. We’ll reply within 1 business day with a few times for a short chat about re-gripping your members’ paddles.
+
+If there’s anything you forgot to say, just reply to this email.
+
+Talk soon,
+Attila, PickleMyPaddle
+
+PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.
+https://www.picklemypaddle.com
+Questions? Just reply to this email.
+You’re getting this because you filled in the “Talk to us about your club” form on our Clubs page.
+",
+}
+`;
+
+exports[`email templates > club_lead_ack (staging) renders the same text and HTML as approved 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="en-AU"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><title>[TEST] Thanks for getting in touch about Inner West Pickleball Club</title></head>
+<body style="margin:0;padding:0;background:#FBFAF6;font-family:'Work Sans',Arial,Helvetica,sans-serif">
+<table role="presentation" width="100%" style="background:#FBFAF6;border-collapse:collapse"><tr><td style="padding:24px 12px">
+<table role="presentation" width="100%" style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;border-collapse:separate">
+<tr><td style="padding:20px 24px;border-bottom:4px solid #78A472"><span style="font-family:Sora,Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#4565A6">Pickle<span style="color:#3F6B3E">My</span>Paddle</span></td></tr>
+<tr><td style="padding:24px">
+<blockquote style="margin:0 0 16px;padding:8px 16px;border-left:4px solid #78A472;color:#1E2E52;font-size:16px;line-height:1.5">TEST ENQUIRY: this email comes from the PickleMyPaddle staging site. No real club has made an enquiry.</blockquote>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Hi Jo,</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Thanks for telling us about Inner West Pickleball Club. We’ll reply within 1 business day with a few times for a short chat about re-gripping your members’ paddles.</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">If there’s anything you forgot to say, just reply to this email.</p>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Talk soon,<br>Attila, PickleMyPaddle</p>
+<p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.<br>http://home-server:8088<br>Questions? Just reply to this email.<br>You’re getting this because you filled in the “Talk to us about your club” form on our Clubs page.</p>
+</td></tr></table>
+</td></tr></table>
+</body></html>
+",
+  "subject": "[TEST] Thanks for getting in touch about Inner West Pickleball Club",
+  "text": "  > TEST ENQUIRY: this email comes from the PickleMyPaddle staging site. No real club has made an enquiry.
+
+Hi Jo,
+
+Thanks for telling us about Inner West Pickleball Club. We’ll reply within 1 business day with a few times for a short chat about re-gripping your members’ paddles.
+
+If there’s anything you forgot to say, just reply to this email.
+
+Talk soon,
+Attila, PickleMyPaddle
+
+PickleMyPaddle: pickleball paddle re-grits, a small business operated out of Sydney.
+http://home-server:8088
+Questions? Just reply to this email.
+You’re getting this because you filled in the “Talk to us about your club” form on our Clubs page.
 ",
 }
 `;

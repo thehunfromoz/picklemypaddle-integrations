@@ -78,6 +78,8 @@ export interface EmailPayload {
   /** Refund issued (SCRUM-84): the amount of this refund, and whether the payment is now refunded in full. */
   refundCents?: number;
   refundFull?: boolean;
+  /** Club enquiry alert (SCRUM-93): the club was already on file. */
+  duplicate?: boolean;
 }
 
 // ── Allow-list ────────────────────────────────────────────────────────────────
@@ -139,12 +141,34 @@ export async function enqueueBatchEmail(
   );
 }
 
+/**
+ * SCRUM-93: queues an email about a club itself (not one of its batches): the acknowledgement to
+ * the contact who wrote to us, or Attila's alert. A club's emails go to its contact (a lead's) or
+ * its billing contact.
+ */
+export async function enqueueClubEmail(
+  q: Queryable,
+  clubId: string,
+  template: TemplateName,
+  now: Date,
+  payload: EmailPayload = {},
+): Promise<void> {
+  await q.query(
+    `INSERT INTO outbox (kind, club_id, template, recipient, payload, next_attempt_at, created_at, updated_at)
+     SELECT 'email', c.id, $2::text, CASE WHEN left($2::text, 6) = 'alert_' THEN $5::text ELSE COALESCE(c.contact_email, c.billing_email) END,
+            $3::jsonb, $4::timestamptz, $4::timestamptz, $4::timestamptz
+       FROM clubs c WHERE c.id = $1::uuid`,
+    [clubId, template, JSON.stringify(payload), now, ALERT_TO],
+  );
+}
+
 // ── Sending ───────────────────────────────────────────────────────────────────
 
 interface OutboxRow {
   id: string;
   order_id: string | null;
   batch_id: string | null;
+  club_id: string | null;
   template: TemplateName;
   recipient: string | null;
   payload: EmailPayload | string;
@@ -189,7 +213,7 @@ export async function processOutbox(deps: OutboxDeps, batch = 20): Promise<Outbo
       WHERE id IN (SELECT id FROM outbox
                     WHERE kind = 'email' AND state IN ('pending', 'sending') AND next_attempt_at <= $1
                     ORDER BY next_attempt_at, id LIMIT $3 FOR UPDATE SKIP LOCKED)
-      RETURNING id, order_id, batch_id, template, recipient, payload, attempts`,
+      RETURNING id, order_id, batch_id, club_id, template, recipient, payload, attempts`,
     [now, new Date(now.getTime() + LEASE_MS), batch],
   );
   for (const row of rows) {
@@ -229,6 +253,7 @@ async function sendOne(deps: OutboxDeps, row: OutboxRow, now: Date): Promise<key
   }
 
   if (row.batch_id) return sendBatchEmail(deps, row, now);
+  if (row.club_id) return sendClubEmail(deps, row, now);
 
   const { rows: orders } = await db.query<OrderFacts>(
     `SELECT id, reference, name, tracking_number, arrived_on::text AS arrived_on, discount_code, discount_kind, discount_value
@@ -402,6 +427,50 @@ async function sendBatchEmail(deps: OutboxDeps, row: OutboxRow, now: Date): Prom
     const wait: number = BACKOFF_MINUTES[row.attempts - 1] ?? 720;
     await settle(db, row.id, { state: 'pending', error: code, nextAt: new Date(now.getTime() + wait * MINUTE) }, now);
     log('email_retrying', { ...ref, reference: batch.reference, code, attempt: row.attempts, inMinutes: wait });
+    return 'retrying';
+  }
+}
+
+/** An email about a club itself: an enquiry's acknowledgement and alert (SCRUM-93). */
+async function sendClubEmail(deps: OutboxDeps, row: OutboxRow, now: Date): Promise<keyof OutboxRun> {
+  const { db, settings } = deps;
+  const ref = { outbox: Number(row.id), template: row.template };
+  const { rows: clubs } = await db.query<{ name: string; contact_name: string | null; billing_name: string | null }>(
+    'SELECT name, contact_name, billing_name FROM clubs WHERE id = $1',
+    [row.club_id],
+  );
+  const club = clubs[0];
+  if (!club) {
+    await settle(db, row.id, { state: 'failed', error: 'club_missing' }, now);
+    return 'failed';
+  }
+  const payload: EmailPayload = typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload;
+  const ctx: TemplateContext = {
+    test: !settings.isProduction,
+    siteUrl: settings.siteUrl,
+    firstName: firstName(club.contact_name ?? club.billing_name ?? club.name),
+    club: { name: club.name },
+    enquiry: true,
+    duplicate: payload.duplicate,
+    adminUrl: settings.adminUrl ? `${settings.adminUrl}/admin/clubs/${row.club_id}` : null,
+  };
+  try {
+    const email = render(row.template, ctx);
+    const { id } = await deps.sender!.send({ to: row.recipient!, ...email, replyTo: CLUB_REPLY_TO, idempotencyKey: `pmp-outbox-${row.id}` });
+    await settle(db, row.id, { state: 'sent', providerId: id }, now);
+    log('email_sent', { ...ref, attempt: row.attempts });
+    return 'sent';
+  } catch (err) {
+    const code = err instanceof SendError ? err.code : `render:${(err as Error)?.name ?? 'error'}`;
+    const permanent = err instanceof SendError ? err.permanent : true;
+    if (permanent || row.attempts >= MAX_ATTEMPTS) {
+      await settle(db, row.id, { state: 'failed', error: code }, now);
+      logError('email_failed', err, { ...ref, code, attempt: row.attempts });
+      return 'failed';
+    }
+    const wait: number = BACKOFF_MINUTES[row.attempts - 1] ?? 720;
+    await settle(db, row.id, { state: 'pending', error: code, nextAt: new Date(now.getTime() + wait * MINUTE) }, now);
+    log('email_retrying', { ...ref, code, attempt: row.attempts, inMinutes: wait });
     return 'retrying';
   }
 }

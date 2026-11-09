@@ -11,6 +11,7 @@
  */
 import type { Db } from './db/db.js';
 import { runAutoTransitions } from './orders/auto.js';
+import { runLeadRetention } from './clubs/lead-retention.js';
 import { runRetention } from './orders/retention.js';
 import { runReviewReminders } from './orders/review-reminder.js';
 import { runPaymentReminders } from './orders/payment-reminder.js';
@@ -120,6 +121,11 @@ export function startJobs(
       await runRetention({ db, photos, crm }, now());
     } catch (err) {
       logError('job_failed', err, { job: 'retention' });
+    }
+    try {
+      await runLeadRetention({ db, crm }, now());
+    } catch (err) {
+      logError('job_failed', err, { job: 'lead_retention' });
     }
   };
   void hourly();

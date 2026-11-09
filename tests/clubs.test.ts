@@ -426,7 +426,7 @@ describe('club batches: all-or-nothing, GST end to end, settings and email edge 
     await expect(t.db.query(`UPDATE documents SET batch_id = NULL`)).rejects.toThrow(/never edited/);
   });
 
-  it('holds no member details or discount codes for clubs: the tables have no such columns', async () => {
+  it('holds no member details or discount codes for clubs: the tables have no such columns (the lead form’s rough club size is a number only)', async () => {
     await setup();
     const cols = async (table: string) => (await t.db.query<{ c: string }>(`SELECT column_name AS c FROM information_schema.columns WHERE table_name = $1`, [table])).rows.map((r) => r.c);
     for (const table of ['clubs', 'batches']) {

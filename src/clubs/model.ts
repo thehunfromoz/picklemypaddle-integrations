@@ -2,5 +2,14 @@
 export const CLUB_STATUSES = ['lead', 'meeting', 'agreement_sent', 'active', 'inactive'] as const;
 export type ClubStatus = (typeof CLUB_STATUSES)[number];
 
+/** The club pipeline in words (SCRUM-93), for the admin and for HubSpot's "Club stage". */
+export const STATUS_LABELS: Record<ClubStatus, string> = {
+  lead: 'Lead',
+  meeting: 'Meeting arranged',
+  agreement_sent: 'Agreement sent',
+  active: 'Active',
+  inactive: 'Inactive',
+};
+
 export const BATCH_STATUSES = ['collected', 'returned', 'invoiced', 'paid', 'cancelled'] as const;
 export type BatchStatus = (typeof BATCH_STATUSES)[number];

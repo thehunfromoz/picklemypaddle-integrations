@@ -4,6 +4,8 @@
  *   POST /api/clubs/invoice { token, number } → a club invoice (with what's owing), for its printable page, or 404
  *   POST /api/clubs/pay     { token, number } → { url } of a fresh Stripe Checkout page for what's owing
  *   POST /api/clubs/paid    { sessionId }      → { paid, number } once back from Checkout
+ *   GET  /api/clubs/lead/form                  → { open, formToken } when the "Talk to us" form loads (SCRUM-93)
+ *   POST /api/clubs/lead    { …form fields }   → 201 { ok: true } and a lead in admin, or 400 { errors }
  *
  * The token is the private link from the invoice email; a wrong token and a wrong number get the
  * same answer. Guessing is hopeless (256-bit tokens), but each address is still limited per hour,
@@ -17,7 +19,8 @@ import { applySession, PaymentError, type PaymentDeps } from '../payments/paymen
 import { StripeError } from '../payments/stripe.js';
 import { invoiceBalance, invoiceForToken, paymentsOfInvoice, startClubPayment, METHOD_LABELS } from './payments.js';
 import { log } from '../log.js';
-import { checkLimit, clientIp, hashKey, recordEvent, type AbuseKeys, type Limit, type TrustedProxies } from '../orders/abuse.js';
+import { checkFormToken, checkLimit, clientIp, hashKey, issueFormToken, recordEvent, type AbuseKeys, type Limit, type TrustedProxies } from '../orders/abuse.js';
+import { createLead, MAX_LEAD_MESSAGE, validateLead, type LeadForm } from './leads.js';
 
 export interface ClubRouteDeps {
   db: Db;
@@ -29,6 +32,11 @@ export interface ClubRouteDeps {
   payments?: PaymentDeps | null;
   /** The site's origins, for Checkout's return addresses. */
   siteOrigins?: readonly string[];
+  /**
+   * SCRUM-93: the "Talk to us" form. The same abuse protections as the order form (honeypot,
+   * minimum fill time, per-address and per-email limits). Without it the routes aren't mounted.
+   */
+  lead?: { isProduction: boolean; emailAllowList: readonly string[]; perIpHour: number; perEmailDay: number; minFillSeconds: number };
   now?: () => Date;
   peer?: (c: Context) => string;
 }
@@ -64,6 +72,8 @@ export function clubRoutes(deps: ClubRouteDeps) {
     return null;
   };
   const small = bodyLimit({ maxSize: 1024, onError: (c) => c.json({ error: 'too_large' }, 413) });
+
+  if (deps.lead) mountLeadRoutes(app, deps, deps.lead, now, peer);
 
   app.post('/invoice', small, async (c) => {
     const at = now();
@@ -128,4 +138,63 @@ export function clubRoutes(deps: ClubRouteDeps) {
     }
   });
   return app;
+}
+
+const DAY = 24 * HOUR;
+
+/** The Clubs page's form (SCRUM-93). */
+function mountLeadRoutes(
+  app: Hono,
+  deps: ClubRouteDeps,
+  cfg: NonNullable<ClubRouteDeps['lead']>,
+  now: () => Date,
+  peer: (c: Context) => string,
+) {
+  const ipLimit: Limit = { bucket: 'lead-ip', max: cfg.perIpHour, windowMs: HOUR };
+  const emailLimit: Limit = { bucket: 'lead-email', max: cfg.perEmailDay, windowMs: DAY };
+  const limitedResponse = (c: Context, retryAfterSeconds: number, bucket: string, keyHash: string) => {
+    log('rate_limited', { bucket, key: keyHash.slice(0, 12) });
+    c.header('Retry-After', String(retryAfterSeconds));
+    return c.json({ error: 'rate_limited', message: RATE_MESSAGE, retryAfter: retryAfterSeconds }, 429);
+  };
+  const FIELDS = ['clubName', 'suburb', 'contactName', 'contactEmail', 'contactPhone', 'memberCount', 'message', 'preferredTimes'] as const;
+
+  app.get('/lead/form', (c) => c.json({ open: true, formToken: issueFormToken(deps.keys.formKey, now()) }));
+
+  // The longest text is the message; the rest of the fields are short.
+  const maxBytes = (MAX_LEAD_MESSAGE + 1200) * 4 + 2048;
+  app.post('/lead', bodyLimit({ maxSize: maxBytes, onError: (c) => c.json({ error: 'too_large' }, 413) }), async (c) => {
+    const at = now();
+    const ipKey = hashKey(deps.keys.pepper, await clientIp(peer(c), c.req.header('x-forwarded-for'), deps.trusted));
+    const ipCheck = await checkLimit(deps.db, ipLimit, ipKey, at);
+    if (!ipCheck.ok) return limitedResponse(c, ipCheck.retryAfterSeconds, ipLimit.bucket, ipKey);
+
+    const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return c.json({ error: 'bad_request', errors: { form: 'We couldn’t read that. Please reload the page and try again.' } }, 400);
+    const text = (k: string) => (typeof body[k] === 'string' ? (body[k] as string) : typeof body[k] === 'number' ? String(body[k]) : '');
+
+    // Bots: a filled honeypot or an implausibly fast submit gets a normal-looking answer and nothing is saved.
+    const token = checkFormToken(deps.keys.formKey, text('formToken') || undefined, at);
+    const tooFast = token.ok && token.ageMs < cfg.minFillSeconds * 1000;
+    if (text('website').trim() !== '' || tooFast) {
+      await recordEvent(deps.db, ipLimit.bucket, ipKey, at);
+      log('club_lead_bot_suspected', { reason: tooFast ? 'too_fast' : 'honeypot', ip: ipKey.slice(0, 12) });
+      return c.json({ ok: true, ...(cfg.isProduction ? {} : { test: true }) }, 201);
+    }
+    if (!token.ok) return c.json({ errors: { form: 'This page has been open a long time. Please reload it and send your details again.' } }, 400);
+
+    const form: LeadForm = Object.fromEntries(FIELDS.map((k) => [k, text(k)]));
+    const checked = validateLead(form, { isProduction: cfg.isProduction, allowList: cfg.emailAllowList });
+    if (!checked.ok) return c.json({ errors: checked.errors }, 400);
+
+    const emailKey = hashKey(deps.keys.pepper, checked.input.contactEmail.replace(/\+.*@/, '@'));
+    const emailCheck = await checkLimit(deps.db, emailLimit, emailKey, at);
+    if (!emailCheck.ok) return limitedResponse(c, emailCheck.retryAfterSeconds, emailLimit.bucket, emailKey);
+
+    const lead = await createLead(deps.db, checked.input, { isProduction: cfg.isProduction, now: at });
+    await recordEvent(deps.db, ipLimit.bucket, ipKey, at);
+    await recordEvent(deps.db, emailLimit.bucket, emailKey, at);
+    log(lead.created ? 'club_lead_created' : 'club_lead_repeated', { test: !cfg.isProduction });
+    return c.json({ ok: true, ...(cfg.isProduction ? {} : { test: true }) }, 201);
+  });
 }

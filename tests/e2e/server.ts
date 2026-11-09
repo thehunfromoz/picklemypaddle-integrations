@@ -9,6 +9,7 @@
 import { serve } from '@hono/node-server';
 import { createAdminApp } from '../../src/admin/app.js';
 import { serviceSecret, TrustedProxies } from '../../src/orders/abuse.js';
+import { createLead } from '../../src/clubs/leads.js';
 import { makeApp, orderForm, post } from '../helpers/app.js';
 import { fakeStripe } from '../helpers/fake-stripe.js';
 import { applySession, startPayment } from '../../src/payments/payments.js';
@@ -30,6 +31,14 @@ for (const email of ['e2e-1@test.picklemypaddle.com', 'e2e-2@test.picklemypaddle
   references.push(((await placed.json()) as { reference: string }).reference);
 }
 const reference = references.join(', ');
+// SCRUM-93: one lead per browser project (desktop, phone) for the pipeline walk-through.
+for (const project of ['desktop', 'phone']) {
+  await createLead(
+    t.db,
+    { clubName: `E2E Lead ${project}`, suburb: 'Newtown', contactName: 'Jo Treasurer', contactEmail: 'jo@test.picklemypaddle.com', contactPhone: '0412 345 678', memberCount: 40, message: 'Keen to talk about re-gripping.', preferredTimes: 'Weekday evenings' },
+    { isProduction: false, now: new Date() },
+  );
+}
 
 const admin = createAdminApp({
   db: t.db,
