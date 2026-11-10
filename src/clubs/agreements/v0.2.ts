@@ -8,7 +8,7 @@ import type { AgreementVersion } from '../agreement-versions.js';
  * edited: a change is a new version (a new file and a new entry in agreement-versions.ts).
  *
  * Changes from 0.1 (never sent): 3.2 dead-spot check; section 4 now for clubs we can visit; new section 5 for post (box, postage, receipt, return); custody 6.6 for post; later sections renumbered (5→6 … 8→9); 2.2, 7.1 adjusted. Changes from the draft in the approval document (0.1): 1.5 states this version's number and date, and
- * 6.4 says payment is in full for each invoice (decided by Attila on 7 Nov 2026, SCRUM-85 UAT).
+ * 7.4 says payment is in full for each invoice (decided by Attila on 7 Nov 2026, SCRUM-85 UAT).
  */
 export const v0_2: AgreementVersion = {
   version: 2,

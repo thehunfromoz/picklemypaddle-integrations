@@ -264,14 +264,14 @@ describe('the pipeline', () => {
   it('a meeting time and length can be added after the date, and need a date; a bad time or length is refused', async () => {
     t = await makeApp();
     const id = await lead();
-    await expect(setMeeting(t.db, id, { meetingOn: '', meetingTime: '18:30' }, t.clock.now)).rejects.toMatchObject({ code: 'bad_date' });
     await setMeeting(t.db, id, { meetingOn: '2026-11-14' }, t.clock.now);
     expect(meetingText((await findClub(t.db, id))!)).toBe('Sat 14 Nov 2026');
     await setMeeting(t.db, id, { meetingOn: '2026-11-14', meetingTime: '18:30', meetingMinutes: '45' }, t.clock.now);
     expect(await findClub(t.db, id)).toMatchObject({ meetingOn: '2026-11-14', meetingTime: '18:30', meetingMinutes: 45 });
     await expect(setMeeting(t.db, id, { meetingOn: '2026-11-14', meetingTime: '25:00' }, t.clock.now)).rejects.toMatchObject({ code: 'bad_time' });
     await expect(setMeeting(t.db, id, { meetingOn: '2026-11-14', meetingMinutes: '2' }, t.clock.now)).rejects.toMatchObject({ code: 'bad_duration' });
-    await setMeeting(t.db, id, { meetingOn: '' }, t.clock.now); // clearing the date clears the rest
+    // Clearing the date clears the rest, even when the form still sends the saved time and length.
+    await setMeeting(t.db, id, { meetingOn: '', meetingTime: '18:30', meetingMinutes: '45' }, t.clock.now);
     expect(await findClub(t.db, id)).toMatchObject({ meetingOn: null, meetingTime: null, meetingMinutes: null });
   });
 

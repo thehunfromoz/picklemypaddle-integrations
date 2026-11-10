@@ -160,13 +160,13 @@ export async function setMeeting(
   now: Date,
 ): Promise<boolean> {
   const day = m.meetingOn.trim();
-  const time = (m.meetingTime ?? '').trim();
-  const mins = (m.meetingMinutes ?? '').trim();
+  // Clearing the date clears the time and length too, even if the form still sends them.
+  const time = day ? (m.meetingTime ?? '').trim() : '';
+  const mins = day ? (m.meetingMinutes ?? '').trim() : '';
   if (day) {
     const parsed = new Date(`${day}T00:00:00Z`);
     if (!ISO_DATE_RE.test(day) || Number.isNaN(parsed.getTime()) || !parsed.toISOString().startsWith(day)) throw new ClubError('bad_date', 'Give the meeting date.');
   }
-  if (!day && (time || mins)) throw new ClubError('bad_date', 'Give the meeting date before its time or length.');
   if (time && !/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(time)) throw new ClubError('bad_time', 'Give the meeting time as hours and minutes, like 18:30.');
   if (mins && !(/^\d{1,3}$/.test(mins) && Number(mins) >= 5 && Number(mins) <= 480)) throw new ClubError('bad_duration', 'The meeting length is 5 to 480 minutes.');
   const { rows } = await db.query(
