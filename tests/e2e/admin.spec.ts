@@ -169,7 +169,7 @@ test('adds a club, records a batch, returns it and opens its invoice', async ({ 
   await expect(page.getByRole('status')).toHaveText('Club added.');
   await expect(page.locator('h1')).toContainText(name);
 
-  await summary(page, 'Record a batch collected').click();
+  await summary(page, 'Record a batch received').click();
   await page.getByLabel(/Number of paddles/).fill('6');
   await page.getByRole('button', { name: 'Record batch' }).click();
   await expect(page.getByRole('status')).toHaveText('Batch recorded.');
@@ -219,9 +219,14 @@ test('a club lead: the enquiry, a meeting date and the pipeline', async ({ page 
   await expect(page.getByText('Weekday evenings')).toBeVisible();
 
   await page.getByLabel('Meeting date').fill('2026-11-12');
-  await page.getByRole('button', { name: 'Save meeting date' }).click();
-  await expect(page.getByRole('status')).toHaveText('Meeting date saved.');
-  await expect(page.getByText('meeting on')).toBeVisible();
+  await page.getByRole('button', { name: 'Save meeting' }).click();
+  await expect(page.getByRole('status')).toHaveText('Meeting saved.');
+  await expect(page.getByText('Thu 12 Nov 2026', { exact: true })).toBeVisible();
+  // The time and length come later, on the same date.
+  await page.getByLabel(/^Time/).fill('18:30');
+  await page.getByLabel(/^Length in minutes/).fill('60');
+  await page.getByRole('button', { name: 'Save meeting' }).click();
+  await expect(page.getByText('Thu 12 Nov 2026, 18:30, 60 min')).toBeVisible();
 
   await page.getByRole('button', { name: 'Move to Meeting arranged' }).click();
   await expect(page.getByRole('status')).toHaveText('Moved along the pipeline.');
@@ -239,7 +244,7 @@ test('the club agreement: send it, then record the “I agree” reply and the c
   await expect(page.locator('h1 .badge:not(.test)')).toHaveText('Meeting arranged');
   await expect(page.getByText('Not sent yet.')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Send agreement 0.1' }).click();
+  await page.getByRole('button', { name: 'Send agreement 0.2' }).click();
   await expect(page.getByRole('status')).toHaveText('The agreement is queued: its email goes out within a minute.');
   await expect(page.locator('h1 .badge:not(.test)')).toHaveText('Agreement sent');
   await expect(page.getByText('Waiting for “I agree”')).toBeVisible();

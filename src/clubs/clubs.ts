@@ -63,6 +63,9 @@ export interface Club {
   leadMessage: string | null;
   preferredTimes: string | null;
   meetingOn: string | null;
+  /** HH:MM (Sydney) and length in minutes: both optional, and only with a date. */
+  meetingTime: string | null;
+  meetingMinutes: number | null;
   lastActivityAt: Date;
 }
 
@@ -75,6 +78,13 @@ export interface ClubInput {
   notes: string | null;
 }
 
+export const BATCH_METHODS = ['pickup', 'post'] as const;
+export type BatchMethod = (typeof BATCH_METHODS)[number];
+export const isBatchMethod = (v: string): v is BatchMethod => (BATCH_METHODS as readonly string[]).includes(v);
+export const MAX_TRACKING = 60;
+/** We pay return postage for a posted batch of at least this many paddles (agreement 5.3). */
+export const FREE_RETURN_POST_MIN = 6;
+
 export interface Batch {
   id: string;
   reference: string;
@@ -82,7 +92,11 @@ export interface Batch {
   clubName: string;
   status: BatchStatus;
   statusChangedAt: Date;
+  /** The day the batch came into our hands: picked up, or received by post. */
   collectedOn: string;
+  method: BatchMethod;
+  inboundTracking: string | null;
+  returnTracking: string | null;
   paddleCount: number;
   returnedOn: string | null;
   unchangedCount: number;
@@ -163,12 +177,14 @@ interface ClubRow {
   lead_message: string | null;
   preferred_times: string | null;
   meeting_on: string | null;
+  meeting_time: string | null;
+  meeting_minutes: number | null;
   last_activity_at: Date;
 }
 
 /** Every column the Club type reads, with the meeting date as text (no driver makes a moment of it). */
 export const CLUB_COLUMNS = `id, name, billing_name, billing_email, billing_address, abn, notes, status, is_test, created_at,
-  suburb, contact_name, contact_email, contact_phone, club_size, lead_message, preferred_times, meeting_on::text AS meeting_on, last_activity_at`;
+  suburb, contact_name, contact_email, contact_phone, club_size, lead_message, preferred_times, meeting_on::text AS meeting_on, meeting_time, meeting_minutes, last_activity_at`;
 const CLUB_COLUMNS_C = CLUB_COLUMNS.split(',').map((c) => (c.trim().startsWith('meeting_on::') ? 'c.meeting_on::text AS meeting_on' : `c.${c.trim()}`)).join(', ');
 
 const toClub = (r: ClubRow): Club => ({
@@ -190,6 +206,8 @@ const toClub = (r: ClubRow): Club => ({
   leadMessage: r.lead_message,
   preferredTimes: r.preferred_times,
   meetingOn: r.meeting_on,
+  meetingTime: r.meeting_time,
+  meetingMinutes: r.meeting_minutes === null ? null : Number(r.meeting_minutes),
   lastActivityAt: new Date(r.last_activity_at),
 });
 
@@ -275,7 +293,7 @@ export function newBatchReference(): string {
 
 const BATCH_SELECT = `
   SELECT b.id, b.reference, b.club_id, c.name AS club_name, b.status, b.status_changed_at, b.collected_on::text AS collected_on,
-         b.paddle_count, b.returned_on::text AS returned_on, b.unchanged_count, b.notes,
+         b.method, b.inbound_tracking, b.return_tracking, b.paddle_count, b.returned_on::text AS returned_on, b.unchanged_count, b.notes,
          d.id AS invoice_id, d.number AS invoice_number, d.total_cents AS invoice_total, d.due_on::text AS invoice_due,
          (SELECT COALESCE(sum(p.amount_cents), 0)::int FROM club_payments p WHERE p.document_id = d.id) AS invoice_paid
     FROM batches b JOIN clubs c ON c.id = b.club_id
@@ -289,6 +307,9 @@ interface BatchRow {
   status: BatchStatus;
   status_changed_at: Date;
   collected_on: string;
+  method: BatchMethod;
+  inbound_tracking: string | null;
+  return_tracking: string | null;
   paddle_count: number;
   returned_on: string | null;
   unchanged_count: number;
@@ -308,6 +329,9 @@ const toBatch = (r: BatchRow): Batch => ({
   status: r.status,
   statusChangedAt: new Date(r.status_changed_at),
   collectedOn: r.collected_on,
+  method: r.method,
+  inboundTracking: r.inbound_tracking,
+  returnTracking: r.return_tracking,
   paddleCount: Number(r.paddle_count),
   returnedOn: r.returned_on,
   unchangedCount: Number(r.unchanged_count),
@@ -340,10 +364,17 @@ function checkCount(n: number, what: string, max = MAX_BATCH_PADDLES): void {
   if (!Number.isInteger(n) || n < 0 || n > max) throw new ClubError('bad_count', `${what} must be a whole number from 0 to ${max}.`);
 }
 
-/** Records a batch collected from an active club (SCRUM-85 AC2). */
+/** A tracking number: letters, digits, spaces and dashes, up to 60. Empty means none. */
+export function cleanTracking(v: string | null | undefined): string {
+  const t = clean(v);
+  if (t.length > MAX_TRACKING || (t && !/^[A-Za-z0-9][A-Za-z0-9 -]*$/.test(t))) throw new ClubError('bad_tracking', `A tracking number is letters, digits and dashes, up to ${MAX_TRACKING} characters.`);
+  return t;
+}
+
+/** Records a batch collected from, or received by post from, an active club (SCRUM-85 AC2). */
 export async function createBatch(
   db: Db,
-  args: { clubId: string; collectedOn: string; paddleCount: number; notes: string | null; now: Date },
+  args: { clubId: string; collectedOn: string; paddleCount: number; notes: string | null; now: Date; method?: string; inboundTracking?: string | null },
 ): Promise<Batch> {
   if (!isDate(args.collectedOn)) throw new ClubError('bad_date', 'Give the collection date.');
   if (args.collectedOn > sydneyDate(args.now)) throw new ClubError('future_date', 'The collection date can’t be in the future.');
@@ -351,6 +382,10 @@ export async function createBatch(
   if (args.paddleCount < 1) throw new ClubError('bad_count', 'A batch has at least one paddle.');
   const notes = clean(args.notes);
   if (notes.length > MAX_CLUB_NOTE) throw new ClubError('bad_notes', `Notes can be up to ${MAX_CLUB_NOTE} characters.`);
+  const method = args.method ?? 'pickup';
+  if (!isBatchMethod(method)) throw new ClubError('bad_method', 'Choose picked up or received by post.');
+  const inbound = cleanTracking(args.inboundTracking);
+  if (inbound && method !== 'post') throw new ClubError('bad_tracking', 'A tracking number only goes with a batch received by post.');
   const club = await findClub(db, args.clubId);
   if (!club) throw new ClubError('no_club', 'No such club.');
   if (club.status !== 'active') throw new ClubError('club_inactive', 'This club isn’t active: reactivate it before recording a batch.');
@@ -359,9 +394,9 @@ export async function createBatch(
       const reference = newBatchReference();
       await db.tx(async (q) => {
         await q.query(
-          `INSERT INTO batches (reference, club_id, status, status_changed_at, collected_on, paddle_count, notes, created_at, updated_at)
-           VALUES ($1, $2, 'collected', $3, $4::date, $5, $6, $3, $3)`,
-          [reference, club.id, args.now, args.collectedOn, args.paddleCount, notes || null],
+          `INSERT INTO batches (reference, club_id, status, status_changed_at, collected_on, paddle_count, notes, method, inbound_tracking, created_at, updated_at)
+           VALUES ($1, $2, 'collected', $3, $4::date, $5, $6, $7, $8, $3, $3)`,
+          [reference, club.id, args.now, args.collectedOn, args.paddleCount, notes || null, method, inbound || null],
         );
         await enqueueClubCrmSync(q, club.id, args.now);
       });
@@ -403,16 +438,17 @@ export interface ReturnDeps {
  */
 export async function returnBatch(
   deps: ReturnDeps,
-  args: { reference: string; returnedOn: string; unchangedCount: number },
+  args: { reference: string; returnedOn: string; unchangedCount: number; returnTracking?: string | null },
 ): Promise<{ invoiceId: string | null }> {
   const { now } = deps;
   if (!isDate(args.returnedOn)) throw new ClubError('bad_date', 'Give the return date.');
   if (args.returnedOn > sydneyDate(now)) throw new ClubError('future_date', 'The return date can’t be in the future.');
   checkCount(args.unchangedCount, 'Paddles returned unchanged');
+  const returnTracking = cleanTracking(args.returnTracking);
   try {
     return await deps.db.tx(async (q) => {
-      const { rows } = await q.query<{ id: string; club_id: string; collected_on: string; paddle_count: number; status: BatchStatus }>(
-        `SELECT id, club_id, collected_on::text AS collected_on, paddle_count, status FROM batches WHERE reference = $1 FOR UPDATE`,
+      const { rows } = await q.query<{ id: string; club_id: string; collected_on: string; paddle_count: number; status: BatchStatus; method: BatchMethod }>(
+        `SELECT id, club_id, collected_on::text AS collected_on, paddle_count, status, method FROM batches WHERE reference = $1 FOR UPDATE`,
         [args.reference],
       );
       const b = rows[0];
@@ -420,9 +456,10 @@ export async function returnBatch(
       if (b.status !== 'collected') throw new ClubError('not_collected', 'Only a collected batch can be returned.');
       if (args.returnedOn < b.collected_on) throw new ClubError('before_collection', 'The return date can’t be before the collection date.');
       if (args.unchangedCount > Number(b.paddle_count)) throw new ClubError('bad_count', 'More paddles unchanged than were collected.');
+      if (returnTracking && b.method !== 'post') throw new ClubError('bad_tracking', 'A tracking number only goes with a batch sent back by post.');
       await q.query(
-        `UPDATE batches SET status = 'returned', returned_on = $2::date, unchanged_count = $3, status_changed_at = $4, updated_at = $4 WHERE id = $1`,
-        [b.id, args.returnedOn, args.unchangedCount, now],
+        `UPDATE batches SET status = 'returned', returned_on = $2::date, unchanged_count = $3, return_tracking = $5, status_changed_at = $4, updated_at = $4 WHERE id = $1`,
+        [b.id, args.returnedOn, args.unchangedCount, now, returnTracking || null],
       );
       await enqueueClubCrmSync(q, b.club_id, now);
       if (args.unchangedCount === Number(b.paddle_count)) return { invoiceId: null };

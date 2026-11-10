@@ -57,7 +57,7 @@ import { ADMIN_CSS } from './style.js';
 import { batchesPage, batchPage, clubPage, clubsPage } from './club-pages.js';
 import { liveAgreement } from '../clubs/agreement-versions.js';
 import { agreementsOfClub, recordAcceptance, sendAgreement } from '../clubs/agreements.js';
-import { moveClub, setMeetingDate } from '../clubs/leads.js';
+import { moveClub, setMeeting } from '../clubs/leads.js';
 import { flaggedCardPayments, paymentsOfInvoice, recordClubPayment } from '../clubs/payments.js';
 import {
   batchEmails, cancelBatch, clubCrmSync, ClubError, createBatch, createClub, findBatch, findClub, listBatches, listClubs, returnBatch, setBatchNote, setClubActive, updateClub, validateClub,
@@ -120,7 +120,7 @@ const DONE: Record<string, string> = {
   agreement_sent: 'The agreement is queued: its email goes out within a minute.',
   agreement_accepted: 'Acceptance recorded.',
   agreement_accepted_active: 'Acceptance recorded: the club is now Active.',
-  meeting_saved: 'Meeting date saved.',
+  meeting_saved: 'Meeting saved.',
   club_inactive: 'The club is now inactive.',
   club_active: 'The club is active again.',
   batch_created: 'Batch recorded.',
@@ -537,7 +537,8 @@ export function createAdminApp(deps: AdminDeps) {
     const club = await findClub(deps.db, c.req.param('id'));
     if (!club) return c.html(notFoundPage(ctx(c), 'No such club.'), 404);
     try {
-      await setMeetingDate(deps.db, club.id, field(await c.req.parseBody(), 'meetingOn') ?? '', now());
+      const body = await c.req.parseBody();
+      await setMeeting(deps.db, club.id, { meetingOn: field(body, 'meetingOn') ?? '', meetingTime: field(body, 'meetingTime') ?? '', meetingMinutes: field(body, 'meetingMinutes') ?? '' }, now());
       return c.redirect(`/admin/clubs/${club.id}?done=meeting_saved`, 303);
     } catch (err) {
       if (!(err instanceof ClubError)) throw err;
@@ -581,6 +582,8 @@ export function createAdminApp(deps: AdminDeps) {
       const batch = await createBatch(deps.db, {
         clubId: club.id,
         collectedOn: field(body, 'collectedOn') ?? '',
+        method: field(body, 'method') ?? 'pickup',
+        inboundTracking: field(body, 'inboundTracking') ?? null,
         paddleCount: /^\d{1,3}$/.test(count) ? Number(count) : NaN,
         notes: field(body, 'notes') ?? null,
         now: now(),
@@ -614,7 +617,7 @@ export function createAdminApp(deps: AdminDeps) {
     try {
       const { invoiceId } = await returnBatch(
         { db: deps.db, seller, isProduction: deps.isProduction, paymentTermsDays: deps.clubPaymentTermsDays ?? 14, now: now(), payByCard: deps.paymentsConfigured ?? false },
-        { reference, returnedOn: field(body, 'returnedOn') ?? '', unchangedCount: /^\d{1,3}$/.test(unchanged) ? Number(unchanged) : NaN },
+        { reference, returnedOn: field(body, 'returnedOn') ?? '', unchangedCount: /^\d{1,3}$/.test(unchanged) ? Number(unchanged) : NaN, returnTracking: field(body, 'returnTracking') ?? null },
       );
       log('admin_batch_returned', { batch: reference, invoiced: !!invoiceId });
       return c.redirect(`/admin/batches/${reference}?done=${invoiceId ? 'batch_returned' : 'batch_returned_unchanged'}`, 303);

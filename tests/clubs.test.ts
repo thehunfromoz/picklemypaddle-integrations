@@ -461,7 +461,7 @@ describe('the admin club pages', () => {
     const made = await admin.post('/admin/clubs', { name: 'Inner West PC', billingName: 'Jo Treasurer', billingEmail: 'jo@test.picklemypaddle.com', billingAddress: '1 Court St', abn: '', notes: '' });
     expect(made.status).toBe(303);
     const clubUrl = made.headers.get('location')!.replace(/\?.*$/, '');
-    expect(await (await admin.get(clubUrl)).text()).toContain('Record a batch collected');
+    expect(await (await admin.get(clubUrl)).text()).toContain('Record a batch received');
 
     const batch = await admin.post(`${clubUrl}/batches`, { collectedOn: '2026-11-02', paddleCount: '5', notes: '' });
     expect(batch.status).toBe(303);
@@ -531,6 +531,6 @@ describe('the admin club pages', () => {
     expect(await (await admin.get(url)).text()).toContain('This club is inactive');
     expect((await admin.post(`${url}/batches`, { collectedOn: '2026-10-26', paddleCount: '2' })).status).toBe(400);
     expect((await admin.post(`${url}/active`, { active: 'yes' })).headers.get('location')).toContain('done=club_active');
-    expect(await (await admin.get(url)).text()).toContain('Record a batch collected');
+    expect(await (await admin.get(url)).text()).toContain('Record a batch received');
   });
 });

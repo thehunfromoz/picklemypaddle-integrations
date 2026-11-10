@@ -665,6 +665,21 @@ export const MIGRATIONS: readonly Migration[] = [
       CREATE INDEX club_agreement_tokens_agreement_idx ON club_agreement_tokens (agreement_id);
     `,
   },
+  {
+    version: 19,
+    name: 'club postage and meeting time',
+    sql: `
+      -- SCRUM-96/94 UAT (10 Nov 2026): a club can post its paddles instead of waiting for a pickup.
+      -- collected_on stays the day the batch came into our hands (picked up, or received by post).
+      ALTER TABLE batches ADD COLUMN method text NOT NULL DEFAULT 'pickup' CHECK (method IN ('pickup', 'post'));
+      ALTER TABLE batches ADD COLUMN inbound_tracking text CHECK (length(inbound_tracking) <= 60);
+      ALTER TABLE batches ADD COLUMN return_tracking text CHECK (length(return_tracking) <= 60);
+      -- A meeting's time of day and length are optional, and set after the date.
+      ALTER TABLE clubs ADD COLUMN meeting_time text CHECK (meeting_time ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$');
+      ALTER TABLE clubs ADD COLUMN meeting_minutes integer CHECK (meeting_minutes BETWEEN 5 AND 480);
+      ALTER TABLE clubs ADD CONSTRAINT clubs_meeting_time_needs_date CHECK (meeting_on IS NOT NULL OR (meeting_time IS NULL AND meeting_minutes IS NULL));
+    `,
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;
