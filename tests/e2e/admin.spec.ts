@@ -244,7 +244,7 @@ test('the club agreement: send it, then record the “I agree” reply and the c
   await expect(page.locator('h1 .badge:not(.test)')).toHaveText('Meeting arranged');
   await expect(page.getByText('Not sent yet.')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Send agreement 0.2' }).click();
+  await page.getByRole('button', { name: 'Send agreement 0.3' }).click();
   await expect(page.getByRole('status')).toHaveText('The agreement is queued: its email goes out within a minute.');
   await expect(page.locator('h1 .badge:not(.test)')).toHaveText('Agreement sent');
   await expect(page.getByText('Waiting for “I agree”')).toBeVisible();

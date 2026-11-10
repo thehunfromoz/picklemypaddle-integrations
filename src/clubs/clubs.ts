@@ -11,6 +11,7 @@
  *    returned entirely unchanged stays Returned, with nothing to invoice.
  *  - Clubs never get discount codes (decided 30 Oct 2026): nothing here applies one.
  */
+import type { Fulfilment } from './service-area.js';
 import { randomInt } from 'node:crypto';
 import type { Db, Queryable } from '../db/db.js';
 import { DocumentError, issueClubInvoice, type Seller } from '../documents/documents.js';
@@ -66,6 +67,14 @@ export interface Club {
   /** HH:MM (Sydney) and length in minutes: both optional, and only with a date. */
   meetingTime: string | null;
   meetingMinutes: number | null;
+  /** The service area (SCRUM-102): the venue's postcode (`suburb` is the venue suburb), the default method it gave, any admin override, the list version used. */
+  venuePostcode: string | null;
+  fulfilmentDefault: Fulfilment | null;
+  fulfilmentOverride: Fulfilment | null;
+  fulfilmentOverrideAt: Date | null;
+  areaVersion: string | null;
+  /** The suburb matched with a different postcode: worth a look. */
+  areaReview: boolean;
   lastActivityAt: Date;
 }
 
@@ -179,12 +188,19 @@ interface ClubRow {
   meeting_on: string | null;
   meeting_time: string | null;
   meeting_minutes: number | null;
+  venue_postcode: string | null;
+  fulfilment_default: Fulfilment | null;
+  fulfilment_override: Fulfilment | null;
+  fulfilment_override_at: Date | null;
+  area_version: string | null;
+  area_review: boolean;
   last_activity_at: Date;
 }
 
 /** Every column the Club type reads, with the meeting date as text (no driver makes a moment of it). */
 export const CLUB_COLUMNS = `id, name, billing_name, billing_email, billing_address, abn, notes, status, is_test, created_at,
-  suburb, contact_name, contact_email, contact_phone, club_size, lead_message, preferred_times, meeting_on::text AS meeting_on, meeting_time, meeting_minutes, last_activity_at`;
+  suburb, contact_name, contact_email, contact_phone, club_size, lead_message, preferred_times, meeting_on::text AS meeting_on, meeting_time, meeting_minutes,
+  venue_postcode, fulfilment_default, fulfilment_override, fulfilment_override_at, area_version, area_review, last_activity_at`;
 const CLUB_COLUMNS_C = CLUB_COLUMNS.split(',').map((c) => (c.trim().startsWith('meeting_on::') ? 'c.meeting_on::text AS meeting_on' : `c.${c.trim()}`)).join(', ');
 
 const toClub = (r: ClubRow): Club => ({
@@ -208,6 +224,12 @@ const toClub = (r: ClubRow): Club => ({
   meetingOn: r.meeting_on,
   meetingTime: r.meeting_time,
   meetingMinutes: r.meeting_minutes === null ? null : Number(r.meeting_minutes),
+  venuePostcode: r.venue_postcode,
+  fulfilmentDefault: r.fulfilment_default,
+  fulfilmentOverride: r.fulfilment_override,
+  fulfilmentOverrideAt: r.fulfilment_override_at ? new Date(r.fulfilment_override_at) : null,
+  areaVersion: r.area_version,
+  areaReview: r.area_review,
   lastActivityAt: new Date(r.last_activity_at),
 });
 
@@ -510,3 +532,6 @@ export async function batchEmails(db: Queryable, batchId: string): Promise<Batch
   );
   return rows.map((r) => ({ id: String(r.id), template: r.template, state: r.state, attempts: Number(r.attempts), lastError: r.last_error, createdAt: new Date(r.created_at) }));
 }
+
+/** How this club's batches travel: the admin's override, else the service area's default; null when neither is known (a club made before the service area). */
+export const effectiveFulfilment = (c: Pick<Club, 'fulfilmentDefault' | 'fulfilmentOverride'>): Fulfilment | null => c.fulfilmentOverride ?? c.fulfilmentDefault;

@@ -551,6 +551,22 @@ members' details, so only the club's name and billing details are held here.
 - **Meeting time and length** are optional and set after the date (migration 19). The meeting goes to the
   company's "Club meeting" property in HubSpot (run `hubspot-setup` once per portal after deploying).
 
+## The local pickup service area (SCRUM-102, decided 10 Nov 2026)
+
+- `src/clubs/service-area-suburbs.json` is the single source of truth for the area (never copy
+  suburbs into code); `src/clubs/service-area.ts` checks a venue against it. Both are copied
+  byte-for-byte into the site (`src/lib/`), like `orders/rules.ts`: change here first, then a site PR
+  (the site's parity test fails until it matches `main` here).
+- Inside = suburb matches and (no postcode, or the postcode is one of its postcodes). A listed suburb
+  with another postcode is outside and flagged for review (`area_review`); an unknown suburb is postal.
+- The lead form takes the venue suburb and postcode (4 digits, required). The club stores the default
+  (`fulfilment_default`), the list version (`area_version`), and any admin override
+  (`fulfilment_override` + `_at`), so a later list change doesn't silently change existing clubs.
+  Admin shows and overrides it; the batch form starts on it; HubSpot's company has "Club pickup or post".
+- A new list version is a new JSON `version`; nothing is re-evaluated for existing clubs.
+- Agreement 0.3 (0.2 was sent to a staging test club, so it is left as it was) carries Attila's UAT
+  wording; the Schedule shows the venue, how batches travel and the list version.
+
 ## Database (SCRUM-64)
 
 PostgreSQL 18, one server per app, never shared. `DATABASE_URL` is required and secret. Versioned

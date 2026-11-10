@@ -57,7 +57,7 @@ import { ADMIN_CSS } from './style.js';
 import { batchesPage, batchPage, clubPage, clubsPage } from './club-pages.js';
 import { liveAgreement } from '../clubs/agreement-versions.js';
 import { agreementsOfClub, recordAcceptance, sendAgreement } from '../clubs/agreements.js';
-import { moveClub, setMeeting } from '../clubs/leads.js';
+import { moveClub, setFulfilmentOverride, setMeeting } from '../clubs/leads.js';
 import { flaggedCardPayments, paymentsOfInvoice, recordClubPayment } from '../clubs/payments.js';
 import {
   batchEmails, cancelBatch, clubCrmSync, ClubError, createBatch, createClub, findBatch, findClub, listBatches, listClubs, returnBatch, setBatchNote, setClubActive, updateClub, validateClub,
@@ -121,6 +121,7 @@ const DONE: Record<string, string> = {
   agreement_accepted: 'Acceptance recorded.',
   agreement_accepted_active: 'Acceptance recorded: the club is now Active.',
   meeting_saved: 'Meeting saved.',
+  fulfilment_saved: 'Saved how this club’s batches travel.',
   club_inactive: 'The club is now inactive.',
   club_active: 'The club is active again.',
   batch_created: 'Batch recorded.',
@@ -540,6 +541,19 @@ export function createAdminApp(deps: AdminDeps) {
       const body = await c.req.parseBody();
       await setMeeting(deps.db, club.id, { meetingOn: field(body, 'meetingOn') ?? '', meetingTime: field(body, 'meetingTime') ?? '', meetingMinutes: field(body, 'meetingMinutes') ?? '' }, now());
       return c.redirect(`/admin/clubs/${club.id}?done=meeting_saved`, 303);
+    } catch (err) {
+      if (!(err instanceof ClubError)) throw err;
+      return clubPageFor(c, club, { kind: 'error', text: err.message }, 400);
+    }
+  });
+  app.post('/admin/clubs/:id/fulfilment', async (c) => {
+    const club = await findClub(deps.db, c.req.param('id'));
+    if (!club) return c.html(notFoundPage(ctx(c), 'No such club.'), 404);
+    try {
+      const value = field(await c.req.parseBody(), 'fulfilment') ?? '';
+      await setFulfilmentOverride(deps.db, club.id, value, now());
+      log('admin_club_fulfilment', { club: club.id, override: value || 'default' });
+      return c.redirect(`/admin/clubs/${club.id}?done=fulfilment_saved`, 303);
     } catch (err) {
       if (!(err instanceof ClubError)) throw err;
       return clubPageFor(c, club, { kind: 'error', text: err.message }, 400);

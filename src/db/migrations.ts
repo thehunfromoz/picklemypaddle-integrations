@@ -680,6 +680,22 @@ export const MIGRATIONS: readonly Migration[] = [
       ALTER TABLE clubs ADD CONSTRAINT clubs_meeting_time_needs_date CHECK (meeting_on IS NOT NULL OR (meeting_time IS NULL AND meeting_minutes IS NULL));
     `,
   },
+  {
+    version: 20,
+    name: 'club service area',
+    sql: `
+      -- SCRUM-102. The venue's postcode (the suburb column is the venue suburb), the method the service
+      -- area gave it (local pickup or post) with the list version used, any admin override (and when),
+      -- and whether the suburb matched with a different postcode (look at it).
+      ALTER TABLE clubs ADD COLUMN venue_postcode text CHECK (venue_postcode ~ '^[0-9]{4}$');
+      ALTER TABLE clubs ADD COLUMN fulfilment_default text CHECK (fulfilment_default IN ('local', 'postal'));
+      ALTER TABLE clubs ADD COLUMN fulfilment_override text CHECK (fulfilment_override IN ('local', 'postal'));
+      ALTER TABLE clubs ADD COLUMN fulfilment_override_at timestamptz;
+      ALTER TABLE clubs ADD COLUMN area_version text;
+      ALTER TABLE clubs ADD COLUMN area_review boolean NOT NULL DEFAULT false;
+      ALTER TABLE clubs ADD CONSTRAINT clubs_override_recorded CHECK ((fulfilment_override IS NULL) = (fulfilment_override_at IS NULL));
+    `,
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

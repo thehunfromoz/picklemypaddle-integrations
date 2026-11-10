@@ -35,7 +35,7 @@ const reference = references.join(', ');
 for (const project of ['desktop', 'phone']) {
   const { clubId } = await createLead(
     t.db,
-    { clubName: `E2E Agree ${project}`, suburb: 'Newtown', contactName: 'Jo Treasurer', contactEmail: 'jo@test.picklemypaddle.com', contactPhone: null, memberCount: 30, message: null, preferredTimes: null },
+    { clubName: `E2E Agree ${project}`, suburb: 'Newtown', postcode: '2042', contactName: 'Jo Treasurer', contactEmail: 'jo@test.picklemypaddle.com', contactPhone: null, memberCount: 30, message: null, preferredTimes: null },
     { isProduction: false, now: new Date() },
   );
   await moveClub(t.db, clubId, 'meeting', new Date());
@@ -45,7 +45,7 @@ for (const project of ['desktop', 'phone']) {
 for (const project of ['desktop', 'phone']) {
   await createLead(
     t.db,
-    { clubName: `E2E Lead ${project}`, suburb: 'Newtown', contactName: 'Jo Treasurer', contactEmail: 'jo@test.picklemypaddle.com', contactPhone: '0412 345 678', memberCount: 40, message: 'Keen to talk about re-gripping.', preferredTimes: 'Weekday evenings' },
+    { clubName: `E2E Lead ${project}`, suburb: 'Newtown', postcode: '2042', contactName: 'Jo Treasurer', contactEmail: 'jo@test.picklemypaddle.com', contactPhone: '0412 345 678', memberCount: 40, message: 'Keen to talk about re-gripping.', preferredTimes: 'Weekday evenings' },
     { isProduction: false, now: new Date() },
   );
 }

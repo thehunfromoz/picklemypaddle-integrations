@@ -80,7 +80,7 @@ describe('the admin for postal batches', () => {
     expect(bp).toContain('Received by post');
     expect(bp).toContain('AP 55');
     expect(bp).toContain('name="returnTracking"');
-    expect(bp).toContain('We pay the return postage: 7 paddles is 6 or more');
+    expect(bp).toContain('7 paddles is 6 or more: agreement 5.3 takes the standard postage cost off');
     const ret = await admin.post(`/admin/batches/${ref}/return`, { returnedOn: today(), unchangedCount: '0', returnTracking: 'AP 77' });
     expect(ret.status).toBe(303);
     const done = await (await admin.get(`/admin/batches/${ref}`)).text();
@@ -94,7 +94,7 @@ describe('the admin for postal batches', () => {
     const c = await club();
     const res = await admin.post(`/admin/clubs/${c.id}/batches`, { collectedOn: today(), paddleCount: '5', method: 'post' });
     const ref = /\/admin\/batches\/(PMPB-[0-9A-Z]{5})/.exec(res.headers.get('location')!)![1]!;
-    expect(await (await admin.get(`/admin/batches/${ref}`)).text()).toContain('Fewer than 6 paddles');
+    expect(await (await admin.get(`/admin/batches/${ref}`)).text()).toContain('Fewer than 6 paddles: no postage is taken off');
   });
 
   it('a pickup batch has no return tracking field', async () => {
@@ -119,5 +119,38 @@ describe('the admin for postal batches', () => {
     expect(await (await admin.get('/admin/clubs')).text()).toContain('meeting Sat 14 Nov 2026, 18:30, 60 min');
     const bad = await admin.post(`/admin/clubs/${id}/meeting`, { meetingOn: '2026-11-14', meetingTime: '99:99' });
     expect(bad.status).toBe(400);
+  });
+});
+
+describe('pickup or post in the admin (SCRUM-102)', () => {
+  it('shows the service area’s method, lets Attila override it (recorded), and the batch form follows it', async () => {
+    t = await makeApp();
+    const admin = await makeAdmin(t);
+    const r = await t.db.query<{ id: string }>(
+      `INSERT INTO clubs (name, status, is_test, billing_name, billing_email, billing_address, suburb, venue_postcode, fulfilment_default, area_version)
+       VALUES ('Far PC', 'active', true, 'Jo', 'jo@test.picklemypaddle.com', '1 St', 'Campbelltown', '2560', 'postal', '2026-11-10') RETURNING id`,
+    );
+    const id = r.rows[0]!.id;
+    let page = await (await admin.get(`/admin/clubs/${id}`)).text();
+    expect(page).toContain('Pickup or post');
+    expect(page).toContain('<strong>Post</strong> (from the service area)');
+    expect(page).toContain('list 2026-11-10');
+    expect(page).toMatch(/<option value="post" selected>/); // the batch form starts on post
+    expect((await admin.post(`/admin/clubs/${id}/fulfilment`, { fulfilment: 'local' })).status).toBe(303);
+    page = await (await admin.get(`/admin/clubs/${id}`)).text();
+    expect(page).toContain('<strong>Local pickup and drop-off</strong> (your override');
+    expect(page).toMatch(/<option value="pickup" selected>/);
+    expect((await admin.post(`/admin/clubs/${id}/fulfilment`, { fulfilment: 'courier' })).status).toBe(400);
+    expect((await admin.post(`/admin/clubs/${id}/fulfilment`, { fulfilment: '' })).status).toBe(303);
+    expect(await (await admin.get(`/admin/clubs/${id}`)).text()).toContain('<strong>Post</strong> (from the service area)');
+  });
+
+  it('a suburb listed with a different postcode is flagged on the club page', async () => {
+    t = await makeApp();
+    const admin = await makeAdmin(t);
+    const r = await t.db.query<{ id: string }>(
+      `INSERT INTO clubs (name, status, is_test, contact_email, suburb, venue_postcode, fulfilment_default, area_version, area_review) VALUES ('Odd PC', 'lead', true, 'jo@test.picklemypaddle.com', 'Milperra', '2560', 'postal', 'v', true) RETURNING id`,
+    );
+    expect(await (await admin.get(`/admin/clubs/${r.rows[0]!.id}`)).text()).toContain('different postcode');
   });
 });

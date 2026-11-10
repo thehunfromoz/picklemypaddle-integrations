@@ -2,14 +2,16 @@
  * The admin's club pages (SCRUM-85): clubs and their billing details, each club's batches, and a
  * batch's page, where it is returned (issuing its invoice) or cancelled.
  */
-import { BATCH_STATUS_LABELS, FREE_RETURN_POST_MIN, isOverdue, MAX_BATCH_PADDLES, MAX_TRACKING, MAX_CLUB_NOTE, type Batch, type BatchEmail, type BatchStatus, type Club, type ClubStatus } from '../clubs/clubs.js';
+import { BATCH_STATUS_LABELS, effectiveFulfilment, FREE_RETURN_POST_MIN, isOverdue, MAX_BATCH_PADDLES, MAX_TRACKING, MAX_CLUB_NOTE, type Batch, type BatchEmail, type BatchStatus, type Club, type ClubStatus } from '../clubs/clubs.js';
 import type { AgreementVersion } from '../clubs/agreement-versions.js';
 import { MAX_ACCEPTED_BY, MAX_ACCEPTED_NOTE, type ClubAgreement } from '../clubs/agreements.js';
 import { MOVES } from '../clubs/leads.js';
+import { FULFILMENT_LABELS } from '../clubs/service-area.js';
 import { meetingText, STATUS_LABELS } from '../clubs/model.js';
 import { CLUB_PROBLEMS, MAX_PAYMENT_REFERENCE, METHOD_LABELS, type ClubPayment } from '../clubs/payments.js';
 import { PROBLEM_TEXT } from '../payments/payments.js';
 import { documentDate } from '../documents/documents.js';
+import { sydneyDate } from '../orders/dates.js';
 import { calendarDay, dollars, html, type Html, when } from './html.js';
 import { layout, type Flash, type PageContext } from './pages.js';
 
@@ -100,6 +102,26 @@ const FORWARD: Partial<Record<ClubStatus, ClubStatus>> = { lead: 'meeting', meet
 const moveLabel = (from: ClubStatus, to: ClubStatus): string =>
   to === 'inactive' ? 'Not going ahead (Inactive)' : from === 'inactive' ? 'Reopen as a lead' : FORWARD[from] === to ? `Move to ${STATUS_LABELS[to]}` : `Back to ${STATUS_LABELS[to]}`;
 
+/** How the club's batches travel (SCRUM-102): the service area's default, and the admin's override. */
+function fulfilmentSection(ctx: PageContext, club: Club): Html {
+  const eff = effectiveFulfilment(club);
+  return html`<h2>Pickup or post</h2>
+<p>Now: <strong>${eff ? FULFILMENT_LABELS[eff] : 'not set'}</strong>${club.fulfilmentOverride ? html` (your override${club.fulfilmentOverrideAt ? `, ${calendarDay(sydneyDate(club.fulfilmentOverrideAt))}` : ''})` : club.fulfilmentDefault ? ' (from the service area)' : ''}.</p>
+${club.fulfilmentDefault ? html`<p class="small">The service area (list ${club.areaVersion ?? '—'}) gave ${FULFILMENT_LABELS[club.fulfilmentDefault]} for ${club.suburb ?? '—'} ${club.venuePostcode ?? ''}.</p>` : html`<p class="small">This club has no venue on file, so the service area hasn’t been used. Choose below.</p>`}
+${club.areaReview ? html`<p class="flash error" role="note">The suburb is on our list but with a different postcode. Several NSW suburb names exist in more than one place: check the venue.</p>` : ''}
+<form method="post" action="/admin/clubs/${club.id}/fulfilment" class="inline">
+  ${csrfField(ctx)}
+  <label>Method
+    <select name="fulfilment">
+      <option value=""${club.fulfilmentOverride ? '' : html` selected`}>Use the service area’s default</option>
+      <option value="local"${club.fulfilmentOverride === 'local' ? html` selected` : ''}>Local pickup and drop-off</option>
+      <option value="postal"${club.fulfilmentOverride === 'postal' ? html` selected` : ''}>Post</option>
+    </select>
+  </label>
+  <button type="submit" class="secondary">Save</button>
+</form>`;
+}
+
 /** A lead's details, its meeting date and the moves along the pipeline (SCRUM-93). */
 function pipelineSection(ctx: PageContext, club: Club): Html | string {
   const open = club.status === 'lead' || club.status === 'meeting' || club.status === 'agreement_sent';
@@ -109,7 +131,7 @@ function pipelineSection(ctx: PageContext, club: Club): Html | string {
     asked
       ? html`<h2>The enquiry</h2><dl class="facts">
   <dt>Contact</dt><dd>${club.contactName ?? '—'}${club.contactEmail ? html`, <a href="mailto:${club.contactEmail}">${club.contactEmail}</a>` : ''}${club.contactPhone ? `, ${club.contactPhone}` : ''}</dd>
-  <dt>Suburb</dt><dd>${club.suburb ?? '—'}</dd>
+  <dt>Venue suburb</dt><dd>${club.suburb ?? '—'}${club.venuePostcode ? ` ${club.venuePostcode}` : ''}</dd>
   <dt>Rough size</dt><dd>${club.memberCount !== null ? `about ${club.memberCount} members play` : '—'}</dd>
   <dt>Preferred times</dt><dd>${club.preferredTimes ?? '—'}</dd>
   <dt>Message</dt><dd>${club.leadMessage ?? '—'}</dd>
@@ -198,6 +220,7 @@ ${flashBox(flash)}
 }</p>
 ${crmLine(ctx, sync)}
 ${pipelineSection(ctx, club)}
+${fulfilmentSection(ctx, club)}
 ${agreementSection(ctx, club, agreements, live, today)}
 
 <h2>Batches</h2>
@@ -208,7 +231,7 @@ ${
 <form method="post" action="/admin/clubs/${club.id}/batches">
   ${csrfField(ctx)}
   <label>How it reached us
-    <select name="method"><option value="pickup">I picked it up</option><option value="post">It arrived by post</option></select>
+    <select name="method"><option value="pickup"${effectiveFulfilment(club) === 'postal' ? '' : html` selected`}>I picked it up</option><option value="post"${effectiveFulfilment(club) === 'postal' ? html` selected` : ''}>It arrived by post</option></select>
   </label>
   <label>Received on (the day it was picked up or arrived)<input type="date" name="collectedOn" required max="${today}" value="${today}"></label>
   <label>Tracking number for the box to us (post only, optional)<input name="inboundTracking" maxlength="${MAX_TRACKING}" autocomplete="off"></label>
@@ -338,7 +361,7 @@ ${
   ${
     b.method === 'post'
       ? html`<label>Tracking number for the box back (optional)<input name="returnTracking" maxlength="${MAX_TRACKING}" autocomplete="off"></label>
-  <p class="small">${b.paddleCount >= FREE_RETURN_POST_MIN ? `We pay the return postage: ${b.paddleCount} paddles is ${FREE_RETURN_POST_MIN} or more (agreement 5.3).` : `Fewer than ${FREE_RETURN_POST_MIN} paddles: return postage isn’t covered automatically. [To confirm: how it is charged]`}</p>`
+  <p class="small">${b.paddleCount >= FREE_RETURN_POST_MIN ? `${b.paddleCount} paddles is ${FREE_RETURN_POST_MIN} or more: agreement 5.3 takes the standard postage cost off the club’s invoice. That isn’t automatic yet [To confirm: the standard amount].` : `Fewer than ${FREE_RETURN_POST_MIN} paddles: no postage is taken off the invoice (agreement 5.3).`}</p>`
       : ''
   }
   <label>Paddles returned unchanged (unsuitable, not charged)<input name="unchangedCount" required inputmode="numeric" pattern="\\d{1,3}" value="0"></label>

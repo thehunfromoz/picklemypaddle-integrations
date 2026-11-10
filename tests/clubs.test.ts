@@ -430,7 +430,7 @@ describe('club batches: all-or-nothing, GST end to end, settings and email edge 
     await setup();
     const cols = async (table: string) => (await t.db.query<{ c: string }>(`SELECT column_name AS c FROM information_schema.columns WHERE table_name = $1`, [table])).rows.map((r) => r.c);
     for (const table of ['clubs', 'batches']) {
-      expect((await cols(table)).filter((c) => /member|player|discount|code/.test(c)), table).toEqual([]);
+      expect((await cols(table)).filter((c) => /member|player|discount|(^|_)code($|_)/.test(c)), table).toEqual([]);
     }
   });
 

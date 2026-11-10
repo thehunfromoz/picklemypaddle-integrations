@@ -4,9 +4,10 @@
  * moves, and that nothing about members or a street address is kept.
  */
 import { afterEach, describe, expect, it } from 'vitest';
-import { createBatch, createClub, findClub, setClubActive, validateClub } from '../src/clubs/clubs.js';
+import { createBatch, createClub, effectiveFulfilment, findClub, setClubActive, validateClub } from '../src/clubs/clubs.js';
 import { meetingText } from '../src/clubs/model.js';
-import { createLead, MOVES, moveClub, setMeeting, validateLead, type LeadForm } from '../src/clubs/leads.js';
+import { SERVICE_AREA_VERSION } from '../src/clubs/service-area.js';
+import { createLead, MOVES, moveClub, setFulfilmentOverride, setMeeting, validateLead, type LeadForm } from '../src/clubs/leads.js';
 import { CLUB_STATUSES } from '../src/clubs/model.js';
 import { mapClub } from '../src/crm/crm.js';
 import { processOutbox } from '../src/email/outbox.js';
@@ -25,6 +26,7 @@ const ALLOW = { isProduction: false, allowList: ['attila@test.picklemypaddle.com
 const GOOD: LeadForm = {
   clubName: 'Inner West Pickleball Club',
   suburb: 'Newtown',
+  postcode: '2042',
   contactName: 'Jo Treasurer',
   contactEmail: 'attila+club1@test.picklemypaddle.com',
   contactPhone: '0412 345 678',
@@ -38,14 +40,14 @@ describe('lead form validation', () => {
     const r = validateLead({ ...GOOD, clubName: '  Inner West Pickleball Club ', contactEmail: ' ATTILA+Club1@Test.PickleMyPaddle.com ' }, ALLOW);
     expect(r).toEqual({
       ok: true,
-      input: { clubName: 'Inner West Pickleball Club', suburb: 'Newtown', contactName: 'Jo Treasurer', contactEmail: 'attila+club1@test.picklemypaddle.com', contactPhone: '0412 345 678', memberCount: 40, message: GOOD.message, preferredTimes: 'Weekday evenings' },
+      input: { clubName: 'Inner West Pickleball Club', suburb: 'Newtown', postcode: '2042', contactName: 'Jo Treasurer', contactEmail: 'attila+club1@test.picklemypaddle.com', contactPhone: '0412 345 678', memberCount: 40, message: GOOD.message, preferredTimes: 'Weekday evenings' },
     });
   });
 
   it('needs the club, suburb, contact name, a valid email and a rough size; phone, message and times are optional', () => {
     const r = validateLead({}, ALLOW);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(Object.keys(r.errors).sort()).toEqual(['clubName', 'contactEmail', 'contactName', 'memberCount', 'suburb']);
+    if (!r.ok) expect(Object.keys(r.errors).sort()).toEqual(['clubName', 'contactEmail', 'contactName', 'memberCount', 'postcode', 'suburb']);
     expect(validateLead({ ...GOOD, contactPhone: '', message: '', preferredTimes: '' }, ALLOW)).toMatchObject({ ok: true, input: { contactPhone: null, message: null, preferredTimes: null } });
   });
 
@@ -285,8 +287,8 @@ describe('the pipeline', () => {
 
 describe('clubs in the CRM', () => {
   it('a lead is a company at its stage with its contact (no billing details yet)', () => {
-    const m = mapClub({ id: 'c1', name: 'Inner West PC', status: 'lead', is_test: true, billing_name: null, billing_email: null, contact_name: 'Jo Treasurer', contact_email: 'Jo@Example.com', crm_company_id: null, crm_contact_id: null, meeting_on: null, meeting_time: null, meeting_minutes: null, batches: [] });
-    expect(m.company).toEqual({ clubId: 'c1', name: '[TEST] Inner West PC', isTest: true, stage: 'Lead', meeting: '' });
+    const m = mapClub({ id: 'c1', name: 'Inner West PC', status: 'lead', is_test: true, billing_name: null, billing_email: null, contact_name: 'Jo Treasurer', contact_email: 'Jo@Example.com', crm_company_id: null, crm_contact_id: null, meeting_on: null, meeting_time: null, meeting_minutes: null, fulfilment_default: null, fulfilment_override: null, batches: [] });
+    expect(m.company).toEqual({ clubId: 'c1', name: '[TEST] Inner West PC', isTest: true, stage: 'Lead', meeting: '', fulfilment: '' });
     expect(m.contact).toEqual({ email: 'jo@example.com', firstName: 'Jo', lastName: 'Treasurer', fromPublicForm: true });
   });
 });
@@ -329,8 +331,8 @@ describe('a lead in HubSpot, and deleted after 12 months with no activity', () =
     const deps: CrmDeps = { db: t.db, adapter: hubspotAdapter(client), portalId: () => portalIdOf(client), expectedPortalId: '111', now: () => t.clock.now };
     return { hs, deps };
   }
-  const newLead = async (name = 'Inner West Pickleball Club', email = 'attila+club1@test.picklemypaddle.com') => {
-    const v = validateLead({ ...GOOD, clubName: name, contactEmail: email }, ALLOW);
+  const newLead = async (name = 'Inner West Pickleball Club', email = 'attila+club1@test.picklemypaddle.com', over: Partial<LeadForm> = {}) => {
+    const v = validateLead({ ...GOOD, clubName: name, contactEmail: email, ...over }, ALLOW);
     if (!v.ok) throw new Error('bad fixture');
     return (await createLead(t.db, v.input, { isProduction: false, now: t.clock.now })).clubId;
   };
@@ -362,6 +364,16 @@ describe('a lead in HubSpot, and deleted after 12 months with no activity', () =
     await setMeeting(t.db, id, { meetingOn: '2026-11-14', meetingTime: '18:30', meetingMinutes: '60' }, t.clock.now);
     await processCrm(deps);
     expect([...hs.companies][0]![1].properties.pmp_club_meeting).toBe('Sat 14 Nov 2026, 18:30, 60 min');
+  });
+
+  it('the method is on the company in HubSpot, following an override', async () => {
+    const { hs, deps } = await withHubSpot();
+    const id = await newLead('Milperra PC', 'attila+m@test.picklemypaddle.com', { suburb: 'Milperra', postcode: '2214' });
+    await processCrm(deps);
+    expect([...hs.companies][0]![1].properties.pmp_club_fulfilment).toBe('Local pickup and drop-off');
+    await setFulfilmentOverride(t.db, id, 'postal', t.clock.now);
+    await processCrm(deps);
+    expect([...hs.companies][0]![1].properties.pmp_club_fulfilment).toBe('Post');
   });
 
   it('an inactive lead (not going ahead) is deleted after 12 months too; an inactive customer never is', async () => {
@@ -443,5 +455,64 @@ describe('a lead in HubSpot, and deleted after 12 months with no activity', () =
     expect(await findClub(t.db, id)).not.toBeNull();
     expect(await runLeadRetention({ db: t.db, crm: deps }, t.clock.now)).toEqual({ leads: 1, waiting: 0 });
     expect(hs.companies.size).toBe(0);
+  });
+});
+
+describe('the service area on a lead (SCRUM-102)', () => {
+  const lead = async (over: Partial<LeadForm>) => {
+    const v = validateLead({ ...GOOD, ...over }, ALLOW);
+    if (!v.ok) throw new Error(JSON.stringify(v.errors));
+    return (await createLead(t.db, v.input, { isProduction: false, now: t.clock.now })).clubId;
+  };
+
+  it('needs a 4-digit venue postcode, separate from the suburb', () => {
+    for (const postcode of ['', '204', '20421', 'abcd']) {
+      const r = validateLead({ ...GOOD, postcode }, ALLOW);
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(Object.keys(r.errors)).toEqual(['postcode']);
+    }
+    expect(validateLead({ ...GOOD, postcode: ' 2 0 4 2 ' }, ALLOW).ok).toBe(true);
+  });
+
+  it('a venue inside the area defaults to local pickup, with the list version recorded', async () => {
+    t = await makeApp();
+    const id = await lead({ clubName: 'Milperra PC', suburb: 'Milperra', postcode: '2214', contactEmail: 'attila+m@test.picklemypaddle.com' });
+    expect(await findClub(t.db, id)).toMatchObject({ suburb: 'Milperra', venuePostcode: '2214', fulfilmentDefault: 'local', fulfilmentOverride: null, areaVersion: SERVICE_AREA_VERSION, areaReview: false });
+  });
+
+  it('a venue outside the area, or an unknown suburb, defaults to post', async () => {
+    t = await makeApp();
+    const a = await lead({ clubName: 'Campbelltown PC', suburb: 'Campbelltown', postcode: '2560', contactEmail: 'attila+c@test.picklemypaddle.com' });
+    const b = await lead({ clubName: 'Nowhere PC', suburb: 'Nowhereville', postcode: '2999', contactEmail: 'attila+n@test.picklemypaddle.com' });
+    expect(await findClub(t.db, a)).toMatchObject({ fulfilmentDefault: 'postal', areaReview: false });
+    expect(await findClub(t.db, b)).toMatchObject({ fulfilmentDefault: 'postal', areaReview: false });
+  });
+
+  it('a listed suburb with the wrong postcode is postal and flagged for review', async () => {
+    t = await makeApp();
+    const id = await lead({ clubName: 'Odd PC', suburb: 'Milperra', postcode: '2560', contactEmail: 'attila+o@test.picklemypaddle.com' });
+    expect(await findClub(t.db, id)).toMatchObject({ fulfilmentDefault: 'postal', areaReview: true });
+  });
+
+  it('an override is recorded with its time and wins over the default; clearing it goes back; the default and version stay', async () => {
+    t = await makeApp();
+    const id = await lead({ clubName: 'Campbelltown PC', suburb: 'Campbelltown', postcode: '2560', contactEmail: 'attila+c@test.picklemypaddle.com' });
+    await setFulfilmentOverride(t.db, id, 'local', t.clock.now);
+    const c = (await findClub(t.db, id))!;
+    expect(c).toMatchObject({ fulfilmentDefault: 'postal', fulfilmentOverride: 'local', areaVersion: SERVICE_AREA_VERSION });
+    expect(c.fulfilmentOverrideAt).toEqual(t.clock.now);
+    expect(effectiveFulfilment(c)).toBe('local');
+    await expect(setFulfilmentOverride(t.db, id, 'courier', t.clock.now)).rejects.toMatchObject({ code: 'bad_fulfilment' });
+    await setFulfilmentOverride(t.db, id, '', t.clock.now);
+    const back = (await findClub(t.db, id))!;
+    expect(back).toMatchObject({ fulfilmentOverride: null, fulfilmentOverrideAt: null });
+    expect(effectiveFulfilment(back)).toBe('postal');
+  });
+
+  it('the public API takes the postcode and refuses a missing one beside its field', async () => {
+    t = await makeApp();
+    const res = await t.app.request('/api/clubs/lead', { method: 'POST', body: JSON.stringify({ ...GOOD, postcode: '', formToken: t.formToken(), website: '' }), headers: { 'Content-Type': 'application/json', Origin: SITE } });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { errors: Record<string, string> }).errors.postcode).toBeTruthy();
   });
 });
