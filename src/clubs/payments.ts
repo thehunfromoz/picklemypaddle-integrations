@@ -245,7 +245,7 @@ export async function applyClubSession(deps: PaymentDeps, session: CheckoutSessi
     if (problem) {
       log('club_payment_flagged', { batch: b?.reference ?? null, problem, source });
       // Attila hears about it (batch reference and admin link only): a batch that is already Paid
-      // is off the open list, so the warning on its own page would go unseen.
+      // and returned is off the open list, so the warning on its own page would go unseen.
       if (b) await enqueueBatchEmail(q, b.batch_id, 'alert_payment', now, { problem: CLUB_PROBLEMS[problem] ?? problem });
       return 'flagged';
     }

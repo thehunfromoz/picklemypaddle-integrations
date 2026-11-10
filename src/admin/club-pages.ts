@@ -1,6 +1,6 @@
 /**
  * The admin's club pages (SCRUM-85): clubs and their billing details, each club's batches, and a
- * batch's page, where it is returned (issuing its invoice) or cancelled.
+ * batch's page, where it is invoiced, paid, returned or cancelled.
  */
 import { BATCH_STATUS_LABELS, effectiveFulfilment, FREE_RETURN_POST_MIN, isOverdue, MAX_BATCH_PADDLES, MAX_TRACKING, MAX_CLUB_NOTE, type Batch, type BatchEmail, type BatchStatus, type Club, type ClubStatus } from '../clubs/clubs.js';
 import type { AgreementVersion } from '../clubs/agreement-versions.js';
@@ -279,7 +279,7 @@ export function batchesPage(ctx: PageContext, batches: Batch[], all: boolean, to
     'Batches',
     html`<p><a href="/admin/clubs">← Clubs</a></p>
 <h1>${all ? 'All batches' : 'Open batches'}</h1>
-<p class="small">${all ? html`<a href="/admin/batches">Show open batches only</a>` : html`Collected, returned or invoiced and not yet paid. <a href="/admin/batches?all=1">Show all</a>`}</p>
+<p class="small">${all ? html`<a href="/admin/batches">Show open batches only</a>` : html`Collected, invoiced, or paid and not yet returned. <a href="/admin/batches?all=1">Show all</a>`}</p>
 ${batches.length ? batchRows(batches, true, today) : html`<p class="empty">${all ? 'No batches yet.' : 'No open batches.'}</p>`}`,
   );
 }

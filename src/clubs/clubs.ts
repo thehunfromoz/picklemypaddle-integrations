@@ -4,11 +4,12 @@
  *  - A club holds its name and billing details only. Club members' details are never held: the
  *    club keeps them (decided 6 Oct 2026). SCRUM-85 uses the statuses active and inactive; the
  *    pipeline before them (lead, meeting, agreement sent) is SCRUM-93's.
- *  - A batch is one pickup's paddles: Collected → Returned → Invoiced → Paid, or Cancelled before
- *    it is returned. Marking it returned issues the invoice in the same transaction (paddles
- *    re-gritted × the club price on the issue date, GST added on top once registered) and queues
- *    the invoice email to the billing contact. Paddles returned unchanged aren't charged; a batch
- *    returned entirely unchanged stays Returned, with nothing to invoice.
+ *  - A batch is one pickup's (or posted box's) paddles: Collected → Invoiced → Paid → Returned, or
+ *    Cancelled before it is invoiced (the club pays before its batch goes back, SCRUM-102). Invoicing
+ *    issues the invoice in one transaction (paddles re-gritted × the club price on the issue date,
+ *    less the standard return postage for a posted batch of 6+, GST added on top once registered) and
+ *    queues the invoice email to the billing contact. Paddles unchanged aren't charged; a batch with
+ *    every paddle unchanged goes Collected → Returned, with nothing to invoice.
  *  - Clubs never get discount codes (decided 30 Oct 2026): nothing here applies one.
  */
 import type { Fulfilment } from './service-area.js';
@@ -111,7 +112,7 @@ export interface Batch {
   returnedOn: string | null;
   unchangedCount: number;
   notes: string | null;
-  /** The invoice issued on return, if any, and what is still owing on it. */
+  /** The invoice issued when the batch was re-gritted, if any, and what is still owing on it. */
   invoice: { id: string; number: string; totalCents: number; dueOn: string | null; balanceCents: number } | null;
 }
 
