@@ -95,7 +95,7 @@ export function clubInvoiceAmounts(
   paddles: number,
   remitPerPaddleCents: number,
   treatment: TaxTreatment,
-  /** Return postage we allow a club for a posted batch of 6 or more (SCRUM-102): taken off before GST. */
+  /** The club's postage to us, which we allow off a posted batch of 6 or more (SCRUM-102): taken off before GST. */
   postageAllowanceCents = 0,
 ): { subtotalCents: number; gstCents: number; totalCents: number } {
   if (!Number.isInteger(paddles) || paddles < 1) throw new Error('a club invoice is for at least one paddle');

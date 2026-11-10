@@ -18,35 +18,35 @@ describe('normalising', () => {
 
 describe('matching', () => {
   it('real examples: inside the area are local', () => {
-    for (const [suburb, postcode] of [['Milperra', '2214'], ['Caringbah', '2229'], ['Bateau Bay', '2261'], ['Terrigal', '2260']] as const) {
+    for (const [suburb, postcode] of [['Hornsby', '2077'], ['Epping', '2121'], ['Manly', '2095'], ['Castle Hill', '2154']] as const) {
       expect(isInServiceArea({ suburb, postcode })).toBe(true);
       expect(defaultFulfilment({ suburb, postcode })).toBe('local');
     }
   });
   it('real examples: outside are postal', () => {
-    for (const [suburb, postcode] of [['Campbelltown', '2560'], ['Mount Annan', '2567']] as const) {
+    for (const [suburb, postcode] of [['Campbelltown', '2560'], ['Mount Annan', '2567'], ['Milperra', '2214'], ['Terrigal', '2260']] as const) {
       expect(isInServiceArea({ suburb, postcode })).toBe(false);
       expect(defaultFulfilment({ suburb, postcode })).toBe('postal');
     }
   });
   it('matches whatever the case, spacing, Saint/St or Mount/Mt', () => {
-    expect(isInServiceArea({ suburb: ' caringbah ', postcode: '2229' })).toBe(true);
-    expect(isInServiceArea({ suburb: 'SAINT MARYS', postcode: '2760' })).toBe(true);
-    expect(isInServiceArea({ suburb: 'Mt Druitt NSW', postcode: '2770' })).toBe(true);
-    expect(isInServiceArea({ suburb: 'Mount  Druitt', postcode: ' 2770 ' })).toBe(true);
+    expect(isInServiceArea({ suburb: ' hornsby ', postcode: '2077' })).toBe(true);
+    expect(isInServiceArea({ suburb: 'SAINT IVES', postcode: '2075' })).toBe(true);
+    expect(isInServiceArea({ suburb: 'Mt Colah NSW', postcode: '2079' })).toBe(true);
+    expect(isInServiceArea({ suburb: 'Mount  Colah', postcode: ' 2079 ' })).toBe(true);
   });
   it('a suburb with two postcodes matches either', () => {
     const two = SERVICE_AREA_SUBURBS.find((s) => s.postcodes.length > 1)!;
     for (const postcode of two.postcodes) expect(isInServiceArea({ suburb: two.suburb, postcode })).toBe(true);
   });
   it('with no postcode, the name alone decides', () => {
-    expect(isInServiceArea({ suburb: 'Milperra' })).toBe(true);
-    expect(isInServiceArea({ suburb: 'Milperra', postcode: '' })).toBe(true);
+    expect(isInServiceArea({ suburb: 'Hornsby' })).toBe(true);
+    expect(isInServiceArea({ suburb: 'Hornsby', postcode: '' })).toBe(true);
     expect(isInServiceArea({ suburb: 'Campbelltown' })).toBe(false);
   });
   it('the right suburb with the wrong postcode is outside and flagged for review', () => {
-    expect(checkServiceArea({ suburb: 'Milperra', postcode: '2560' })).toEqual({ inside: false, reason: 'postcode_mismatch', needsReview: true });
-    expect(defaultFulfilment({ suburb: 'Milperra', postcode: '2560' })).toBe('postal');
+    expect(checkServiceArea({ suburb: 'Hornsby', postcode: '2560' })).toEqual({ inside: false, reason: 'postcode_mismatch', needsReview: true });
+    expect(defaultFulfilment({ suburb: 'Hornsby', postcode: '2560' })).toBe('postal');
   });
   it('an unknown suburb is postal, and is not flagged', () => {
     expect(checkServiceArea({ suburb: 'Nowhereville', postcode: '2000' })).toEqual({ inside: false, reason: 'unknown_suburb', needsReview: false });

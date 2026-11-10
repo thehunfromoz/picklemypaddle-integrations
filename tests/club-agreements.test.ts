@@ -218,8 +218,10 @@ describe('v0.3 (Attila’s UAT of 0.2, 10 Nov 2026)', () => {
   });
   it('5: the box, who pays postage, and 2 business days to report a difference', () => {
     expect(text).toContain('430 mm × 300 mm × 300 mm, which holds 8 to 10 paddles');
-    expect(text).toContain('For a batch of 6 or more paddles, we take the standard cost of the postage off the club’s invoice, as its own line');
-    expect(text).toContain('the Australia Post price for posting that batch to the club’s venue postcode on the invoice date; if the club’s postage costs more, the club bears the difference');
+    expect(text).toContain('For a batch of 6 or more paddles, we take the standard cost of that postage off the club’s invoice, as its own line');
+    expect(text).toContain('The club pays the postage of the box to us.');
+    expect(text).toContain('[To confirm: who pays the postage back to the club, and for batches under 6.]');
+    expect(text).toContain('the Australia Post price for posting that batch from the club’s venue postcode on the invoice date; if the club’s postage costs more, the club bears the difference');
     expect(text).toContain('within 2 business days of the return delivery');
   });
   it('6: second-hand value up to A$100 a paddle, and insured in the post', () => {
@@ -251,11 +253,11 @@ describe('v0.3 (Attila’s UAT of 0.2, 10 Nov 2026)', () => {
   it('the Schedule says how batches travel, the venue and the service-area list used', async () => {
     t = await makeApp();
     const id = await meetingClub();
-    await t.db.query(`UPDATE clubs SET suburb = 'Milperra', venue_postcode = '2214', fulfilment_default = 'local', area_version = '2026-11-10' WHERE id = $1`, [id]);
+    await t.db.query(`UPDATE clubs SET suburb = 'Hornsby', venue_postcode = '2077', fulfilment_default = 'local', area_version = '2026-11-10' WHERE id = $1`, [id]);
     await send(id);
     const rows = (await t.db.query<{ schedule: [string, string][] | string }>(`SELECT schedule FROM club_agreements`)).rows[0]!.schedule;
     const sch = typeof rows === 'string' ? (JSON.parse(rows) as [string, string][]) : rows;
-    expect(sch).toContainEqual(['Venue (suburb and postcode)', 'Milperra 2214']);
+    expect(sch).toContainEqual(['Venue (suburb and postcode)', 'Hornsby 2077']);
     expect(sch).toContainEqual(['How batches travel', 'Local pickup and drop-off']);
     expect(sch).toContainEqual(['Service area list used', '2026-11-10']);
   });

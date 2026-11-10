@@ -1,43 +1,15 @@
 {
- "name": "PickleMyPaddle local pickup service area",
- "version": "2026-11-10",
- "description": "NSW suburbs (localities) inside the PickleMyPaddle local pickup and drop-off area. Clubs whose venue is in one of these suburbs default to local pickup/drop-off; all others default to postal.",
+ "name": "PickleMyPaddle local pickup service area (launch)",
+ "version": "2026-11-11-launch-35",
+ "description": "NSW suburbs (localities) inside the PickleMyPaddle local pickup and drop-off area for launch. Clubs whose venue is in one of these suburbs default to local pickup/drop-off; all others default to postal.",
  "source": "Suburb boundaries: NSW localities (PSMA via data.gov.au, tonywr71/GeoJson-Data). Postcodes: same repo, may be incomplete.",
- "count": 582,
+ "count": 219,
  "suburbs": [
-  {
-   "suburb": "Abbotsbury",
-   "state": "NSW",
-   "postcodes": [
-    "2176"
-   ]
-  },
   {
    "suburb": "Abbotsford",
    "state": "NSW",
    "postcodes": [
     "2046"
-   ]
-  },
-  {
-   "suburb": "Acacia Gardens",
-   "state": "NSW",
-   "postcodes": [
-    "2763"
-   ]
-  },
-  {
-   "suburb": "Alexandria",
-   "state": "NSW",
-   "postcodes": [
-    "2015"
-   ]
-  },
-  {
-   "suburb": "Alfords Point",
-   "state": "NSW",
-   "postcodes": [
-    "2234"
    ]
   },
   {
@@ -48,48 +20,6 @@
    ]
   },
   {
-   "suburb": "Allawah",
-   "state": "NSW",
-   "postcodes": [
-    "2218"
-   ]
-  },
-  {
-   "suburb": "Annandale",
-   "state": "NSW",
-   "postcodes": [
-    "2038"
-   ]
-  },
-  {
-   "suburb": "Annangrove",
-   "state": "NSW",
-   "postcodes": [
-    "2156"
-   ]
-  },
-  {
-   "suburb": "Arcadia",
-   "state": "NSW",
-   "postcodes": [
-    "2159"
-   ]
-  },
-  {
-   "suburb": "Arncliffe",
-   "state": "NSW",
-   "postcodes": [
-    "2205"
-   ]
-  },
-  {
-   "suburb": "Arndell Park",
-   "state": "NSW",
-   "postcodes": [
-    "2148"
-   ]
-  },
-  {
    "suburb": "Artarmon",
    "state": "NSW",
    "postcodes": [
@@ -97,31 +27,10 @@
    ]
   },
   {
-   "suburb": "Ashbury",
-   "state": "NSW",
-   "postcodes": [
-    "2193"
-   ]
-  },
-  {
-   "suburb": "Ashfield",
-   "state": "NSW",
-   "postcodes": [
-    "2131"
-   ]
-  },
-  {
    "suburb": "Asquith",
    "state": "NSW",
    "postcodes": [
     "2077"
-   ]
-  },
-  {
-   "suburb": "Auburn",
-   "state": "NSW",
-   "postcodes": [
-    "2144"
    ]
   },
   {
@@ -146,88 +55,10 @@
    ]
   },
   {
-   "suburb": "Balmain",
-   "state": "NSW",
-   "postcodes": [
-    "2041"
-   ]
-  },
-  {
-   "suburb": "Balmain East",
-   "state": "NSW",
-   "postcodes": [
-    "2041"
-   ]
-  },
-  {
-   "suburb": "Banksia",
-   "state": "NSW",
-   "postcodes": [
-    "2216"
-   ]
-  },
-  {
-   "suburb": "Banksmeadow",
-   "state": "NSW",
-   "postcodes": [
-    "2019"
-   ]
-  },
-  {
-   "suburb": "Bankstown",
-   "state": "NSW",
-   "postcodes": [
-    "2200"
-   ]
-  },
-  {
-   "suburb": "Bankstown Aerodrome",
-   "state": "NSW",
-   "postcodes": [
-    "2198",
-    "2200"
-   ]
-  },
-  {
-   "suburb": "Bar Point",
-   "state": "NSW",
-   "postcodes": [
-    "2083"
-   ]
-  },
-  {
    "suburb": "Barangaroo",
    "state": "NSW",
    "postcodes": [
     "2000"
-   ]
-  },
-  {
-   "suburb": "Bardwell Park",
-   "state": "NSW",
-   "postcodes": [
-    "2207"
-   ]
-  },
-  {
-   "suburb": "Bardwell Valley",
-   "state": "NSW",
-   "postcodes": [
-    "2207"
-   ]
-  },
-  {
-   "suburb": "Bass Hill",
-   "state": "NSW",
-   "postcodes": [
-    "2197"
-   ]
-  },
-  {
-   "suburb": "Bateau Bay",
-   "state": "NSW",
-   "postcodes": [
-    "2261"
    ]
   },
   {
@@ -252,31 +83,10 @@
    ]
   },
   {
-   "suburb": "Beaconsfield",
-   "state": "NSW",
-   "postcodes": [
-    "2015"
-   ]
-  },
-  {
-   "suburb": "Beaumont Hills",
-   "state": "NSW",
-   "postcodes": [
-    "2155"
-   ]
-  },
-  {
    "suburb": "Beecroft",
    "state": "NSW",
    "postcodes": [
     "2119"
-   ]
-  },
-  {
-   "suburb": "Belfield",
-   "state": "NSW",
-   "postcodes": [
-    "2191"
    ]
   },
   {
@@ -287,20 +97,6 @@
    ]
   },
   {
-   "suburb": "Bellevue Hill",
-   "state": "NSW",
-   "postcodes": [
-    "2023"
-   ]
-  },
-  {
-   "suburb": "Belmore",
-   "state": "NSW",
-   "postcodes": [
-    "2192"
-   ]
-  },
-  {
    "suburb": "Belrose",
    "state": "NSW",
    "postcodes": [
@@ -308,24 +104,10 @@
    ]
   },
   {
-   "suburb": "Berala",
-   "state": "NSW",
-   "postcodes": [
-    "2141"
-   ]
-  },
-  {
    "suburb": "Berowra",
    "state": "NSW",
    "postcodes": [
     "2081"
-   ]
-  },
-  {
-   "suburb": "Berowra Creek",
-   "state": "NSW",
-   "postcodes": [
-    "2082"
    ]
   },
   {
@@ -350,41 +132,6 @@
    ]
   },
   {
-   "suburb": "Beverley Park",
-   "state": "NSW",
-   "postcodes": [
-    "2217"
-   ]
-  },
-  {
-   "suburb": "Beverly Hills",
-   "state": "NSW",
-   "postcodes": [
-    "2209"
-   ]
-  },
-  {
-   "suburb": "Bexley",
-   "state": "NSW",
-   "postcodes": [
-    "2207"
-   ]
-  },
-  {
-   "suburb": "Bexley North",
-   "state": "NSW",
-   "postcodes": [
-    "2207"
-   ]
-  },
-  {
-   "suburb": "Bidwill",
-   "state": "NSW",
-   "postcodes": [
-    "2770"
-   ]
-  },
-  {
    "suburb": "Bilgola Beach",
    "state": "NSW",
    "postcodes": [
@@ -399,108 +146,10 @@
    ]
   },
   {
-   "suburb": "Birchgrove",
-   "state": "NSW",
-   "postcodes": [
-    "2041"
-   ]
-  },
-  {
-   "suburb": "Birrong",
-   "state": "NSW",
-   "postcodes": [
-    "2143"
-   ]
-  },
-  {
-   "suburb": "Blackett",
-   "state": "NSW",
-   "postcodes": [
-    "2770"
-   ]
-  },
-  {
    "suburb": "Blacktown",
    "state": "NSW",
    "postcodes": [
     "2148"
-   ]
-  },
-  {
-   "suburb": "Blackwall",
-   "state": "NSW",
-   "postcodes": [
-    "2256"
-   ]
-  },
-  {
-   "suburb": "Blakehurst",
-   "state": "NSW",
-   "postcodes": [
-    "2221"
-   ]
-  },
-  {
-   "suburb": "Bligh Park",
-   "state": "NSW",
-   "postcodes": [
-    "2756"
-   ]
-  },
-  {
-   "suburb": "Bondi",
-   "state": "NSW",
-   "postcodes": [
-    "2026"
-   ]
-  },
-  {
-   "suburb": "Bondi Beach",
-   "state": "NSW",
-   "postcodes": [
-    "2026"
-   ]
-  },
-  {
-   "suburb": "Bondi Junction",
-   "state": "NSW",
-   "postcodes": [
-    "2022"
-   ]
-  },
-  {
-   "suburb": "Booker Bay",
-   "state": "NSW",
-   "postcodes": [
-    "2257"
-   ]
-  },
-  {
-   "suburb": "Bossley Park",
-   "state": "NSW",
-   "postcodes": [
-    "2176"
-   ]
-  },
-  {
-   "suburb": "Botany",
-   "state": "NSW",
-   "postcodes": [
-    "2019"
-   ]
-  },
-  {
-   "suburb": "Box Head",
-   "state": "NSW",
-   "postcodes": [
-    "2257"
-   ]
-  },
-  {
-   "suburb": "Box Hill",
-   "state": "NSW",
-   "postcodes": [
-    "2765"
    ]
   },
   {
@@ -511,38 +160,10 @@
    ]
   },
   {
-   "suburb": "Brighton-Le-Sands",
-   "state": "NSW",
-   "postcodes": [
-    "2216"
-   ]
-  },
-  {
-   "suburb": "Bronte",
-   "state": "NSW",
-   "postcodes": [
-    "2024"
-   ]
-  },
-  {
-   "suburb": "Brooklyn",
-   "state": "NSW",
-   "postcodes": [
-    "2083"
-   ]
-  },
-  {
    "suburb": "Brookvale",
    "state": "NSW",
    "postcodes": [
     "2100"
-   ]
-  },
-  {
-   "suburb": "Bungarribee",
-   "state": "NSW",
-   "postcodes": [
-    "2767"
    ]
   },
   {
@@ -553,59 +174,10 @@
    ]
   },
   {
-   "suburb": "Burwood Heights",
-   "state": "NSW",
-   "postcodes": [
-    "2136"
-   ]
-  },
-  {
    "suburb": "Cabarita",
    "state": "NSW",
    "postcodes": [
     "2137"
-   ]
-  },
-  {
-   "suburb": "Cabramatta",
-   "state": "NSW",
-   "postcodes": [
-    "2166"
-   ]
-  },
-  {
-   "suburb": "Cabramatta West",
-   "state": "NSW",
-   "postcodes": [
-    "2166"
-   ]
-  },
-  {
-   "suburb": "Caddens",
-   "state": "NSW",
-   "postcodes": [
-    "2747"
-   ]
-  },
-  {
-   "suburb": "Calga",
-   "state": "NSW",
-   "postcodes": [
-    "2250"
-   ]
-  },
-  {
-   "suburb": "Cambridge Gardens",
-   "state": "NSW",
-   "postcodes": [
-    "2747"
-   ]
-  },
-  {
-   "suburb": "Cambridge Park",
-   "state": "NSW",
-   "postcodes": [
-    "2747"
    ]
   },
   {
@@ -623,21 +195,6 @@
    ]
   },
   {
-   "suburb": "Camperdown",
-   "state": "NSW",
-   "postcodes": [
-    "2006",
-    "2050"
-   ]
-  },
-  {
-   "suburb": "Campsie",
-   "state": "NSW",
-   "postcodes": [
-    "2194"
-   ]
-  },
-  {
    "suburb": "Canada Bay",
    "state": "NSW",
    "postcodes": [
@@ -645,73 +202,10 @@
    ]
   },
   {
-   "suburb": "Canley Heights",
-   "state": "NSW",
-   "postcodes": [
-    "2166"
-   ]
-  },
-  {
-   "suburb": "Canley Vale",
-   "state": "NSW",
-   "postcodes": [
-    "2166"
-   ]
-  },
-  {
-   "suburb": "Canoelands",
-   "state": "NSW",
-   "postcodes": [
-    "2157"
-   ]
-  },
-  {
-   "suburb": "Canterbury",
-   "state": "NSW",
-   "postcodes": [
-    "2193"
-   ]
-  },
-  {
-   "suburb": "Caringbah",
-   "state": "NSW",
-   "postcodes": [
-    "2229"
-   ]
-  },
-  {
    "suburb": "Carlingford",
    "state": "NSW",
    "postcodes": [
     "2118"
-   ]
-  },
-  {
-   "suburb": "Carlton",
-   "state": "NSW",
-   "postcodes": [
-    "2218"
-   ]
-  },
-  {
-   "suburb": "Carramar",
-   "state": "NSW",
-   "postcodes": [
-    "2163"
-   ]
-  },
-  {
-   "suburb": "Carss Park",
-   "state": "NSW",
-   "postcodes": [
-    "2221"
-   ]
-  },
-  {
-   "suburb": "Cartwright",
-   "state": "NSW",
-   "postcodes": [
-    "2168"
    ]
   },
   {
@@ -736,20 +230,6 @@
    ]
   },
   {
-   "suburb": "Casula",
-   "state": "NSW",
-   "postcodes": [
-    "2170"
-   ]
-  },
-  {
-   "suburb": "Centennial Park",
-   "state": "NSW",
-   "postcodes": [
-    "2021"
-   ]
-  },
-  {
    "suburb": "Chatswood",
    "state": "NSW",
    "postcodes": [
@@ -762,13 +242,6 @@
    "state": "NSW",
    "postcodes": [
     "2067"
-   ]
-  },
-  {
-   "suburb": "Cheero Point",
-   "state": "NSW",
-   "postcodes": [
-    "2083"
    ]
   },
   {
@@ -786,45 +259,10 @@
    ]
   },
   {
-   "suburb": "Chester Hill",
-   "state": "NSW",
-   "postcodes": [
-    "2162"
-   ]
-  },
-  {
-   "suburb": "Chifley",
-   "state": "NSW",
-   "postcodes": [
-    "2036"
-   ]
-  },
-  {
-   "suburb": "Chippendale",
-   "state": "NSW",
-   "postcodes": [
-    "2008"
-   ]
-  },
-  {
-   "suburb": "Chipping Norton",
-   "state": "NSW",
-   "postcodes": [
-    "2170"
-   ]
-  },
-  {
    "suburb": "Chiswick",
    "state": "NSW",
    "postcodes": [
     "2046"
-   ]
-  },
-  {
-   "suburb": "Chullora",
-   "state": "NSW",
-   "postcodes": [
-    "2190"
    ]
   },
   {
@@ -835,24 +273,10 @@
    ]
   },
   {
-   "suburb": "Claremont Meadows",
-   "state": "NSW",
-   "postcodes": [
-    "2747"
-   ]
-  },
-  {
    "suburb": "Clareville",
    "state": "NSW",
    "postcodes": [
     "2107"
-   ]
-  },
-  {
-   "suburb": "Clemton Park",
-   "state": "NSW",
-   "postcodes": [
-    "2206"
    ]
   },
   {
@@ -863,38 +287,10 @@
    ]
   },
   {
-   "suburb": "Clovelly",
-   "state": "NSW",
-   "postcodes": [
-    "2031"
-   ]
-  },
-  {
-   "suburb": "Clyde",
-   "state": "NSW",
-   "postcodes": [
-    "2142"
-   ]
-  },
-  {
    "suburb": "Coasters Retreat",
    "state": "NSW",
    "postcodes": [
     "2108"
-   ]
-  },
-  {
-   "suburb": "Cogra Bay",
-   "state": "NSW",
-   "postcodes": [
-    "2083"
-   ]
-  },
-  {
-   "suburb": "Colebee",
-   "state": "NSW",
-   "postcodes": [
-    "2761"
    ]
   },
   {
@@ -909,13 +305,6 @@
    "state": "NSW",
    "postcodes": [
     "2097"
-   ]
-  },
-  {
-   "suburb": "Colyton",
-   "state": "NSW",
-   "postcodes": [
-    "2760"
    ]
   },
   {
@@ -934,20 +323,6 @@
    ]
   },
   {
-   "suburb": "Condell Park",
-   "state": "NSW",
-   "postcodes": [
-    "2200"
-   ]
-  },
-  {
-   "suburb": "Connells Point",
-   "state": "NSW",
-   "postcodes": [
-    "2221"
-   ]
-  },
-  {
    "suburb": "Constitution Hill",
    "state": "NSW",
    "postcodes": [
@@ -955,31 +330,10 @@
    ]
   },
   {
-   "suburb": "Coogee",
-   "state": "NSW",
-   "postcodes": [
-    "2034"
-   ]
-  },
-  {
    "suburb": "Cottage Point",
    "state": "NSW",
    "postcodes": [
     "2084"
-   ]
-  },
-  {
-   "suburb": "Cowan",
-   "state": "NSW",
-   "postcodes": [
-    "2081"
-   ]
-  },
-  {
-   "suburb": "Cranebrook",
-   "state": "NSW",
-   "postcodes": [
-    "2749"
    ]
   },
   {
@@ -1011,20 +365,6 @@
    ]
   },
   {
-   "suburb": "Croydon",
-   "state": "NSW",
-   "postcodes": [
-    "2132"
-   ]
-  },
-  {
-   "suburb": "Croydon Park",
-   "state": "NSW",
-   "postcodes": [
-    "2133"
-   ]
-  },
-  {
    "suburb": "Curl Curl",
    "state": "NSW",
    "postcodes": [
@@ -1039,46 +379,10 @@
    ]
   },
   {
-   "suburb": "Daceyville",
-   "state": "NSW",
-   "postcodes": [
-    "2032"
-   ]
-  },
-  {
-   "suburb": "Daleys Point",
-   "state": "NSW",
-   "postcodes": [
-    "2257"
-   ]
-  },
-  {
-   "suburb": "Dangar Island",
-   "state": "NSW",
-   "postcodes": [
-    "2083"
-   ]
-  },
-  {
-   "suburb": "Darling Point",
-   "state": "NSW",
-   "postcodes": [
-    "2027"
-   ]
-  },
-  {
    "suburb": "Darlinghurst",
    "state": "NSW",
    "postcodes": [
     "2010"
-   ]
-  },
-  {
-   "suburb": "Darlington",
-   "state": "NSW",
-   "postcodes": [
-    "2008",
-    "2330"
    ]
   },
   {
@@ -1089,24 +393,10 @@
    ]
   },
   {
-   "suburb": "Davistown",
-   "state": "NSW",
-   "postcodes": [
-    "2251"
-   ]
-  },
-  {
    "suburb": "Dawes Point",
    "state": "NSW",
    "postcodes": [
     "2000"
-   ]
-  },
-  {
-   "suburb": "Dean Park",
-   "state": "NSW",
-   "postcodes": [
-    "2761"
    ]
   },
   {
@@ -1138,41 +428,6 @@
    ]
   },
   {
-   "suburb": "Dharruk",
-   "state": "NSW",
-   "postcodes": [
-    "2770"
-   ]
-  },
-  {
-   "suburb": "Dolls Point",
-   "state": "NSW",
-   "postcodes": [
-    "2219"
-   ]
-  },
-  {
-   "suburb": "Doonside",
-   "state": "NSW",
-   "postcodes": [
-    "2767"
-   ]
-  },
-  {
-   "suburb": "Double Bay",
-   "state": "NSW",
-   "postcodes": [
-    "2028"
-   ]
-  },
-  {
-   "suburb": "Dover Heights",
-   "state": "NSW",
-   "postcodes": [
-    "2030"
-   ]
-  },
-  {
    "suburb": "Drummoyne",
    "state": "NSW",
    "postcodes": [
@@ -1184,13 +439,6 @@
    "state": "NSW",
    "postcodes": [
     "2084"
-   ]
-  },
-  {
-   "suburb": "Dulwich Hill",
-   "state": "NSW",
-   "postcodes": [
-    "2203"
    ]
   },
   {
@@ -1216,27 +464,6 @@
    ]
   },
   {
-   "suburb": "Earlwood",
-   "state": "NSW",
-   "postcodes": [
-    "2206"
-   ]
-  },
-  {
-   "suburb": "East Gosford",
-   "state": "NSW",
-   "postcodes": [
-    "2250"
-   ]
-  },
-  {
-   "suburb": "East Hills",
-   "state": "NSW",
-   "postcodes": [
-    "2213"
-   ]
-  },
-  {
    "suburb": "East Killara",
    "state": "NSW",
    "postcodes": [
@@ -1258,45 +485,10 @@
    ]
   },
   {
-   "suburb": "Eastern Creek",
-   "state": "NSW",
-   "postcodes": [
-    "2766"
-   ]
-  },
-  {
-   "suburb": "Eastgardens",
-   "state": "NSW",
-   "postcodes": [
-    "2036"
-   ]
-  },
-  {
-   "suburb": "Eastlakes",
-   "state": "NSW",
-   "postcodes": [
-    "2018"
-   ]
-  },
-  {
    "suburb": "Eastwood",
    "state": "NSW",
    "postcodes": [
     "2122"
-   ]
-  },
-  {
-   "suburb": "Edensor Park",
-   "state": "NSW",
-   "postcodes": [
-    "2176"
-   ]
-  },
-  {
-   "suburb": "Edgecliff",
-   "state": "NSW",
-   "postcodes": [
-    "2027"
    ]
   },
   {
@@ -1321,67 +513,10 @@
    ]
   },
   {
-   "suburb": "Emerton",
-   "state": "NSW",
-   "postcodes": [
-    "2770"
-   ]
-  },
-  {
-   "suburb": "Empire Bay",
-   "state": "NSW",
-   "postcodes": [
-    "2257"
-   ]
-  },
-  {
-   "suburb": "Emu Heights",
-   "state": "NSW",
-   "postcodes": [
-    "2750"
-   ]
-  },
-  {
-   "suburb": "Emu Plains",
-   "state": "NSW",
-   "postcodes": [
-    "2750"
-   ]
-  },
-  {
-   "suburb": "Enfield",
-   "state": "NSW",
-   "postcodes": [
-    "2136"
-   ]
-  },
-  {
-   "suburb": "Enmore",
-   "state": "NSW",
-   "postcodes": [
-    "2042",
-    "2350"
-   ]
-  },
-  {
    "suburb": "Epping",
    "state": "NSW",
    "postcodes": [
     "2121"
-   ]
-  },
-  {
-   "suburb": "Erina",
-   "state": "NSW",
-   "postcodes": [
-    "2250"
-   ]
-  },
-  {
-   "suburb": "Erina Heights",
-   "state": "NSW",
-   "postcodes": [
-    "2260"
    ]
   },
   {
@@ -1392,62 +527,6 @@
    ]
   },
   {
-   "suburb": "Erskine Park",
-   "state": "NSW",
-   "postcodes": [
-    "2759"
-   ]
-  },
-  {
-   "suburb": "Erskineville",
-   "state": "NSW",
-   "postcodes": [
-    "2043"
-   ]
-  },
-  {
-   "suburb": "Ettalong Beach",
-   "state": "NSW",
-   "postcodes": [
-    "2257"
-   ]
-  },
-  {
-   "suburb": "Eveleigh",
-   "state": "NSW",
-   "postcodes": [
-    "2015"
-   ]
-  },
-  {
-   "suburb": "Fairfield",
-   "state": "NSW",
-   "postcodes": [
-    "2165"
-   ]
-  },
-  {
-   "suburb": "Fairfield East",
-   "state": "NSW",
-   "postcodes": [
-    "2165"
-   ]
-  },
-  {
-   "suburb": "Fairfield Heights",
-   "state": "NSW",
-   "postcodes": [
-    "2165"
-   ]
-  },
-  {
-   "suburb": "Fairfield West",
-   "state": "NSW",
-   "postcodes": [
-    "2165"
-   ]
-  },
-  {
    "suburb": "Fairlight",
    "state": "NSW",
    "postcodes": [
@@ -1455,31 +534,10 @@
    ]
   },
   {
-   "suburb": "Fiddletown",
-   "state": "NSW",
-   "postcodes": [
-    "2159"
-   ]
-  },
-  {
    "suburb": "Five Dock",
    "state": "NSW",
    "postcodes": [
     "2046"
-   ]
-  },
-  {
-   "suburb": "Forest Glen",
-   "state": "NSW",
-   "postcodes": [
-    "2157"
-   ]
-  },
-  {
-   "suburb": "Forest Lodge",
-   "state": "NSW",
-   "postcodes": [
-    "2037"
    ]
   },
   {
@@ -1511,13 +569,6 @@
    ]
   },
   {
-   "suburb": "Georges Hall",
-   "state": "NSW",
-   "postcodes": [
-    "2198"
-   ]
-  },
-  {
    "suburb": "Girraween",
    "state": "NSW",
    "postcodes": [
@@ -1532,45 +583,10 @@
    ]
   },
   {
-   "suburb": "Glebe",
-   "state": "NSW",
-   "postcodes": [
-    "2037"
-   ]
-  },
-  {
-   "suburb": "Glendenning",
-   "state": "NSW",
-   "postcodes": [
-    "2761"
-   ]
-  },
-  {
    "suburb": "Glenhaven",
    "state": "NSW",
    "postcodes": [
     "2156"
-   ]
-  },
-  {
-   "suburb": "Glenmore Park",
-   "state": "NSW",
-   "postcodes": [
-    "2745"
-   ]
-  },
-  {
-   "suburb": "Glenorie",
-   "state": "NSW",
-   "postcodes": [
-    "2157"
-   ]
-  },
-  {
-   "suburb": "Glenwood",
-   "state": "NSW",
-   "postcodes": [
-    "2768"
    ]
   },
   {
@@ -1581,46 +597,10 @@
    ]
   },
   {
-   "suburb": "Gosford",
-   "state": "NSW",
-   "postcodes": [
-    "2250"
-   ]
-  },
-  {
-   "suburb": "Granville",
-   "state": "NSW",
-   "postcodes": [
-    "2142"
-   ]
-  },
-  {
    "suburb": "Great Mackerel Beach",
    "state": "NSW",
    "postcodes": [
     "2108"
-   ]
-  },
-  {
-   "suburb": "Green Point",
-   "state": "NSW",
-   "postcodes": [
-    "2251",
-    "2428"
-   ]
-  },
-  {
-   "suburb": "Greenacre",
-   "state": "NSW",
-   "postcodes": [
-    "2190"
-   ]
-  },
-  {
-   "suburb": "Greenfield Park",
-   "state": "NSW",
-   "postcodes": [
-    "2176"
    ]
   },
   {
@@ -1631,59 +611,10 @@
    ]
   },
   {
-   "suburb": "Greystanes",
-   "state": "NSW",
-   "postcodes": [
-    "2145"
-   ]
-  },
-  {
-   "suburb": "Guildford",
-   "state": "NSW",
-   "postcodes": [
-    "2161"
-   ]
-  },
-  {
-   "suburb": "Guildford West",
-   "state": "NSW",
-   "postcodes": [
-    "2161"
-   ]
-  },
-  {
-   "suburb": "Haberfield",
-   "state": "NSW",
-   "postcodes": [
-    "2045"
-   ]
-  },
-  {
-   "suburb": "Hammondville",
-   "state": "NSW",
-   "postcodes": [
-    "2170"
-   ]
-  },
-  {
-   "suburb": "Hardys Bay",
-   "state": "NSW",
-   "postcodes": [
-    "2257"
-   ]
-  },
-  {
    "suburb": "Harris Park",
    "state": "NSW",
    "postcodes": [
     "2150"
-   ]
-  },
-  {
-   "suburb": "Hassall Grove",
-   "state": "NSW",
-   "postcodes": [
-    "2761"
    ]
   },
   {
@@ -1694,38 +625,10 @@
    ]
   },
   {
-   "suburb": "Hebersham",
-   "state": "NSW",
-   "postcodes": [
-    "2770"
-   ]
-  },
-  {
    "suburb": "Henley",
    "state": "NSW",
    "postcodes": [
     "2111"
-   ]
-  },
-  {
-   "suburb": "Hillsdale",
-   "state": "NSW",
-   "postcodes": [
-    "2036"
-   ]
-  },
-  {
-   "suburb": "Holgate",
-   "state": "NSW",
-   "postcodes": [
-    "2250"
-   ]
-  },
-  {
-   "suburb": "Holroyd",
-   "state": "NSW",
-   "postcodes": [
-    "2142"
    ]
   },
   {
@@ -1757,31 +660,10 @@
    ]
   },
   {
-   "suburb": "Horsfield Bay",
-   "state": "NSW",
-   "postcodes": [
-    "2256"
-   ]
-  },
-  {
-   "suburb": "Horsley Park",
-   "state": "NSW",
-   "postcodes": [
-    "2175"
-   ]
-  },
-  {
    "suburb": "Hunters Hill",
    "state": "NSW",
    "postcodes": [
     "2110"
-   ]
-  },
-  {
-   "suburb": "Huntingwood",
-   "state": "NSW",
-   "postcodes": [
-    "2148"
    ]
   },
   {
@@ -1799,88 +681,10 @@
    ]
   },
   {
-   "suburb": "Hurlstone Park",
-   "state": "NSW",
-   "postcodes": [
-    "2193"
-   ]
-  },
-  {
-   "suburb": "Hurstville",
-   "state": "NSW",
-   "postcodes": [
-    "2220"
-   ]
-  },
-  {
-   "suburb": "Hurstville Grove",
-   "state": "NSW",
-   "postcodes": [
-    "2220"
-   ]
-  },
-  {
    "suburb": "Ingleside",
    "state": "NSW",
    "postcodes": [
     "2101"
-   ]
-  },
-  {
-   "suburb": "Jamisontown",
-   "state": "NSW",
-   "postcodes": [
-    "2750"
-   ]
-  },
-  {
-   "suburb": "Jordan Springs",
-   "state": "NSW",
-   "postcodes": [
-    "2747"
-   ]
-  },
-  {
-   "suburb": "Kangaroo Point",
-   "state": "NSW",
-   "postcodes": [
-    "2224"
-   ]
-  },
-  {
-   "suburb": "Kariong",
-   "state": "NSW",
-   "postcodes": [
-    "2250"
-   ]
-  },
-  {
-   "suburb": "Kellyville",
-   "state": "NSW",
-   "postcodes": [
-    "2155"
-   ]
-  },
-  {
-   "suburb": "Kellyville Ridge",
-   "state": "NSW",
-   "postcodes": [
-    "2155"
-   ]
-  },
-  {
-   "suburb": "Kensington",
-   "state": "NSW",
-   "postcodes": [
-    "2033",
-    "2052"
-   ]
-  },
-  {
-   "suburb": "Kenthurst",
-   "state": "NSW",
-   "postcodes": [
-    "2156"
    ]
   },
   {
@@ -1898,27 +702,6 @@
    ]
   },
   {
-   "suburb": "Killcare",
-   "state": "NSW",
-   "postcodes": [
-    "2257"
-   ]
-  },
-  {
-   "suburb": "Kincumber",
-   "state": "NSW",
-   "postcodes": [
-    "2251"
-   ]
-  },
-  {
-   "suburb": "Kincumber South",
-   "state": "NSW",
-   "postcodes": [
-    "2251"
-   ]
-  },
-  {
    "suburb": "Kings Langley",
    "state": "NSW",
    "postcodes": [
@@ -1926,61 +709,10 @@
    ]
   },
   {
-   "suburb": "Kings Park",
-   "state": "NSW",
-   "postcodes": [
-    "2148"
-   ]
-  },
-  {
-   "suburb": "Kingsford",
-   "state": "NSW",
-   "postcodes": [
-    "2032"
-   ]
-  },
-  {
-   "suburb": "Kingsgrove",
-   "state": "NSW",
-   "postcodes": [
-    "2208"
-   ]
-  },
-  {
-   "suburb": "Kingswood",
-   "state": "NSW",
-   "postcodes": [
-    "2340",
-    "2550",
-    "2747"
-   ]
-  },
-  {
    "suburb": "Kirribilli",
    "state": "NSW",
    "postcodes": [
     "2061"
-   ]
-  },
-  {
-   "suburb": "Kogarah",
-   "state": "NSW",
-   "postcodes": [
-    "2217"
-   ]
-  },
-  {
-   "suburb": "Kogarah Bay",
-   "state": "NSW",
-   "postcodes": [
-    "2217"
-   ]
-  },
-  {
-   "suburb": "Koolewong",
-   "state": "NSW",
-   "postcodes": [
-    "2256"
    ]
   },
   {
@@ -1995,27 +727,6 @@
    "state": "NSW",
    "postcodes": [
     "2089"
-   ]
-  },
-  {
-   "suburb": "Kyeemagh",
-   "state": "NSW",
-   "postcodes": [
-    "2216"
-   ]
-  },
-  {
-   "suburb": "Kyle Bay",
-   "state": "NSW",
-   "postcodes": [
-    "2221"
-   ]
-  },
-  {
-   "suburb": "Lakemba",
-   "state": "NSW",
-   "postcodes": [
-    "2195"
    ]
   },
   {
@@ -2047,21 +758,6 @@
    ]
   },
   {
-   "suburb": "Lansdowne",
-   "state": "NSW",
-   "postcodes": [
-    "2163",
-    "2430"
-   ]
-  },
-  {
-   "suburb": "Lansvale",
-   "state": "NSW",
-   "postcodes": [
-    "2166"
-   ]
-  },
-  {
    "suburb": "Lavender Bay",
    "state": "NSW",
    "postcodes": [
@@ -2069,45 +765,10 @@
    ]
   },
   {
-   "suburb": "Leichhardt",
-   "state": "NSW",
-   "postcodes": [
-    "2040"
-   ]
-  },
-  {
-   "suburb": "Lethbridge Park",
-   "state": "NSW",
-   "postcodes": [
-    "2770"
-   ]
-  },
-  {
-   "suburb": "Lewisham",
-   "state": "NSW",
-   "postcodes": [
-    "2049"
-   ]
-  },
-  {
    "suburb": "Liberty Grove",
    "state": "NSW",
    "postcodes": [
     "2138"
-   ]
-  },
-  {
-   "suburb": "Lidcombe",
-   "state": "NSW",
-   "postcodes": [
-    "2141"
-   ]
-  },
-  {
-   "suburb": "Lilyfield",
-   "state": "NSW",
-   "postcodes": [
-    "2040"
    ]
   },
   {
@@ -2125,41 +786,6 @@
    ]
   },
   {
-   "suburb": "Lisarow",
-   "state": "NSW",
-   "postcodes": [
-    "2250"
-   ]
-  },
-  {
-   "suburb": "Little Bay",
-   "state": "NSW",
-   "postcodes": [
-    "2036"
-   ]
-  },
-  {
-   "suburb": "Little Wobby",
-   "state": "NSW",
-   "postcodes": [
-    "2256"
-   ]
-  },
-  {
-   "suburb": "Liverpool",
-   "state": "NSW",
-   "postcodes": [
-    "2170"
-   ]
-  },
-  {
-   "suburb": "Llandilo",
-   "state": "NSW",
-   "postcodes": [
-    "2747"
-   ]
-  },
-  {
    "suburb": "Longueville",
    "state": "NSW",
    "postcodes": [
@@ -2174,32 +800,11 @@
    ]
   },
   {
-   "suburb": "Lugarno",
-   "state": "NSW",
-   "postcodes": [
-    "2210"
-   ]
-  },
-  {
-   "suburb": "Lurnea",
-   "state": "NSW",
-   "postcodes": [
-    "2170"
-   ]
-  },
-  {
    "suburb": "Macquarie Park",
    "state": "NSW",
    "postcodes": [
     "2109",
     "2113"
-   ]
-  },
-  {
-   "suburb": "Malabar",
-   "state": "NSW",
-   "postcodes": [
-    "2036"
    ]
   },
   {
@@ -2217,66 +822,10 @@
    ]
   },
   {
-   "suburb": "Maraylya",
-   "state": "NSW",
-   "postcodes": [
-    "2765"
-   ]
-  },
-  {
-   "suburb": "Marayong",
-   "state": "NSW",
-   "postcodes": [
-    "2148"
-   ]
-  },
-  {
-   "suburb": "Marlow",
-   "state": "NSW",
-   "postcodes": [
-    "2775"
-   ]
-  },
-  {
-   "suburb": "Maroubra",
-   "state": "NSW",
-   "postcodes": [
-    "2035"
-   ]
-  },
-  {
-   "suburb": "Marrickville",
-   "state": "NSW",
-   "postcodes": [
-    "2204"
-   ]
-  },
-  {
-   "suburb": "Marsden Park",
-   "state": "NSW",
-   "postcodes": [
-    "2765"
-   ]
-  },
-  {
    "suburb": "Marsfield",
    "state": "NSW",
    "postcodes": [
     "2122"
-   ]
-  },
-  {
-   "suburb": "Mascot",
-   "state": "NSW",
-   "postcodes": [
-    "2020"
-   ]
-  },
-  {
-   "suburb": "Matraville",
-   "state": "NSW",
-   "postcodes": [
-    "2036"
    ]
   },
   {
@@ -2291,13 +840,6 @@
    "state": "NSW",
    "postcodes": [
     "2105"
-   ]
-  },
-  {
-   "suburb": "Mcgraths Hill",
-   "state": "NSW",
-   "postcodes": [
-    "2756"
    ]
   },
   {
@@ -2322,20 +864,6 @@
    ]
   },
   {
-   "suburb": "Merrylands",
-   "state": "NSW",
-   "postcodes": [
-    "2160"
-   ]
-  },
-  {
-   "suburb": "Merrylands West",
-   "state": "NSW",
-   "postcodes": [
-    "2160"
-   ]
-  },
-  {
    "suburb": "Middle Cove",
    "state": "NSW",
    "postcodes": [
@@ -2357,38 +885,10 @@
    ]
   },
   {
-   "suburb": "Milperra",
-   "state": "NSW",
-   "postcodes": [
-    "2214"
-   ]
-  },
-  {
-   "suburb": "Milsons Passage",
-   "state": "NSW",
-   "postcodes": [
-    "2083"
-   ]
-  },
-  {
    "suburb": "Milsons Point",
    "state": "NSW",
    "postcodes": [
     "2061"
-   ]
-  },
-  {
-   "suburb": "Minchinbury",
-   "state": "NSW",
-   "postcodes": [
-    "2770"
-   ]
-  },
-  {
-   "suburb": "Miranda",
-   "state": "NSW",
-   "postcodes": [
-    "2228"
    ]
   },
   {
@@ -2399,52 +899,10 @@
    ]
   },
   {
-   "suburb": "Monterey",
-   "state": "NSW",
-   "postcodes": [
-    "2217"
-   ]
-  },
-  {
-   "suburb": "Mooney Mooney",
-   "state": "NSW",
-   "postcodes": [
-    "2083"
-   ]
-  },
-  {
-   "suburb": "Mooney Mooney Creek",
-   "state": "NSW",
-   "postcodes": [
-    "2250"
-   ]
-  },
-  {
-   "suburb": "Moore Park",
-   "state": "NSW",
-   "postcodes": [
-    "2021"
-   ]
-  },
-  {
-   "suburb": "Moorebank",
-   "state": "NSW",
-   "postcodes": [
-    "2170"
-   ]
-  },
-  {
    "suburb": "Morning Bay",
    "state": "NSW",
    "postcodes": [
     "2105"
-   ]
-  },
-  {
-   "suburb": "Mortdale",
-   "state": "NSW",
-   "postcodes": [
-    "2223"
    ]
   },
   {
@@ -2469,67 +927,10 @@
    ]
   },
   {
-   "suburb": "Mount Druitt",
-   "state": "NSW",
-   "postcodes": [
-    "2770"
-   ]
-  },
-  {
-   "suburb": "Mount Elliot",
-   "state": "NSW",
-   "postcodes": [
-    "2250"
-   ]
-  },
-  {
    "suburb": "Mount Kuring-Gai",
    "state": "NSW",
    "postcodes": [
     "2080"
-   ]
-  },
-  {
-   "suburb": "Mount Lewis",
-   "state": "NSW",
-   "postcodes": [
-    "2190",
-    "2200"
-   ]
-  },
-  {
-   "suburb": "Mount Pritchard",
-   "state": "NSW",
-   "postcodes": [
-    "2170"
-   ]
-  },
-  {
-   "suburb": "Mount Vernon",
-   "state": "NSW",
-   "postcodes": [
-    "2178"
-   ]
-  },
-  {
-   "suburb": "Mount White",
-   "state": "NSW",
-   "postcodes": [
-    "2250"
-   ]
-  },
-  {
-   "suburb": "Mulgrave",
-   "state": "NSW",
-   "postcodes": [
-    "2756"
-   ]
-  },
-  {
-   "suburb": "Narara",
-   "state": "NSW",
-   "postcodes": [
-    "2250"
    ]
   },
   {
@@ -2554,21 +955,6 @@
    ]
   },
   {
-   "suburb": "Narwee",
-   "state": "NSW",
-   "postcodes": [
-    "2209"
-   ]
-  },
-  {
-   "suburb": "Nelson",
-   "state": "NSW",
-   "postcodes": [
-    "2550",
-    "2765"
-   ]
-  },
-  {
    "suburb": "Neutral Bay",
    "state": "NSW",
    "postcodes": [
@@ -2590,20 +976,6 @@
    ]
   },
   {
-   "suburb": "Newtown",
-   "state": "NSW",
-   "postcodes": [
-    "2042"
-   ]
-  },
-  {
-   "suburb": "Niagara Park",
-   "state": "NSW",
-   "postcodes": [
-    "2250"
-   ]
-  },
-  {
    "suburb": "Normanhurst",
    "state": "NSW",
    "postcodes": [
@@ -2611,24 +983,10 @@
    ]
   },
   {
-   "suburb": "North Avoca",
-   "state": "NSW",
-   "postcodes": [
-    "2260"
-   ]
-  },
-  {
    "suburb": "North Balgowlah",
    "state": "NSW",
    "postcodes": [
     "2093"
-   ]
-  },
-  {
-   "suburb": "North Bondi",
-   "state": "NSW",
-   "postcodes": [
-    "2026"
    ]
   },
   {
@@ -2643,13 +1001,6 @@
    "state": "NSW",
    "postcodes": [
     "2121"
-   ]
-  },
-  {
-   "suburb": "North Gosford",
-   "state": "NSW",
-   "postcodes": [
-    "2250"
    ]
   },
   {
@@ -2685,13 +1036,6 @@
    "state": "NSW",
    "postcodes": [
     "2113"
-   ]
-  },
-  {
-   "suburb": "North St Marys",
-   "state": "NSW",
-   "postcodes": [
-    "2760"
    ]
   },
   {
@@ -2752,38 +1096,10 @@
    ]
   },
   {
-   "suburb": "Oakhurst",
-   "state": "NSW",
-   "postcodes": [
-    "2761"
-   ]
-  },
-  {
-   "suburb": "Oakville",
-   "state": "NSW",
-   "postcodes": [
-    "2765"
-   ]
-  },
-  {
    "suburb": "Oatlands",
    "state": "NSW",
    "postcodes": [
     "2117"
-   ]
-  },
-  {
-   "suburb": "Oatley",
-   "state": "NSW",
-   "postcodes": [
-    "2223"
-   ]
-  },
-  {
-   "suburb": "Old Guildford",
-   "state": "NSW",
-   "postcodes": [
-    "2161"
    ]
   },
   {
@@ -2794,59 +1110,10 @@
    ]
   },
   {
-   "suburb": "Orchard Hills",
-   "state": "NSW",
-   "postcodes": [
-    "2748"
-   ]
-  },
-  {
    "suburb": "Oxford Falls",
    "state": "NSW",
    "postcodes": [
     "2100"
-   ]
-  },
-  {
-   "suburb": "Oxley Park",
-   "state": "NSW",
-   "postcodes": [
-    "2760"
-   ]
-  },
-  {
-   "suburb": "Oyster Bay",
-   "state": "NSW",
-   "postcodes": [
-    "2225"
-   ]
-  },
-  {
-   "suburb": "Paddington",
-   "state": "NSW",
-   "postcodes": [
-    "2021"
-   ]
-  },
-  {
-   "suburb": "Padstow",
-   "state": "NSW",
-   "postcodes": [
-    "2211"
-   ]
-  },
-  {
-   "suburb": "Padstow Heights",
-   "state": "NSW",
-   "postcodes": [
-    "2211"
-   ]
-  },
-  {
-   "suburb": "Pagewood",
-   "state": "NSW",
-   "postcodes": [
-    "2035"
    ]
   },
   {
@@ -2857,61 +1124,12 @@
    ]
   },
   {
-   "suburb": "Panania",
-   "state": "NSW",
-   "postcodes": [
-    "2213"
-   ]
-  },
-  {
-   "suburb": "Parklea",
-   "state": "NSW",
-   "postcodes": [
-    "2768"
-   ]
-  },
-  {
    "suburb": "Parramatta",
    "state": "NSW",
    "postcodes": [
     "2123",
     "2124",
     "2150"
-   ]
-  },
-  {
-   "suburb": "Patonga",
-   "state": "NSW",
-   "postcodes": [
-    "2256"
-   ]
-  },
-  {
-   "suburb": "Peakhurst",
-   "state": "NSW",
-   "postcodes": [
-    "2210"
-   ]
-  },
-  {
-   "suburb": "Peakhurst Heights",
-   "state": "NSW",
-   "postcodes": [
-    "2210"
-   ]
-  },
-  {
-   "suburb": "Pearl Beach",
-   "state": "NSW",
-   "postcodes": [
-    "2256"
-   ]
-  },
-  {
-   "suburb": "Pemulwuy",
-   "state": "NSW",
-   "postcodes": [
-    "2145"
    ]
   },
   {
@@ -2929,49 +1147,6 @@
    ]
   },
   {
-   "suburb": "Penrith",
-   "state": "NSW",
-   "postcodes": [
-    "2750",
-    "2751"
-   ]
-  },
-  {
-   "suburb": "Penshurst",
-   "state": "NSW",
-   "postcodes": [
-    "2222"
-   ]
-  },
-  {
-   "suburb": "Petersham",
-   "state": "NSW",
-   "postcodes": [
-    "2049"
-   ]
-  },
-  {
-   "suburb": "Phegans Bay",
-   "state": "NSW",
-   "postcodes": [
-    "2256"
-   ]
-  },
-  {
-   "suburb": "Picketts Valley",
-   "state": "NSW",
-   "postcodes": [
-    "2251"
-   ]
-  },
-  {
-   "suburb": "Picnic Point",
-   "state": "NSW",
-   "postcodes": [
-    "2213"
-   ]
-  },
-  {
    "suburb": "Pittwater",
    "state": "NSW",
    "postcodes": [
@@ -2979,82 +1154,10 @@
    ]
   },
   {
-   "suburb": "Pleasure Point",
-   "state": "NSW",
-   "postcodes": [
-    "2172"
-   ]
-  },
-  {
-   "suburb": "Plumpton",
-   "state": "NSW",
-   "postcodes": [
-    "2761"
-   ]
-  },
-  {
-   "suburb": "Point Clare",
-   "state": "NSW",
-   "postcodes": [
-    "2250"
-   ]
-  },
-  {
-   "suburb": "Point Frederick",
-   "state": "NSW",
-   "postcodes": [
-    "2250"
-   ]
-  },
-  {
-   "suburb": "Point Piper",
-   "state": "NSW",
-   "postcodes": [
-    "2027"
-   ]
-  },
-  {
-   "suburb": "Potts Hill",
-   "state": "NSW",
-   "postcodes": [
-    "2143"
-   ]
-  },
-  {
    "suburb": "Potts Point",
    "state": "NSW",
    "postcodes": [
     "2011"
-   ]
-  },
-  {
-   "suburb": "Prairiewood",
-   "state": "NSW",
-   "postcodes": [
-    "2176"
-   ]
-  },
-  {
-   "suburb": "Pretty Beach",
-   "state": "NSW",
-   "postcodes": [
-    "2257",
-    "2539"
-   ]
-  },
-  {
-   "suburb": "Prospect",
-   "state": "NSW",
-   "postcodes": [
-    "2148"
-   ]
-  },
-  {
-   "suburb": "Punchbowl",
-   "state": "NSW",
-   "postcodes": [
-    "2196",
-    "2460"
    ]
   },
   {
@@ -3079,80 +1182,10 @@
    ]
   },
   {
-   "suburb": "Quakers Hill",
-   "state": "NSW",
-   "postcodes": [
-    "2763"
-   ]
-  },
-  {
-   "suburb": "Queens Park",
-   "state": "NSW",
-   "postcodes": [
-    "2022"
-   ]
-  },
-  {
    "suburb": "Queenscliff",
    "state": "NSW",
    "postcodes": [
     "2096"
-   ]
-  },
-  {
-   "suburb": "Ramsgate",
-   "state": "NSW",
-   "postcodes": [
-    "2217"
-   ]
-  },
-  {
-   "suburb": "Ramsgate Beach",
-   "state": "NSW",
-   "postcodes": [
-    "2217"
-   ]
-  },
-  {
-   "suburb": "Randwick",
-   "state": "NSW",
-   "postcodes": [
-    "2031"
-   ]
-  },
-  {
-   "suburb": "Redfern",
-   "state": "NSW",
-   "postcodes": [
-    "2016"
-   ]
-  },
-  {
-   "suburb": "Regents Park",
-   "state": "NSW",
-   "postcodes": [
-    "2143"
-   ]
-  },
-  {
-   "suburb": "Regentville",
-   "state": "NSW",
-   "postcodes": [
-    "2745"
-   ]
-  },
-  {
-   "suburb": "Revesby",
-   "state": "NSW",
-   "postcodes": [
-    "2212"
-   ]
-  },
-  {
-   "suburb": "Revesby Heights",
-   "state": "NSW",
-   "postcodes": [
-    "2212"
    ]
   },
   {
@@ -3163,31 +1196,10 @@
    ]
   },
   {
-   "suburb": "Riverstone",
-   "state": "NSW",
-   "postcodes": [
-    "2765"
-   ]
-  },
-  {
    "suburb": "Riverview",
    "state": "NSW",
    "postcodes": [
     "2066"
-   ]
-  },
-  {
-   "suburb": "Riverwood",
-   "state": "NSW",
-   "postcodes": [
-    "2210"
-   ]
-  },
-  {
-   "suburb": "Rockdale",
-   "state": "NSW",
-   "postcodes": [
-    "2216"
    ]
   },
   {
@@ -3198,52 +1210,10 @@
    ]
   },
   {
-   "suburb": "Rookwood",
-   "state": "NSW",
-   "postcodes": [
-    "2141"
-   ]
-  },
-  {
-   "suburb": "Rooty Hill",
-   "state": "NSW",
-   "postcodes": [
-    "2766"
-   ]
-  },
-  {
-   "suburb": "Ropes Crossing",
-   "state": "NSW",
-   "postcodes": [
-    "2760"
-   ]
-  },
-  {
-   "suburb": "Rose Bay",
-   "state": "NSW",
-   "postcodes": [
-    "2029"
-   ]
-  },
-  {
-   "suburb": "Rosebery",
-   "state": "NSW",
-   "postcodes": [
-    "2018"
-   ]
-  },
-  {
    "suburb": "Rosehill",
    "state": "NSW",
    "postcodes": [
     "2142"
-   ]
-  },
-  {
-   "suburb": "Roselands",
-   "state": "NSW",
-   "postcodes": [
-    "2196"
    ]
   },
   {
@@ -3258,20 +1228,6 @@
    "state": "NSW",
    "postcodes": [
     "2069"
-   ]
-  },
-  {
-   "suburb": "Rouse Hill",
-   "state": "NSW",
-   "postcodes": [
-    "2155"
-   ]
-  },
-  {
-   "suburb": "Rozelle",
-   "state": "NSW",
-   "postcodes": [
-    "2039"
    ]
   },
   {
@@ -3303,48 +1259,6 @@
    ]
   },
   {
-   "suburb": "Sandringham",
-   "state": "NSW",
-   "postcodes": [
-    "2219"
-   ]
-  },
-  {
-   "suburb": "Sandy Point",
-   "state": "NSW",
-   "postcodes": [
-    "2172"
-   ]
-  },
-  {
-   "suburb": "Sans Souci",
-   "state": "NSW",
-   "postcodes": [
-    "2219"
-   ]
-  },
-  {
-   "suburb": "Saratoga",
-   "state": "NSW",
-   "postcodes": [
-    "2251"
-   ]
-  },
-  {
-   "suburb": "Scheyville",
-   "state": "NSW",
-   "postcodes": [
-    "2756"
-   ]
-  },
-  {
-   "suburb": "Schofields",
-   "state": "NSW",
-   "postcodes": [
-    "2762"
-   ]
-  },
-  {
    "suburb": "Scotland Island",
    "state": "NSW",
    "postcodes": [
@@ -3359,31 +1273,10 @@
    ]
   },
   {
-   "suburb": "Sefton",
-   "state": "NSW",
-   "postcodes": [
-    "2162"
-   ]
-  },
-  {
    "suburb": "Seven Hills",
    "state": "NSW",
    "postcodes": [
     "2147"
-   ]
-  },
-  {
-   "suburb": "Shalvey",
-   "state": "NSW",
-   "postcodes": [
-    "2770"
-   ]
-  },
-  {
-   "suburb": "Shanes Park",
-   "state": "NSW",
-   "postcodes": [
-    "2747"
    ]
   },
   {
@@ -3392,48 +1285,6 @@
    "postcodes": [
     "2128",
     "2264"
-   ]
-  },
-  {
-   "suburb": "Smithfield",
-   "state": "NSW",
-   "postcodes": [
-    "2164"
-   ]
-  },
-  {
-   "suburb": "Somersby",
-   "state": "NSW",
-   "postcodes": [
-    "2250"
-   ]
-  },
-  {
-   "suburb": "South Coogee",
-   "state": "NSW",
-   "postcodes": [
-    "2034"
-   ]
-  },
-  {
-   "suburb": "South Granville",
-   "state": "NSW",
-   "postcodes": [
-    "2142"
-   ]
-  },
-  {
-   "suburb": "South Hurstville",
-   "state": "NSW",
-   "postcodes": [
-    "2221"
-   ]
-  },
-  {
-   "suburb": "South Penrith",
-   "state": "NSW",
-   "postcodes": [
-    "2750"
    ]
   },
   {
@@ -3451,36 +1302,6 @@
    ]
   },
   {
-   "suburb": "South Windsor",
-   "state": "NSW",
-   "postcodes": [
-    "2756"
-   ]
-  },
-  {
-   "suburb": "Springfield",
-   "state": "NSW",
-   "postcodes": [
-    "2250",
-    "2630"
-   ]
-  },
-  {
-   "suburb": "St Clair",
-   "state": "NSW",
-   "postcodes": [
-    "2330",
-    "2759"
-   ]
-  },
-  {
-   "suburb": "St Huberts Island",
-   "state": "NSW",
-   "postcodes": [
-    "2257"
-   ]
-  },
-  {
    "suburb": "St Ives",
    "state": "NSW",
    "postcodes": [
@@ -3495,45 +1316,10 @@
    ]
   },
   {
-   "suburb": "St Johns Park",
-   "state": "NSW",
-   "postcodes": [
-    "2176"
-   ]
-  },
-  {
    "suburb": "St Leonards",
    "state": "NSW",
    "postcodes": [
     "2065"
-   ]
-  },
-  {
-   "suburb": "St Marys",
-   "state": "NSW",
-   "postcodes": [
-    "2760"
-   ]
-  },
-  {
-   "suburb": "St Peters",
-   "state": "NSW",
-   "postcodes": [
-    "2044"
-   ]
-  },
-  {
-   "suburb": "Stanhope Gardens",
-   "state": "NSW",
-   "postcodes": [
-    "2768"
-   ]
-  },
-  {
-   "suburb": "Stanmore",
-   "state": "NSW",
-   "postcodes": [
-    "2048"
    ]
   },
   {
@@ -3542,35 +1328,6 @@
    "postcodes": [
     "2129",
     "2135"
-   ]
-  },
-  {
-   "suburb": "Strathfield South",
-   "state": "NSW",
-   "postcodes": [
-    "2136"
-   ]
-  },
-  {
-   "suburb": "Summer Hill",
-   "state": "NSW",
-   "postcodes": [
-    "2130",
-    "2421"
-   ]
-  },
-  {
-   "suburb": "Surry Hills",
-   "state": "NSW",
-   "postcodes": [
-    "2010"
-   ]
-  },
-  {
-   "suburb": "Sydenham",
-   "state": "NSW",
-   "postcodes": [
-    "2044"
    ]
   },
   {
@@ -3589,52 +1346,10 @@
    ]
   },
   {
-   "suburb": "Sylvania",
-   "state": "NSW",
-   "postcodes": [
-    "2224"
-   ]
-  },
-  {
-   "suburb": "Sylvania Waters",
-   "state": "NSW",
-   "postcodes": [
-    "2224"
-   ]
-  },
-  {
-   "suburb": "Tamarama",
-   "state": "NSW",
-   "postcodes": [
-    "2026"
-   ]
-  },
-  {
-   "suburb": "Taren Point",
-   "state": "NSW",
-   "postcodes": [
-    "2229"
-   ]
-  },
-  {
-   "suburb": "Tascott",
-   "state": "NSW",
-   "postcodes": [
-    "2250"
-   ]
-  },
-  {
    "suburb": "Telopea",
    "state": "NSW",
    "postcodes": [
     "2117"
-   ]
-  },
-  {
-   "suburb": "Tempe",
-   "state": "NSW",
-   "postcodes": [
-    "2044"
    ]
   },
   {
@@ -3649,20 +1364,6 @@
    "state": "NSW",
    "postcodes": [
     "2084"
-   ]
-  },
-  {
-   "suburb": "Terrigal",
-   "state": "NSW",
-   "postcodes": [
-    "2260"
-   ]
-  },
-  {
-   "suburb": "The Ponds",
-   "state": "NSW",
-   "postcodes": [
-    "2769"
    ]
   },
   {
@@ -3688,20 +1389,6 @@
    ]
   },
   {
-   "suburb": "Tregear",
-   "state": "NSW",
-   "postcodes": [
-    "2770"
-   ]
-  },
-  {
-   "suburb": "Tumbi Umbi",
-   "state": "NSW",
-   "postcodes": [
-    "2261"
-   ]
-  },
-  {
    "suburb": "Turramurra",
    "state": "NSW",
    "postcodes": [
@@ -3709,59 +1396,10 @@
    ]
   },
   {
-   "suburb": "Turrella",
-   "state": "NSW",
-   "postcodes": [
-    "2205"
-   ]
-  },
-  {
    "suburb": "Ultimo",
    "state": "NSW",
    "postcodes": [
     "2007"
-   ]
-  },
-  {
-   "suburb": "Umina Beach",
-   "state": "NSW",
-   "postcodes": [
-    "2257"
-   ]
-  },
-  {
-   "suburb": "Vaucluse",
-   "state": "NSW",
-   "postcodes": [
-    "2030"
-   ]
-  },
-  {
-   "suburb": "Villawood",
-   "state": "NSW",
-   "postcodes": [
-    "2163"
-   ]
-  },
-  {
-   "suburb": "Vineyard",
-   "state": "NSW",
-   "postcodes": [
-    "2765"
-   ]
-  },
-  {
-   "suburb": "Voyager Point",
-   "state": "NSW",
-   "postcodes": [
-    "2172"
-   ]
-  },
-  {
-   "suburb": "Wagstaffe",
-   "state": "NSW",
-   "postcodes": [
-    "2257"
    ]
   },
   {
@@ -3776,13 +1414,6 @@
    "state": "NSW",
    "postcodes": [
     "2077"
-   ]
-  },
-  {
-   "suburb": "Wakeley",
-   "state": "NSW",
-   "postcodes": [
-    "2176"
    ]
   },
   {
@@ -3807,52 +1438,10 @@
    ]
   },
   {
-   "suburb": "Warwick Farm",
-   "state": "NSW",
-   "postcodes": [
-    "2170"
-   ]
-  },
-  {
-   "suburb": "Waterloo",
-   "state": "NSW",
-   "postcodes": [
-    "2017"
-   ]
-  },
-  {
-   "suburb": "Watsons Bay",
-   "state": "NSW",
-   "postcodes": [
-    "2030"
-   ]
-  },
-  {
-   "suburb": "Wattle Grove",
-   "state": "NSW",
-   "postcodes": [
-    "2173"
-   ]
-  },
-  {
-   "suburb": "Waverley",
-   "state": "NSW",
-   "postcodes": [
-    "2024"
-   ]
-  },
-  {
    "suburb": "Waverton",
    "state": "NSW",
    "postcodes": [
     "2060"
-   ]
-  },
-  {
-   "suburb": "Wendoree Park",
-   "state": "NSW",
-   "postcodes": [
-    "2250"
    ]
   },
   {
@@ -3867,34 +1456,6 @@
    "state": "NSW",
    "postcodes": [
     "2145"
-   ]
-  },
-  {
-   "suburb": "Werrington",
-   "state": "NSW",
-   "postcodes": [
-    "2747"
-   ]
-  },
-  {
-   "suburb": "Werrington County",
-   "state": "NSW",
-   "postcodes": [
-    "2747"
-   ]
-  },
-  {
-   "suburb": "Werrington Downs",
-   "state": "NSW",
-   "postcodes": [
-    "2747"
-   ]
-  },
-  {
-   "suburb": "West Gosford",
-   "state": "NSW",
-   "postcodes": [
-    "2250"
    ]
   },
   {
@@ -3933,20 +1494,6 @@
    ]
   },
   {
-   "suburb": "Wetherill Park",
-   "state": "NSW",
-   "postcodes": [
-    "2164"
-   ]
-  },
-  {
-   "suburb": "Whalan",
-   "state": "NSW",
-   "postcodes": [
-    "2770"
-   ]
-  },
-  {
    "suburb": "Whale Beach",
    "state": "NSW",
    "postcodes": [
@@ -3958,20 +1505,6 @@
    "state": "NSW",
    "postcodes": [
     "2097"
-   ]
-  },
-  {
-   "suburb": "Wiley Park",
-   "state": "NSW",
-   "postcodes": [
-    "2195"
-   ]
-  },
-  {
-   "suburb": "Willmot",
-   "state": "NSW",
-   "postcodes": [
-    "2770"
    ]
   },
   {
@@ -3989,13 +1522,6 @@
    ]
   },
   {
-   "suburb": "Windsor Downs",
-   "state": "NSW",
-   "postcodes": [
-    "2756"
-   ]
-  },
-  {
    "suburb": "Winston Hills",
    "state": "NSW",
    "postcodes": [
@@ -4003,45 +1529,10 @@
    ]
   },
   {
-   "suburb": "Wolli Creek",
-   "state": "NSW",
-   "postcodes": [
-    "2205"
-   ]
-  },
-  {
    "suburb": "Wollstonecraft",
    "state": "NSW",
    "postcodes": [
     "2065"
-   ]
-  },
-  {
-   "suburb": "Wondabyne",
-   "state": "NSW",
-   "postcodes": [
-    "2256"
-   ]
-  },
-  {
-   "suburb": "Woodcroft",
-   "state": "NSW",
-   "postcodes": [
-    "2767"
-   ]
-  },
-  {
-   "suburb": "Woodpark",
-   "state": "NSW",
-   "postcodes": [
-    "2164"
-   ]
-  },
-  {
-   "suburb": "Woollahra",
-   "state": "NSW",
-   "postcodes": [
-    "2025"
    ]
   },
   {
@@ -4056,55 +1547,6 @@
    "state": "NSW",
    "postcodes": [
     "2110"
-   ]
-  },
-  {
-   "suburb": "Woy Woy",
-   "state": "NSW",
-   "postcodes": [
-    "2256"
-   ]
-  },
-  {
-   "suburb": "Woy Woy Bay",
-   "state": "NSW",
-   "postcodes": [
-    "2256"
-   ]
-  },
-  {
-   "suburb": "Wyoming",
-   "state": "NSW",
-   "postcodes": [
-    "2250"
-   ]
-  },
-  {
-   "suburb": "Yagoona",
-   "state": "NSW",
-   "postcodes": [
-    "2199"
-   ]
-  },
-  {
-   "suburb": "Yattalunga",
-   "state": "NSW",
-   "postcodes": [
-    "2251"
-   ]
-  },
-  {
-   "suburb": "Yennora",
-   "state": "NSW",
-   "postcodes": [
-    "2161"
-   ]
-  },
-  {
-   "suburb": "Zetland",
-   "state": "NSW",
-   "postcodes": [
-    "2017"
    ]
   }
  ]

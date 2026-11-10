@@ -67,7 +67,7 @@ describe('batches received by post', () => {
     expect((await findBatch(t.db, b.reference))!.status).toBe('paid');
   });
 
-  it('a posted batch of 6 or more: the standard return postage is its own negative line, GST (once registered) is on the net, and the club pays that', async () => {
+  it('a posted batch of 6 or more: the club’s postage to us is its own negative line, GST (once registered) is on the net, and the club pays that', async () => {
     t = await makeApp();
     const c = await club();
     await t.db.query(`UPDATE clubs SET venue_postcode = '2560', suburb = 'Campbelltown' WHERE id = $1`, [c.id]);
@@ -80,7 +80,7 @@ describe('batches received by post', () => {
     const snap = JSON.parse(inv.snapshot) as { lines: { description: string; quantity: number; unitCents: number; amountCents: number }[] };
     expect(snap.lines).toHaveLength(2);
     expect(snap.lines[0]).toMatchObject({ quantity: 8, unitCents: 5400, amountCents: 8 * 5400 });
-    expect(snap.lines[1]).toMatchObject({ description: 'Return postage allowance (standard cost, batch of 6 or more paddles)', quantity: 1, unitCents: -quote.postageCents, amountCents: -quote.postageCents });
+    expect(snap.lines[1]).toMatchObject({ description: 'Postage allowance (standard cost of posting the batch to us, batch of 6 or more paddles)', quantity: 1, unitCents: -quote.postageCents, amountCents: -quote.postageCents });
     expect(Number(inv.total_cents)).toBe(8 * 5400 - quote.postageCents);
     expect((await findBatch(t.db, b.reference))!.invoice?.totalCents).toBe(8 * 5400 - quote.postageCents);
   });
@@ -153,7 +153,7 @@ describe('the admin for postal batches', () => {
     let bpage = await (await admin.get(`/admin/batches/${ref}`)).text();
     expect(bpage).toContain('Waiting for payment');
     const doc = await (await admin.get('/admin/documents/PMP-INV-0001')).text();
-    expect(doc).toContain('Return postage allowance (standard cost, batch of 6 or more paddles)');
+    expect(doc).toContain('Postage allowance (standard cost of posting the batch to us, batch of 6 or more paddles)');
     expect(bpage).toContain(`A$${(7 * 54 - 18.5).toFixed(2).replace(/\.00$/, '')}`);
     await pay(ref, 7 * 5400 - 1850);
     bpage = await (await admin.get(`/admin/batches/${ref}`)).text();
@@ -227,7 +227,7 @@ describe('pickup or post in the admin (SCRUM-102)', () => {
     t = await makeApp();
     const admin = await makeAdmin(t);
     const r = await t.db.query<{ id: string }>(
-      `INSERT INTO clubs (name, status, is_test, contact_email, suburb, venue_postcode, fulfilment_default, area_version, area_review) VALUES ('Odd PC', 'lead', true, 'jo@test.picklemypaddle.com', 'Milperra', '2560', 'postal', 'v', true) RETURNING id`,
+      `INSERT INTO clubs (name, status, is_test, contact_email, suburb, venue_postcode, fulfilment_default, area_version, area_review) VALUES ('Odd PC', 'lead', true, 'jo@test.picklemypaddle.com', 'Hornsby', '2560', 'postal', 'v', true) RETURNING id`,
     );
     expect(await (await admin.get(`/admin/clubs/${r.rows[0]!.id}`)).text()).toContain('different postcode');
   });

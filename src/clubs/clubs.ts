@@ -7,7 +7,7 @@
  *  - A batch is one pickup's (or posted box's) paddles: Collected → Invoiced → Paid → Returned, or
  *    Cancelled before it is invoiced (the club pays before its batch goes back, SCRUM-102). Invoicing
  *    issues the invoice in one transaction (paddles re-gritted × the club price on the issue date,
- *    less the standard return postage for a posted batch of 6+, GST added on top once registered) and
+ *    less the standard cost of the club's postage to us for a posted batch of 6+, GST added on top once registered) and
  *    queues the invoice email to the billing contact. Paddles unchanged aren't charged; a batch with
  *    every paddle unchanged goes Collected → Returned, with nothing to invoice.
  *  - Clubs never get discount codes (decided 30 Oct 2026): nothing here applies one.
@@ -93,8 +93,8 @@ export const BATCH_METHODS = ['pickup', 'post'] as const;
 export type BatchMethod = (typeof BATCH_METHODS)[number];
 export const isBatchMethod = (v: string): v is BatchMethod => (BATCH_METHODS as readonly string[]).includes(v);
 export const MAX_TRACKING = 60;
-/** We pay return postage for a posted batch of at least this many paddles (agreement 5.3). */
-export const FREE_RETURN_POST_MIN = 6;
+/** A posted batch of at least this many paddles gets the standard cost of the club's postage to us taken off its invoice (agreement 5.3). */
+export const POSTAGE_ALLOWANCE_MIN = 6;
 
 export interface Batch {
   id: string;
@@ -454,11 +454,12 @@ export interface ReturnDeps {
 }
 
 /**
- * The standard cost of posting a batch back to the club (SCRUM-102, agreement 5.3): Australia Post
- * to the club's venue postcode for that many paddles, on the day. A reason instead when it can't be
+ * The standard cost of the club posting a batch to us (SCRUM-102, agreement 5.3): Australia Post's
+ * price for that many paddles at the club's venue postcode, on the day (the same table that prices
+ * return postage on individual orders; the route is taken as the same either way). A reason instead when it can't be
  * worked out (no postcode on file, or a size the packing table doesn't cover): then it is entered.
  */
-export function standardReturnPostage(paddles: number, postcode: string | null, date: string): { cents: number } | { reason: string } {
+export function standardPostage(paddles: number, postcode: string | null, date: string): { cents: number } | { reason: string } {
   if (!postcode) return { reason: 'This club has no venue postcode on file: enter the standard postage.' };
   const q = quotePostage(paddles, postcode, date);
   return q.ok ? { cents: q.postageCents } : { reason: q.reason };
@@ -491,11 +492,11 @@ export async function invoiceBatch(
       if (b.status !== 'collected') throw new ClubError('not_collected', 'Only a collected batch can be invoiced.');
       if (args.unchangedCount >= Number(b.paddle_count)) throw new ClubError('nothing_to_invoice', 'Every paddle is unchanged, so there is nothing to invoice: return the batch without an invoice instead.');
       let allowance = 0;
-      if (b.method === 'post' && Number(b.paddle_count) >= FREE_RETURN_POST_MIN) {
+      if (b.method === 'post' && Number(b.paddle_count) >= POSTAGE_ALLOWANCE_MIN) {
         if (args.postageAllowanceCents != null) {
           allowance = args.postageAllowanceCents;
         } else {
-          const std = standardReturnPostage(Number(b.paddle_count), b.venue_postcode, sydneyDate(now));
+          const std = standardPostage(Number(b.paddle_count), b.venue_postcode, sydneyDate(now));
           if ('reason' in std) throw new ClubError('postage_needed', std.reason);
           allowance = std.cents;
         }

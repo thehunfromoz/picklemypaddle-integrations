@@ -467,7 +467,7 @@ members' details, so only the club's name and billing details are held here.
   entirely unchanged stays Returned, with nothing invoiced.
 - **The invoice:** in the shared `PMP-INV-` sequence, a frozen snapshot like receipts. The amount is
   paddles re-gritted × the club price on the issue date (A$54, `src/pricing/terms.ts`). It's due
-  `CLUB_PAYMENT_TERMS_DAYS` after issue (14 until Attila confirms). **GST for clubs is added on
+  `CLUB_PAYMENT_TERMS_DAYS` after issue (14 until Attila confirms; unused since SCRUM-102, see below). **GST for clubs is added on
   top** (decided 4 Nov 2026): before `GST_REGISTERED_FROM` it's an "Invoice" with no GST; from it,
   a "Tax invoice" showing the subtotal excluding GST, GST at 10% as its own line, and the total.
   Direct orders are unchanged: A$60 including GST.
@@ -545,9 +545,12 @@ members' details, so only the club's name and billing details are held here.
   returned" (with the return date, and a tracking number for post) is only offered once it is paid. A
   batch where every paddle came back unchanged has nothing to invoice and goes back directly.
 - The invoice has no due date (it is due before return), so the "overdue" flag no longer fires.
-  `CLUB_PAYMENT_TERMS_DAYS` is unused. What "overdue" means now is Attila's to decide.
-- A posted batch of 6 or more paddles gets a negative line, "Return postage allowance", for the
-  standard cost: Australia Post's price to the club's venue postcode on the invoice date
+  `CLUB_PAYMENT_TERMS_DAYS` and the overdue check (`isOverdue`) are deliberately KEPT, unused (decided 11 Nov):
+  clubs may insist on deferred payment. **Flagged for review after going to production**, when the
+  negotiations with clubs have landed (Jira follow-up).
+- A posted batch of 6 or more paddles gets a negative line, "Postage allowance", for the standard
+  cost of the club's postage TO US (corrected 11 Nov: it is not the return leg): Australia Post's price
+  for that many paddles at the club's venue postcode on the invoice date
   (`pricing/postage.ts`, postage only), or an amount entered when that can't be worked out. GST, once
   registered, is on the invoice after it. `[To confirm with the accountant: GST on the allowance.]`
 - A returned, invoiced batch stays a Closed-won deal in HubSpot.
@@ -558,8 +561,10 @@ members' details, so only the club's name and billing details are held here.
   business address and we post the batch back. A batch has a `method` (`pickup` or `post`), one
   tracking number to us and one back (letters, digits, dashes, up to 60), and the existing free-text
   note. `collected_on` is the day it came into our hands either way; "Record a batch received" in admin.
-- **Return postage:** we pay it for a posted batch of 6 or more paddles (`FREE_RETURN_POST_MIN`); for fewer
-  it is `[To confirm: how it is charged]`. Postage is never on the club invoice (nothing is built for it yet).
+- **Postage (as decided 11 Nov 2026, replacing the 10 Nov wording):** the club pays the postage to us; for a
+  posted batch of 6 or more paddles (`POSTAGE_ALLOWANCE_MIN`) its standard cost comes off the invoice as
+  its own line, so clubs are encouraged to send bigger batches. Who pays the postage back is
+  `[To confirm]` (agreement 0.3, 5.3).
 - **Agreement 0.2** (0.1 was never sent): dead-spot check in 3.2, a new section 5 for post, custody 6.6,
   later sections renumbered. Liability in transit is `[To confirm]`: to be agreed with each club.
 - **Meeting time and length** are optional and set after the date (migration 19). The meeting goes to the
