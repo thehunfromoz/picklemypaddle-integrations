@@ -696,6 +696,26 @@ export const MIGRATIONS: readonly Migration[] = [
       ALTER TABLE clubs ADD CONSTRAINT clubs_override_recorded CHECK ((fulfilment_override IS NULL) = (fulfilment_override_at IS NULL));
     `,
   },
+  {
+    version: 21,
+    name: 'club payment before return',
+    sql: `
+      -- SCRUM-102 UAT (11 Nov 2026): a club pays before its batch goes back. The order is now
+      -- Collected, Invoiced, Paid, Returned (a batch with nothing to invoice goes Collected to Returned).
+      -- So an invoiced or paid batch has no return date yet; older ones keep theirs. A returned batch has one.
+      DO $do$
+      DECLARE c text;
+      BEGIN
+        SELECT conname INTO c FROM pg_constraint
+         WHERE conrelid = 'batches'::regclass AND contype = 'c' AND pg_get_constraintdef(oid) LIKE '%returned_on IS NULL%';
+        IF c IS NOT NULL THEN EXECUTE 'ALTER TABLE batches DROP CONSTRAINT ' || quote_ident(c); END IF;
+      END
+      $do$;
+      ALTER TABLE batches ADD CONSTRAINT batches_return_date CHECK (
+        (status = 'returned' AND returned_on IS NOT NULL) OR (status IN ('collected', 'cancelled') AND returned_on IS NULL) OR status IN ('invoiced', 'paid')
+      );
+    `,
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

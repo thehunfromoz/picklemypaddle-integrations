@@ -2,10 +2,12 @@
  * The local pickup and drop-off service area (SCRUM-102). One list of suburbs
  * (`service-area-suburbs.json`) is the single source of truth: never copy suburbs into code.
  *
- * COPIED BYTE-FOR-BYTE into the site (`src/lib/service-area.ts`, with the JSON beside it), like
- * `src/orders/rules.ts`: change this one first. It imports nothing but the JSON, so it runs in
- * both. It only ever answers "is this venue inside the area?", which sets a club's DEFAULT method
- * (local pickup or post); an admin can override it per club.
+ * OWNED BY THE SITE (`src/lib/`, with the JSON beside it), because the area is public site content:
+ * the map and the suburb list on the Clubs page. COPIED BYTE-FOR-BYTE into integrations
+ * (`src/clubs/`), which applies it on the server when a lead arrives; integrations' parity test
+ * checks the copy against the site's `main`. Change the site's files first, then copy them here.
+ * It imports nothing but the JSON, so it runs in both. It only ever answers "is this venue inside
+ * the area?", which sets a club's DEFAULT method (local pickup or post); an admin can override it.
  */
 import data from './service-area-suburbs.json' with { type: 'json' };
 

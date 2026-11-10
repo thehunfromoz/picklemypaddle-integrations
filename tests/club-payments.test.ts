@@ -5,7 +5,7 @@
  * admin. No part payments (decided 6 Nov 2026).
  */
 import { afterEach, describe, expect, it } from 'vitest';
-import { createBatch, createClub, findBatch, isOverdue, returnBatch } from '../src/clubs/clubs.js';
+import { createBatch, createClub, findBatch, isOverdue, invoiceBatch } from '../src/clubs/clubs.js';
 import { invoiceBalance, recordClubPayment } from '../src/clubs/payments.js';
 import { DEFAULT_SELLER, documentByNumber } from '../src/documents/documents.js';
 import { processOutbox } from '../src/email/outbox.js';
@@ -30,7 +30,7 @@ async function invoiced(paddles = 5, opts: { stripe?: boolean } = {}) {
   t.clock.now = new Date('2026-11-04T01:00:00Z');
   const club = await createClub(t.db, { name: 'Inner West PC', billingName: 'Jo Treasurer', billingEmail: BILLING, billingAddress: '1 Court St', abn: null, notes: null }, { isProduction: false, now: t.clock.now });
   const batch = await createBatch(t.db, { clubId: club.id, collectedOn: '2026-11-02', paddleCount: paddles, notes: null, now: t.clock.now });
-  await returnBatch({ db: t.db, seller, isProduction: false, paymentTermsDays: 14, now: t.clock.now, payByCard: !!opts.stripe }, { reference: batch.reference, returnedOn: '2026-11-04', unchangedCount: 0 });
+  await invoiceBatch({ db: t.db, seller, isProduction: false, now: t.clock.now, payByCard: !!opts.stripe }, { reference: batch.reference, unchangedCount: 0 });
   const b = (await findBatch(t.db, batch.reference))!;
   return { batch: b, invoiceId: b.invoice!.id, number: b.invoice!.number };
 }
@@ -74,7 +74,7 @@ describe('PayID and cash payments, recorded by hand', () => {
     await expect(pay(open.reference, { amountCents: 100 })).rejects.toMatchObject({ code: 'not_owing' });
   });
 
-  it('the admin records a payment, shows what is owing and flags an overdue invoice', async () => {
+  it('the admin records a payment and shows what is owing; the paid batch then waits to be returned (SCRUM-102: the club pays first)', async () => {
     const { batch } = await invoiced(5);
     const admin = await makeAdmin(t);
     let page = await (await admin.get(`/admin/batches/${batch.reference}`)).text();
@@ -86,17 +86,27 @@ describe('PayID and cash payments, recorded by hand', () => {
     expect(bad.status).toBe(400);
     expect(await bad.text()).toContain('Payment is in full for each invoice, so the amount must be A$270. Part payments aren’t accepted.');
 
-    // Two weeks and a day later: overdue, in the batch list and on its page.
+    // Payment is due before the batch goes back, so an invoice has no due date to be overdue against (what "overdue" means now is Attila's to say).
     t.clock.now = new Date('2026-11-19T01:00:00Z');
-    expect(isOverdue((await findBatch(t.db, batch.reference))!, '2026-11-19')).toBe(true);
-    expect(await (await admin.get('/admin/batches')).text()).toContain('Overdue');
+    expect(isOverdue((await findBatch(t.db, batch.reference))!, '2026-11-19')).toBe(false);
     page = await (await admin.get(`/admin/batches/${batch.reference}`)).text();
-    expect(page).toContain('Overdue');
+    expect(page).toContain('Waiting for payment');
+    expect(page).not.toContain('Mark returned');
+    const early = await admin.post(`/admin/batches/${batch.reference}/return`, { returnedOn: '2026-11-19' });
+    expect(early.status).toBe(400);
+    expect(await early.text()).toContain('The invoice isn’t paid yet');
 
     const done = await admin.post(`/admin/batches/${batch.reference}/payments`, { amount: '270', paidOn: '2026-11-19', method: 'cash' });
     expect(done.headers.get('location')).toContain('done=payment_paid');
     page = await (await admin.get(`/admin/batches/${batch.reference}`)).text();
     expect(page).toContain('Paid in full.');
+    expect(page).toContain('Paid: to return');
+    expect(page).toContain('Paid: mark returned');
+    const back = await admin.post(`/admin/batches/${batch.reference}/return`, { returnedOn: '2026-11-19' });
+    expect(back.headers.get('location')).toContain('done=batch_returned');
+    expect(await findBatch(t.db, batch.reference)).toMatchObject({ status: 'returned', returnedOn: '2026-11-19' });
+    page = await (await admin.get(`/admin/batches/${batch.reference}`)).text();
+    expect(page).not.toContain('Paid: mark returned');
     expect(page).not.toContain('Overdue');
   });
 });

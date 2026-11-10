@@ -157,7 +157,7 @@ test('creates a shared code and a batch of one-per-person codes, then filters th
 });
 
 // SCRUM-85: a club and its batch, returned and invoiced, as Attila would on staging.
-test('adds a club, records a batch, returns it and opens its invoice', async ({ page }, testInfo) => {
+test('adds a club, records a batch, invoices it, takes payment, then returns it', async ({ page }, testInfo) => {
   const name = `E2E Club ${testInfo.project.name} ${Date.now()}`;
   await page.goto('/admin/clubs');
   await summary(page, 'Add a club').click();
@@ -175,11 +175,11 @@ test('adds a club, records a batch, returns it and opens its invoice', async ({ 
   await expect(page.getByRole('status')).toHaveText('Batch recorded.');
   await expect(page.locator('h1 .badge')).toHaveText('Collected');
 
-  await page.getByLabel(/Paddles returned unchanged/).fill('1');
-  await page.getByRole('button', { name: 'Return and invoice' }).click();
-  await expect(page.getByRole('status')).toHaveText('Returned: the invoice is issued and its email goes out within a minute.');
+  await page.getByLabel(/Paddles that can’t be re-gritted/).fill('1');
+  await page.getByRole('button', { name: 'Invoice the club' }).click();
+  await expect(page.getByRole('status')).toHaveText('Invoiced: the invoice email goes out within a minute. The batch goes back once the club has paid.');
   await expect(page.locator('h1 .badge')).toHaveText('Invoiced');
-  await expect(page.getByText('Invoice email')).toBeVisible();
+  await expect(page.locator('li.pending', { hasText: 'Invoice email' })).toBeVisible();
 
   // 5 re-gritted × A$54, not GST-registered: "Invoice", the club as buyer, due date.
   await page.locator('dl.facts a', { hasText: /^PMP-INV-\d{4}$/ }).click();
@@ -202,7 +202,11 @@ test('adds a club, records a batch, returns it and opens its invoice', async ({ 
   await page.getByLabel('Cash').check();
   await page.getByRole('button', { name: 'Record payment' }).click();
   await expect(page.getByRole('status')).toHaveText('Payment recorded: the invoice is paid in full and the batch is Paid.');
-  await expect(page.locator('h1 .badge').first()).toHaveText('Paid');
+  await expect(page.locator('h1 .badge').first()).toHaveText('Paid: to return');
+  // The club has paid, so the batch can go back.
+  await page.getByRole('button', { name: 'Mark returned' }).click();
+  await expect(page.getByRole('status')).toHaveText('Marked returned.');
+  await expect(page.locator('h1 .badge').first()).toHaveText('Returned');
   await page.locator('dl.facts a', { hasText: /^PMP-INV-\d{4}$/ }).click();
   await expect(page.locator('article.doc h1')).toHaveText('Invoice: paid');
   await expect(page.locator('.doc-paid')).toContainText('Paid in full by cash');

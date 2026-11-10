@@ -279,7 +279,8 @@ export function mapClub(c: ClubForCrm, opts: ClubMapOptions = {}): { company: Cr
       paddleCount: b.paddle_count,
       collectedOn: b.collected_on,
       isTest: c.is_test,
-      status: b.status,
+      // A club pays before its batch goes back (SCRUM-102), so a returned, invoiced batch is a paid deal: it must not leave Closed won.
+      status: b.status === 'returned' && b.invoice_total !== null ? 'paid' : b.status,
     })),
   };
 }

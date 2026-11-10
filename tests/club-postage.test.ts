@@ -3,7 +3,9 @@
  * instead of picked up, with one tracking number to us and one back, and a note.
  */
 import { afterEach, describe, expect, it } from 'vitest';
-import { cancelBatch, ClubError, cleanTracking, createBatch, createClub, findBatch, returnBatch } from '../src/clubs/clubs.js';
+import { cancelBatch, ClubError, cleanTracking, createBatch, createClub, findBatch, invoiceBatch, returnBatch } from '../src/clubs/clubs.js';
+import { recordClubPayment } from '../src/clubs/payments.js';
+import { quotePostage } from '../src/pricing/postage.js';
 import { DEFAULT_SELLER } from '../src/documents/documents.js';
 import { makeAdmin } from './helpers/admin.js';
 import { makeApp, type TestApp } from './helpers/app.js';
@@ -13,8 +15,11 @@ afterEach(async () => t?.close());
 
 const club = () =>
   createClub(t.db, { name: 'Far Away PC', billingName: 'Jo', billingEmail: 'jo@test.picklemypaddle.com', billingAddress: '1 Court St', abn: null, notes: null }, { isProduction: false, now: t.clock.now });
-const deps = () => ({ db: t.db, seller: DEFAULT_SELLER, isProduction: false, paymentTermsDays: 14, now: t.clock.now });
+const deps = () => ({ db: t.db, seller: DEFAULT_SELLER, isProduction: false, now: t.clock.now });
 const today = () => t.clock.now.toISOString().slice(0, 10);
+const pay = (reference: string, amountCents: number) =>
+  recordClubPayment(t.db, { batchReference: reference, method: 'cash', amountCents, paidOn: today(), reference: null, by: 'attila@test.picklemypaddle.com', now: t.clock.now });
+
 
 describe('batches received by post', () => {
   it('records the method, the tracking number to us and a note; a batch is a pickup unless said otherwise', async () => {
@@ -37,23 +42,81 @@ describe('batches received by post', () => {
     expect(cleanTracking('  ')).toBe('');
   });
 
-  it('records the return tracking number when the batch goes back, and invoices as for a pickup', async () => {
+  it('the club pays before the batch goes back: invoiced, paid, then returned with its return tracking number', async () => {
     t = await makeApp();
     const c = await club();
-    const b = await createBatch(t.db, { clubId: c.id, collectedOn: today(), paddleCount: 6, notes: null, now: t.clock.now, method: 'post' });
-    await returnBatch(deps(), { reference: b.reference, returnedOn: today(), unchangedCount: 0, returnTracking: 'AP 999' });
-    const after = (await findBatch(t.db, b.reference))!;
-    expect(after).toMatchObject({ status: 'invoiced', returnTracking: 'AP 999', inboundTracking: null });
-    expect(after.invoice?.totalCents).toBe(6 * 5400);
+    const b = await createBatch(t.db, { clubId: c.id, collectedOn: today(), paddleCount: 4, notes: null, now: t.clock.now, method: 'post', inboundTracking: 'AP 1' });
+    await expect(returnBatch(deps(), { reference: b.reference, returnedOn: today() })).rejects.toMatchObject({ code: 'not_paid' });
+    await invoiceBatch(deps(), { reference: b.reference, unchangedCount: 0 });
+    expect(await findBatch(t.db, b.reference)).toMatchObject({ status: 'invoiced', returnedOn: null, returnTracking: null });
+    await expect(returnBatch(deps(), { reference: b.reference, returnedOn: today() })).rejects.toMatchObject({ code: 'not_paid' }); // not yet paid
+    await pay(b.reference, 4 * 5400);
+    expect((await findBatch(t.db, b.reference))!.status).toBe('paid');
+    await returnBatch(deps(), { reference: b.reference, returnedOn: today(), returnTracking: 'AP 999' });
+    expect(await findBatch(t.db, b.reference)).toMatchObject({ status: 'returned', returnedOn: today(), returnTracking: 'AP 999', inboundTracking: 'AP 1' });
+    await expect(returnBatch(deps(), { reference: b.reference, returnedOn: today() })).rejects.toMatchObject({ code: 'not_returnable' });
   });
 
-  it('a return tracking number on a pickup batch is refused, and nothing is invoiced', async () => {
+  it('a return tracking number on a pickup batch is refused, and the batch stays paid', async () => {
     t = await makeApp();
     const c = await club();
     const b = await createBatch(t.db, { clubId: c.id, collectedOn: today(), paddleCount: 2, notes: null, now: t.clock.now });
-    await expect(returnBatch(deps(), { reference: b.reference, returnedOn: today(), unchangedCount: 0, returnTracking: 'X1' })).rejects.toMatchObject({ code: 'bad_tracking' });
-    expect((await findBatch(t.db, b.reference))!.status).toBe('collected');
-    await cancelBatch(t.db, b.reference, t.clock.now);
+    await invoiceBatch(deps(), { reference: b.reference, unchangedCount: 0 });
+    await pay(b.reference, 2 * 5400);
+    await expect(returnBatch(deps(), { reference: b.reference, returnedOn: today(), returnTracking: 'X1' })).rejects.toMatchObject({ code: 'bad_tracking' });
+    expect((await findBatch(t.db, b.reference))!.status).toBe('paid');
+  });
+
+  it('a posted batch of 6 or more: the standard return postage is its own negative line, GST (once registered) is on the net, and the club pays that', async () => {
+    t = await makeApp();
+    const c = await club();
+    await t.db.query(`UPDATE clubs SET venue_postcode = '2560', suburb = 'Campbelltown' WHERE id = $1`, [c.id]);
+    const b = await createBatch(t.db, { clubId: c.id, collectedOn: today(), paddleCount: 8, notes: null, now: t.clock.now, method: 'post' });
+    const quote = quotePostage(8, '2560', today());
+    if (!quote.ok) throw new Error('fixture: no quote');
+    const r = await invoiceBatch(deps(), { reference: b.reference, unchangedCount: 0 });
+    expect(r.postageAllowanceCents).toBe(quote.postageCents);
+    const inv = (await t.db.query<{ snapshot: string; total_cents: number }>(`SELECT snapshot, total_cents FROM documents WHERE batch_id = $1`, [b.id])).rows[0]!;
+    const snap = JSON.parse(inv.snapshot) as { lines: { description: string; quantity: number; unitCents: number; amountCents: number }[] };
+    expect(snap.lines).toHaveLength(2);
+    expect(snap.lines[0]).toMatchObject({ quantity: 8, unitCents: 5400, amountCents: 8 * 5400 });
+    expect(snap.lines[1]).toMatchObject({ description: 'Return postage allowance (standard cost, batch of 6 or more paddles)', quantity: 1, unitCents: -quote.postageCents, amountCents: -quote.postageCents });
+    expect(Number(inv.total_cents)).toBe(8 * 5400 - quote.postageCents);
+    expect((await findBatch(t.db, b.reference))!.invoice?.totalCents).toBe(8 * 5400 - quote.postageCents);
+  });
+
+  it('the allowance is entered when it can not be worked out, may be overridden, and is refused when silly', async () => {
+    t = await makeApp();
+    const c = await club(); // no venue postcode on file
+    const b = await createBatch(t.db, { clubId: c.id, collectedOn: today(), paddleCount: 6, notes: null, now: t.clock.now, method: 'post' });
+    await expect(invoiceBatch(deps(), { reference: b.reference, unchangedCount: 0 })).rejects.toMatchObject({ code: 'postage_needed' });
+    await expect(invoiceBatch(deps(), { reference: b.reference, unchangedCount: 0, postageAllowanceCents: 0 })).rejects.toMatchObject({ code: 'bad_postage' });
+    await expect(invoiceBatch(deps(), { reference: b.reference, unchangedCount: 0, postageAllowanceCents: 99_999 })).rejects.toMatchObject({ code: 'bad_postage' });
+    expect((await findBatch(t.db, b.reference))!.status).toBe('collected'); // nothing issued
+    expect((await invoiceBatch(deps(), { reference: b.reference, unchangedCount: 0, postageAllowanceCents: 1850 })).postageAllowanceCents).toBe(1850);
+    expect((await findBatch(t.db, b.reference))!.invoice?.totalCents).toBe(6 * 5400 - 1850);
+  });
+
+  it('no allowance for fewer than 6 paddles, or for a pickup batch', async () => {
+    t = await makeApp();
+    const c = await club();
+    const five = await createBatch(t.db, { clubId: c.id, collectedOn: today(), paddleCount: 5, notes: null, now: t.clock.now, method: 'post' });
+    const pickup = await createBatch(t.db, { clubId: c.id, collectedOn: today(), paddleCount: 9, notes: null, now: t.clock.now });
+    expect((await invoiceBatch(deps(), { reference: five.reference, unchangedCount: 0 })).postageAllowanceCents).toBe(0);
+    expect((await invoiceBatch(deps(), { reference: pickup.reference, unchangedCount: 0 })).postageAllowanceCents).toBe(0);
+    expect((await findBatch(t.db, five.reference))!.invoice?.totalCents).toBe(5 * 5400);
+    expect((await findBatch(t.db, pickup.reference))!.invoice?.totalCents).toBe(9 * 5400);
+  });
+
+  it('once GST-registered the GST is on the invoice after the postage allowance', async () => {
+    t = await makeApp();
+    const c = await club();
+    const seller = { ...DEFAULT_SELLER, abn: '51824753556', gstRegisteredFrom: '2026-01-01', payId: 'payments@picklemypaddle.com' };
+    const b = await createBatch(t.db, { clubId: c.id, collectedOn: today(), paddleCount: 6, notes: null, now: t.clock.now, method: 'post' });
+    await invoiceBatch({ ...deps(), seller }, { reference: b.reference, unchangedCount: 0, postageAllowanceCents: 2000 });
+    const d = (await t.db.query<{ total_cents: number; gst_cents: number }>(`SELECT total_cents, gst_cents FROM documents WHERE batch_id = $1`, [b.id])).rows[0]!;
+    const net = 6 * 5400 - 2000; // 30400
+    expect({ gst: Number(d.gst_cents), total: Number(d.total_cents) }).toEqual({ gst: 3040, total: net + 3040 });
   });
 
   it('the database refuses a method it does not know', async () => {
@@ -79,16 +142,31 @@ describe('the admin for postal batches', () => {
     const bp = await (await admin.get(`/admin/batches/${ref}`)).text();
     expect(bp).toContain('Received by post');
     expect(bp).toContain('AP 55');
-    expect(bp).toContain('name="returnTracking"');
-    expect(bp).toContain('7 paddles is 6 or more: agreement 5.3 takes the standard postage cost off');
-    const ret = await admin.post(`/admin/batches/${ref}/return`, { returnedOn: today(), unchangedCount: '0', returnTracking: 'AP 77' });
+    expect(bp).toContain('name="postageAllowance"');
+    expect(bp).toContain('7 paddles is 6 or more, so agreement 5.3 takes the standard cost');
+    // No venue postcode on this club, so the standard cost can't be worked out: it is entered.
+    const noQuote = await admin.post(`/admin/batches/${ref}/invoice`, { unchangedCount: '0' });
+    expect(noQuote.status).toBe(400);
+    expect(await noQuote.text()).toContain('no venue postcode on file');
+    const inv = await admin.post(`/admin/batches/${ref}/invoice`, { unchangedCount: '0', postageAllowance: '18.50' });
+    expect(inv.status).toBe(303);
+    let bpage = await (await admin.get(`/admin/batches/${ref}`)).text();
+    expect(bpage).toContain('Waiting for payment');
+    const doc = await (await admin.get('/admin/documents/PMP-INV-0001')).text();
+    expect(doc).toContain('Return postage allowance (standard cost, batch of 6 or more paddles)');
+    expect(bpage).toContain(`A$${(7 * 54 - 18.5).toFixed(2).replace(/\.00$/, '')}`);
+    await pay(ref, 7 * 5400 - 1850);
+    bpage = await (await admin.get(`/admin/batches/${ref}`)).text();
+    expect(bpage).toContain('Paid: mark returned');
+    expect(bpage).toContain('name="returnTracking"');
+    const ret = await admin.post(`/admin/batches/${ref}/return`, { returnedOn: today(), returnTracking: 'AP 77' });
     expect(ret.status).toBe(303);
     const done = await (await admin.get(`/admin/batches/${ref}`)).text();
     expect(done).toContain('Tracking back to the club');
     expect(done).toContain('AP 77');
   });
 
-  it('a posted batch of fewer than 6 paddles shows that return postage is not automatic', async () => {
+  it('a posted batch of fewer than 6 paddles shows that no postage is taken off the invoice', async () => {
     t = await makeApp();
     const admin = await makeAdmin(t);
     const c = await club();

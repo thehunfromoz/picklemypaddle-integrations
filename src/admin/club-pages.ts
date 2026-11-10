@@ -23,7 +23,12 @@ const clubBadge = (c: Club) => html`<span class="badge${c.status === 'lead' || c
 const isCustomer = (c: Club) => c.status === 'active' || c.status === 'inactive';
 
 const BATCH_BADGE: Record<BatchStatus, string> = { collected: 'due', returned: '', invoiced: 'due', paid: '', cancelled: '' };
-const batchBadge = (s: BatchStatus) => html`<span class="badge${BATCH_BADGE[s] ? ` ${BATCH_BADGE[s]}` : ''}">${BATCH_STATUS_LABELS[s]}</span>`;
+/** A paid batch that hasn't gone back yet is still the admin's to do (SCRUM-102: the club pays before its batch is returned). */
+const toReturn = (b: Pick<Batch, 'status' | 'returnedOn'>) => b.status === 'paid' && !b.returnedOn;
+const batchBadge = (b: Pick<Batch, 'status' | 'returnedOn'>) =>
+  toReturn(b)
+    ? html`<span class="badge due">Paid: to return</span>`
+    : html`<span class="badge${BATCH_BADGE[b.status] ? ` ${BATCH_BADGE[b.status]}` : ''}">${BATCH_STATUS_LABELS[b.status]}</span>`;
 const overdueBadge = (b: Batch, today: string) => (isOverdue(b, today) ? html` <span class="badge overdue">Overdue</span>` : '');
 const problemWords = (p: string) => CLUB_PROBLEMS[p] ?? PROBLEM_TEXT[p] ?? p;
 
@@ -36,13 +41,16 @@ function clubFields(c?: Partial<Club>): Html {
   <label>Notes (only you see them)<textarea name="notes" maxlength="${MAX_CLUB_NOTE}" rows="3">${c?.notes ?? ''}</textarea></label>`;
 }
 
+const returnTrackingField = (b: Batch): Html | string =>
+  b.method === 'post' ? html`<label>Tracking number for the box back (optional)<input name="returnTracking" maxlength="${MAX_TRACKING}" autocomplete="off"></label>` : '';
+
 function batchRows(batches: Batch[], withClub: boolean, today: string): Html {
   return html`<table class="list">
 <thead><tr><th scope="col">Batch</th>${withClub ? html`<th scope="col">Club</th>` : ''}<th scope="col">Collected</th><th scope="col" class="num">Paddles</th><th scope="col">Status</th><th scope="col">Invoice</th><th scope="col" class="num">Owing</th></tr></thead>
 <tbody>${batches.map(
     (b) => html`<tr><td><a href="/admin/batches/${b.reference}"><span class="ref">${b.reference}</span></a></td>${
       withClub ? html`<td><a href="/admin/clubs/${b.clubId}">${b.clubName}</a></td>` : ''
-    }<td>${calendarDay(b.collectedOn)}</td><td class="num">${b.paddleCount}</td><td>${batchBadge(b.status)}${overdueBadge(b, today)}</td><td>${
+    }<td>${calendarDay(b.collectedOn)}</td><td class="num">${b.paddleCount}</td><td>${batchBadge(b)}${overdueBadge(b, today)}</td><td>${
       b.invoice ? html`<a href="/admin/documents/${b.invoice.number}">${b.invoice.number}</a> ${dollars(b.invoice.totalCents)}` : '—'
     }</td><td class="num">${b.invoice && b.invoice.balanceCents > 0 ? dollars(b.invoice.balanceCents) : '—'}</td></tr>`,
   )}</tbody></table>`;
@@ -343,39 +351,59 @@ export function batchPage(ctx: PageContext, b: Batch, today: string, flash?: Fla
     b.reference,
     html`<p><a href="/admin/clubs/${b.clubId}">← ${b.clubName}</a> · <a href="/admin/batches">Open batches</a></p>
 ${flashBox(flash)}
-<h1><span class="ref">${b.reference}</span> ${batchBadge(b.status)}${overdueBadge(b, today)}</h1>
+<h1><span class="ref">${b.reference}</span> ${batchBadge(b)}${overdueBadge(b, today)}</h1>
 <dl class="facts">
   <dt>Club</dt><dd><a href="/admin/clubs/${b.clubId}">${b.clubName}</a></dd>
   <dt>${b.method === 'post' ? 'Received by post' : 'Picked up'}</dt><dd>${calendarDay(b.collectedOn)}: ${b.paddleCount} ${b.paddleCount === 1 ? 'paddle' : 'paddles'}</dd>
   ${b.inboundTracking ? html`<dt>Tracking to us</dt><dd>${b.inboundTracking}</dd>` : ''}
   ${b.returnTracking ? html`<dt>Tracking back to the club</dt><dd>${b.returnTracking}</dd>` : ''}
-  ${b.returnedOn ? html`<dt>Returned</dt><dd>${calendarDay(b.returnedOn)}${b.unchangedCount ? `: ${b.unchangedCount} unchanged (not charged), ${charged} re-gritted` : ''}</dd>` : ''}
-  ${b.invoice ? html`<dt>Invoice</dt><dd><a href="/admin/documents/${b.invoice.number}">${b.invoice.number}</a>, ${dollars(b.invoice.totalCents)}${b.invoice.dueOn ? `, due ${documentDate(b.invoice.dueOn)}` : ''}</dd>` : ''}
+  ${b.returnedOn ? html`<dt>Returned</dt><dd>${calendarDay(b.returnedOn)}</dd>` : ''}
+  ${b.unchangedCount ? html`<dt>Unchanged</dt><dd>${b.unchangedCount} not re-gritted (not charged), ${charged} re-gritted</dd>` : ''}
+  ${b.invoice ? html`<dt>Invoice</dt><dd><a href="/admin/documents/${b.invoice.number}">${b.invoice.number}</a>, ${dollars(b.invoice.totalCents)}${b.invoice.dueOn ? `, due ${documentDate(b.invoice.dueOn)}` : ', due before the batch goes back'}</dd>` : ''}
 </dl>
 ${
   b.status === 'collected'
-    ? html`<details class="action" open><summary>Mark returned and invoice the club</summary>
+    ? html`<details class="action" open><summary>Re-gritted: invoice the club</summary>
+<form method="post" action="/admin/batches/${b.reference}/invoice">
+  ${csrfField(ctx)}
+  <label>Paddles that can’t be re-gritted (unsuitable, returned unchanged, not charged)<input name="unchangedCount" required inputmode="numeric" pattern="\\d{1,3}" value="0"></label>
+  ${
+    b.method === 'post' && b.paddleCount >= FREE_RETURN_POST_MIN
+      ? html`<label>Return postage allowance, A$ (leave empty for the standard cost)<input name="postageAllowance" inputmode="decimal" pattern="\\d{1,3}(\\.\\d{1,2})?" autocomplete="off"></label>
+  <p class="small">${b.paddleCount} paddles is ${FREE_RETURN_POST_MIN} or more, so agreement 5.3 takes the standard cost of the postage off the invoice, as its own line. Left empty, it is Australia Post’s price to the club’s venue postcode today; if that can’t be worked out, enter it.</p>`
+      : b.method === 'post'
+        ? html`<p class="small">Fewer than ${FREE_RETURN_POST_MIN} paddles: no postage is taken off the invoice (agreement 5.3).</p>`
+        : ''
+  }
+  <p class="small">This issues the invoice for the paddles re-gritted, at the club price on today’s terms, and emails it to the club’s billing contact. The club pays before the batch goes back (agreement 7.3). An invoice can’t be edited afterwards: a mistake needs a credit note.</p>
+  <button type="submit">Invoice the club</button>
+</form></details>
+<details class="action"><summary>Every paddle came back unchanged: return with no invoice</summary>
 <form method="post" action="/admin/batches/${b.reference}/return">
   ${csrfField(ctx)}
+  <input type="hidden" name="unchangedCount" value="${b.paddleCount}">
   <label>Returned on<input type="date" name="returnedOn" required min="${b.collectedOn}" max="${today}" value="${today}"></label>
-  ${
-    b.method === 'post'
-      ? html`<label>Tracking number for the box back (optional)<input name="returnTracking" maxlength="${MAX_TRACKING}" autocomplete="off"></label>
-  <p class="small">${b.paddleCount >= FREE_RETURN_POST_MIN ? `${b.paddleCount} paddles is ${FREE_RETURN_POST_MIN} or more: agreement 5.3 takes the standard postage cost off the club’s invoice. That isn’t automatic yet [To confirm: the standard amount].` : `Fewer than ${FREE_RETURN_POST_MIN} paddles: no postage is taken off the invoice (agreement 5.3).`}</p>`
-      : ''
-  }
-  <label>Paddles returned unchanged (unsuitable, not charged)<input name="unchangedCount" required inputmode="numeric" pattern="\\d{1,3}" value="0"></label>
-  <p class="small">This issues the invoice for the paddles re-gritted, at the club price on today’s terms, and emails it to the club’s billing contact. An invoice can’t be edited afterwards: a mistake needs a credit note.</p>
-  <button type="submit">Return and invoice</button>
+  ${returnTrackingField(b)}
+  <button type="submit" class="secondary">Return, nothing to invoice</button>
 </form></details>
 <form method="post" action="/admin/batches/${b.reference}/cancel">
   ${csrfField(ctx)}
   <button type="submit" class="danger">Cancel this batch</button>
 </form>
 <p class="small">Cancel only a batch that won’t be returned through us (recorded by mistake, say). Nothing is invoiced.</p>`
-    : b.status === 'returned'
-      ? html`<p class="small">Every paddle came back unchanged, so there was nothing to invoice.</p>`
-      : ''
+    : b.status === 'invoiced'
+      ? html`<p class="small">Waiting for payment: the club pays before the batch goes back (agreement 7.3). Record the payment below, or the club can pay by card from its invoice page.</p>`
+      : toReturn(b)
+        ? html`<details class="action" open><summary>Paid: mark returned</summary>
+<form method="post" action="/admin/batches/${b.reference}/return">
+  ${csrfField(ctx)}
+  <label>Returned on (dropped off or posted)<input type="date" name="returnedOn" required min="${b.collectedOn}" max="${today}" value="${today}"></label>
+  ${returnTrackingField(b)}
+  <button type="submit">Mark returned</button>
+</form></details>`
+        : b.status === 'returned' && !b.invoice
+          ? html`<p class="small">Every paddle came back unchanged, so there was nothing to invoice.</p>`
+          : ''
 }
 ${pays ? paymentsSection(ctx, b, pays, today) : ''}
 ${emailsSection(ctx, emails)}

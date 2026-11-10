@@ -191,8 +191,10 @@ export interface ClubInvoiceFacts {
   /** The club price a paddle on the issue date (GST-exclusive once registered). */
   remitPerPaddleCents: number;
   collectedOn: string;
-  returnedOn: string;
-  dueOn: string;
+  /** How the batch reached us, for the line's wording. */
+  method: 'pickup' | 'post';
+  /** Standard return postage taken off for a posted batch of 6 or more paddles (SCRUM-102); 0 for none. */
+  postageAllowanceCents: number;
   /** Whether clubs can pay this invoice by card from its page (SCRUM-85, second part). */
   payByCard: boolean;
 }
@@ -206,7 +208,7 @@ export function clubInvoiceSnapshot(number: string, issuedOn: string, f: ClubInv
   // Clubs deal with Attila directly (UAT 6 Nov 2026): his address is the invoice's contact.
   const seller: Seller = { ...businessSeller, email: CLUB_REPLY_TO };
   const treatment = clubTreatment(issuedOn, { gstRegisteredFrom: seller.gstRegisteredFrom });
-  const amounts = clubInvoiceAmounts(f.paddles, f.remitPerPaddleCents, treatment);
+  const amounts = clubInvoiceAmounts(f.paddles, f.remitPerPaddleCents, treatment, f.postageAllowanceCents);
   const exclusive = treatment === 'gst_exclusive';
   const payId = seller.payId?.trim() || PAYID_PLACEHOLDER;
   return finish({
@@ -218,22 +220,26 @@ export function clubInvoiceSnapshot(number: string, issuedOn: string, f: ClubInv
     seller,
     buyer: { name: f.clubName, ...(f.clubAbn ? { abn: formatAbn(f.clubAbn) } : {}), address: `Attn: ${f.billingName}\n${f.billingAddress}` },
     reference: f.batchReference,
-    lines: [{
-      description: `Paddle re-grit, both faces: club batch collected ${documentDate(f.collectedOn)}, returned ${documentDate(f.returnedOn)}${exclusive ? ' (excluding GST)' : ''}`,
-      quantity: f.paddles,
-      unitCents: f.remitPerPaddleCents,
-      amountCents: amounts.subtotalCents,
-    }],
+    lines: [
+      {
+        description: `Paddle re-grit, both faces: club batch ${f.method === 'post' ? 'received by post' : 'collected'} ${documentDate(f.collectedOn)}${exclusive ? ' (excluding GST)' : ''}`,
+        quantity: f.paddles,
+        unitCents: f.remitPerPaddleCents,
+        amountCents: f.paddles * f.remitPerPaddleCents,
+      },
+      ...(f.postageAllowanceCents > 0
+        ? [{ description: 'Return postage allowance (standard cost, batch of 6 or more paddles)', quantity: 1, unitCents: -f.postageAllowanceCents, amountCents: -f.postageAllowanceCents }]
+        : []),
+    ],
     ...(exclusive ? { subtotalCents: amounts.subtotalCents } : {}),
     totalCents: amounts.totalCents,
-    dueOn: f.dueOn,
     payId,
     ...(f.payByCard ? { payByCard: true } : {}),
     notes: [
-      `Due by ${documentDate(f.dueOn)}.`,
+      'Payment is due before your paddles are returned (dropped off or posted back).',
       f.payByCard
-        ? `How to pay: PayID or bank transfer to ${payId}, with ${number} as the reference; by card, with the "Pay by card" button on this invoice's page; or in cash at your club’s next pickup or delivery.`
-        : `How to pay: PayID or bank transfer to ${payId}, with ${number} as the reference; or in cash at your club’s next pickup or delivery.`,
+        ? `How to pay: PayID or bank transfer to ${payId}, with ${number} as the reference; by card, with the "Pay by card" button on this invoice's page; or in cash, by arrangement with us before your paddles are returned.`
+        : `How to pay: PayID or bank transfer to ${payId}, with ${number} as the reference; or in cash, by arrangement with us before your paddles are returned.`,
       'Payment is in full for each invoice.',
     ],
   });
@@ -381,27 +387,28 @@ export async function issueReceipt(q: Queryable, args: { orderId: string; paymen
  */
 export async function issueClubInvoice(
   q: Queryable,
-  args: { batchId: string; seller: Seller; isProduction: boolean; paymentTermsDays: number; now: Date; payByCard?: boolean },
+  args: { batchId: string; seller: Seller; isProduction: boolean; now: Date; payByCard?: boolean; postageAllowanceCents?: number },
 ): Promise<string> {
   const { rows: existing } = await q.query<{ id: string }>(`SELECT id FROM documents WHERE batch_id = $1 AND kind = 'invoice'`, [args.batchId]);
   if (existing[0]) return String(existing[0].id);
   if (args.isProduction && !args.seller.payId?.trim()) throw new DocumentError('payid_missing', 'Set BUSINESS_PAYID before invoicing clubs: invoices tell clubs where to pay.');
   const { rows } = await q.query<{
-    reference: string; paddle_count: number; unchanged_count: number; collected_on: string; returned_on: string | null;
+    reference: string; paddle_count: number; unchanged_count: number; collected_on: string; method: 'pickup' | 'post';
     name: string; abn: string | null; billing_name: string; billing_address: string; is_test: boolean;
   }>(
-    `SELECT b.reference, b.paddle_count, b.unchanged_count, b.collected_on::text AS collected_on, b.returned_on::text AS returned_on,
+    `SELECT b.reference, b.paddle_count, b.unchanged_count, b.collected_on::text AS collected_on, b.method,
             c.name, c.abn, c.billing_name, c.billing_address, c.is_test
        FROM batches b JOIN clubs c ON c.id = b.club_id WHERE b.id = $1`,
     [args.batchId],
   );
   const b = rows[0];
   if (!b) throw new DocumentError('not_found', 'No such batch.');
-  if (!b.returned_on) throw new DocumentError('not_returned', 'A batch is invoiced when it is returned.');
   const paddles = Number(b.paddle_count) - Number(b.unchanged_count);
   if (paddles < 1) throw new DocumentError('nothing_to_invoice', 'Every paddle came back unchanged: there is nothing to invoice.');
   const issuedOn = sydneyDate(args.now);
   const terms = termsOn(issuedOn, { gstRegisteredFrom: args.seller.gstRegisteredFrom });
+  const allowance = args.postageAllowanceCents ?? 0;
+  if (allowance >= paddles * terms.clubRemitPerPaddleCents) throw new DocumentError('bad_amount', 'The postage allowance must be less than the paddles’ price.');
   const number = await nextNumber(q, 'INV');
   const snap = clubInvoiceSnapshot(number, issuedOn, {
     batchReference: b.reference,
@@ -413,8 +420,8 @@ export async function issueClubInvoice(
     paddles,
     remitPerPaddleCents: terms.clubRemitPerPaddleCents,
     collectedOn: b.collected_on,
-    returnedOn: b.returned_on,
-    dueOn: addDays(issuedOn, args.paymentTermsDays),
+    method: b.method,
+    postageAllowanceCents: allowance,
     payByCard: args.payByCard ?? false,
   }, args.seller);
   const id = await insert(q, snap, { orderId: null, batchId: args.batchId, paymentId: null, refersTo: null, now: args.now, paid: null });

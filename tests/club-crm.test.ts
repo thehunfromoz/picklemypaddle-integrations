@@ -4,7 +4,7 @@
  * recovers when HubSpot loses a record or a sync crashes before saving the IDs.
  */
 import { afterEach, describe, expect, it } from 'vitest';
-import { cancelBatch, createBatch, createClub, returnBatch, updateClub, type ClubInput } from '../src/clubs/clubs.js';
+import { cancelBatch, createBatch, createClub, invoiceBatch, updateClub, type ClubInput } from '../src/clubs/clubs.js';
 import { recordClubPayment } from '../src/clubs/payments.js';
 import { CLUB_STAGES, mapClub, mapOrder } from '../src/crm/crm.js';
 import { applySetup, HubSpotError, hubspotAdapter, hubspotClient, planSetup, portalIdOf } from '../src/crm/hubspot.js';
@@ -62,7 +62,7 @@ describe(`Clubs in HubSpot (${DB_BACKEND})`, () => {
     expect([...deal.companies, ...deal.contacts]).toEqual([companyId, contact.id]);
 
     // Returned with one unchanged → invoiced at the invoice's total (4 × A$54).
-    await returnBatch({ db: t.db, seller, isProduction: false, paymentTermsDays: 14, now: t.clock.now }, { reference: batch.reference, returnedOn: '2026-11-04', unchangedCount: 1 });
+    await invoiceBatch({ db: t.db, seller, isProduction: false, now: t.clock.now }, { reference: batch.reference, unchangedCount: 1 });
     await processCrm(deps);
     expect(stageLabel(hs.deals.get(dealId)!.properties.dealstage!)).toBe(CLUB_STAGES.invoiced.label);
     expect(hs.deals.get(dealId)!.properties.amount).toBe('216.00');

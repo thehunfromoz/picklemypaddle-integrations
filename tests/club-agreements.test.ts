@@ -218,7 +218,8 @@ describe('v0.3 (Attila’s UAT of 0.2, 10 Nov 2026)', () => {
   });
   it('5: the box, who pays postage, and 2 business days to report a difference', () => {
     expect(text).toContain('430 mm × 300 mm × 300 mm, which holds 8 to 10 paddles');
-    expect(text).toContain('The club pays for postage, to us and back. For a batch of 6 or more paddles, we take the standard cost of the postage of the delivery off the club’s invoice');
+    expect(text).toContain('For a batch of 6 or more paddles, we take the standard cost of the postage off the club’s invoice, as its own line');
+    expect(text).toContain('the Australia Post price for posting that batch to the club’s venue postcode on the invoice date; if the club’s postage costs more, the club bears the difference');
     expect(text).toContain('within 2 business days of the return delivery');
   });
   it('6: second-hand value up to A$100 a paddle, and insured in the post', () => {
@@ -228,8 +229,11 @@ describe('v0.3 (Attila’s UAT of 0.2, 10 Nov 2026)', () => {
   it('7: member price up to A$66, payment before return, 5 and 10 business days', () => {
     expect(text).toContain('shouldn’t charge a member more than A$66 a paddle');
     expect(text).toContain('option of sending the paddle directly to us');
-    expect(text).toContain('Payment is due before the batch is dropped off or posted back');
-    expect(text).toContain('more than 5 business days overdue');
+    expect(text).toContain('The club pays the invoice in full before we drop the batch off or post it back, and we return the batch once we have the payment');
+    expect(text).toContain('still unpaid 5 business days after we send it');
+    expect(text).toContain('in cash, by arrangement with us before the batch is returned');
+    // Everything that returns a batch waits for the payment.
+    for (const clause of ['2.2', '4.4', '5.5', '9.3']) expect(agreementLines(v).find((l) => l.startsWith(`${clause} `)), clause).toContain('(7.3)');
     expect(text).toContain('at least 10 business days’ notice of any price change');
   });
   it('the items Attila settled are no longer [To confirm]; the rest still are', () => {
