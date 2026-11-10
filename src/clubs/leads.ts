@@ -149,17 +149,32 @@ export async function moveClub(db: Db, id: string, to: unknown, now: Date): Prom
   });
 }
 
-/** The meeting date for a lead (empty clears it). Notes are the club's notes, saved with the club form. */
-export async function setMeetingDate(db: Queryable, id: string, meetingOn: string, now: Date): Promise<boolean> {
-  const day = meetingOn.trim();
+/**
+ * The meeting for a lead: its date, and optionally the time of day (HH:MM, Sydney) and length in
+ * minutes, which can be added after the date. Empty date clears all three. Time and length need a date.
+ */
+export async function setMeeting(
+  db: Queryable,
+  id: string,
+  m: { meetingOn: string; meetingTime?: string; meetingMinutes?: string },
+  now: Date,
+): Promise<boolean> {
+  const day = m.meetingOn.trim();
+  // Clearing the date clears the time and length too, even if the form still sends them.
+  const time = day ? (m.meetingTime ?? '').trim() : '';
+  const mins = day ? (m.meetingMinutes ?? '').trim() : '';
   if (day) {
     const parsed = new Date(`${day}T00:00:00Z`);
     if (!ISO_DATE_RE.test(day) || Number.isNaN(parsed.getTime()) || !parsed.toISOString().startsWith(day)) throw new ClubError('bad_date', 'Give the meeting date.');
   }
+  if (time && !/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(time)) throw new ClubError('bad_time', 'Give the meeting time as hours and minutes, like 18:30.');
+  if (mins && !(/^\d{1,3}$/.test(mins) && Number(mins) >= 5 && Number(mins) <= 480)) throw new ClubError('bad_duration', 'The meeting length is 5 to 480 minutes.');
   const { rows } = await db.query(
-    `UPDATE clubs SET meeting_on = $2::date, updated_at = $3, last_activity_at = $3 WHERE id = $1::uuid RETURNING id`,
-    [id, day || null, now],
+    `UPDATE clubs SET meeting_on = $2::date, meeting_time = $3, meeting_minutes = $4, updated_at = $5, last_activity_at = $5 WHERE id = $1::uuid RETURNING id`,
+    [id, day || null, time || null, mins ? Number(mins) : null, now],
   );
+  // The meeting goes to HubSpot too (the company's "Club meeting"), so it is there to see.
+  if (rows.length === 1) await enqueueClubCrmSync(db, id, now);
   return rows.length === 1;
 }
 

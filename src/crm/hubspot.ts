@@ -132,6 +132,7 @@ export const CONTACT_PROPERTIES: readonly PropertyDef[] = [
 export const COMPANY_PROPERTIES: readonly PropertyDef[] = [
   { name: 'pmp_club_id', label: 'Club ID', type: 'string', fieldType: 'text', description: 'PickleMyPaddle club ID. Set by the integrations service.' },
   { name: 'pmp_club_stage', label: 'Club stage', type: 'string', fieldType: 'text', description: 'Where the club is in the pipeline: Lead, Meeting arranged, Agreement sent, Active or Inactive. Set by the integrations service.' },
+  { name: 'pmp_club_meeting', label: 'Club meeting', type: 'string', fieldType: 'text', description: 'The meeting arranged with the club: date, then time and length if set. Set by the integrations service.' },
   {
     name: 'pmp_is_test',
     label: 'Test club',
@@ -297,7 +298,7 @@ export function hubspotAdapter(client: HubSpotClient): CrmAdapter & { stageIds(s
     return { id: created.id, isNew: true };
   }
 
-  const companyProperties = (c: CrmCompany) => ({ name: c.name, pmp_club_id: c.clubId, pmp_club_stage: c.stage, pmp_is_test: String(c.isTest) });
+  const companyProperties = (c: CrmCompany) => ({ name: c.name, pmp_club_id: c.clubId, pmp_club_stage: c.stage, pmp_club_meeting: c.meeting, pmp_is_test: String(c.isTest) });
   const batchDealProperties = (d: CrmBatchDeal, stageId: string) => ({
     dealname: d.name,
     amount: aud(d.amountCents),

@@ -5,7 +5,8 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { createBatch, createClub, findClub, setClubActive, validateClub } from '../src/clubs/clubs.js';
-import { createLead, MOVES, moveClub, setMeetingDate, validateLead, type LeadForm } from '../src/clubs/leads.js';
+import { meetingText } from '../src/clubs/model.js';
+import { createLead, MOVES, moveClub, setMeeting, validateLead, type LeadForm } from '../src/clubs/leads.js';
 import { CLUB_STATUSES } from '../src/clubs/model.js';
 import { mapClub } from '../src/crm/crm.js';
 import { processOutbox } from '../src/email/outbox.js';
@@ -253,11 +254,25 @@ describe('the pipeline', () => {
 
   it('records a meeting date, and clears it', async () => {
     const id = await lead();
-    expect(await setMeetingDate(t.db, id, '2026-11-12', t.clock.now)).toBe(true);
+    expect(await setMeeting(t.db, id, { meetingOn: '2026-11-12' }, t.clock.now)).toBe(true);
     expect((await findClub(t.db, id))!.meetingOn).toBe('2026-11-12');
-    await expect(setMeetingDate(t.db, id, '2026-13-40', t.clock.now)).rejects.toMatchObject({ code: 'bad_date' });
-    await setMeetingDate(t.db, id, '', t.clock.now);
+    await expect(setMeeting(t.db, id, { meetingOn: '2026-13-40' }, t.clock.now)).rejects.toMatchObject({ code: 'bad_date' });
+    await setMeeting(t.db, id, { meetingOn: '' }, t.clock.now);
     expect((await findClub(t.db, id))!.meetingOn).toBeNull();
+  });
+
+  it('a meeting time and length can be added after the date, and need a date; a bad time or length is refused', async () => {
+    t = await makeApp();
+    const id = await lead();
+    await setMeeting(t.db, id, { meetingOn: '2026-11-14' }, t.clock.now);
+    expect(meetingText((await findClub(t.db, id))!)).toBe('Sat 14 Nov 2026');
+    await setMeeting(t.db, id, { meetingOn: '2026-11-14', meetingTime: '18:30', meetingMinutes: '45' }, t.clock.now);
+    expect(await findClub(t.db, id)).toMatchObject({ meetingOn: '2026-11-14', meetingTime: '18:30', meetingMinutes: 45 });
+    await expect(setMeeting(t.db, id, { meetingOn: '2026-11-14', meetingTime: '25:00' }, t.clock.now)).rejects.toMatchObject({ code: 'bad_time' });
+    await expect(setMeeting(t.db, id, { meetingOn: '2026-11-14', meetingMinutes: '2' }, t.clock.now)).rejects.toMatchObject({ code: 'bad_duration' });
+    // Clearing the date clears the rest, even when the form still sends the saved time and length.
+    await setMeeting(t.db, id, { meetingOn: '', meetingTime: '18:30', meetingMinutes: '45' }, t.clock.now);
+    expect(await findClub(t.db, id)).toMatchObject({ meetingOn: null, meetingTime: null, meetingMinutes: null });
   });
 
   it('a club made in admin still needs its billing details, and existing clubs are untouched', async () => {
@@ -270,8 +285,8 @@ describe('the pipeline', () => {
 
 describe('clubs in the CRM', () => {
   it('a lead is a company at its stage with its contact (no billing details yet)', () => {
-    const m = mapClub({ id: 'c1', name: 'Inner West PC', status: 'lead', is_test: true, billing_name: null, billing_email: null, contact_name: 'Jo Treasurer', contact_email: 'Jo@Example.com', crm_company_id: null, crm_contact_id: null, batches: [] });
-    expect(m.company).toEqual({ clubId: 'c1', name: '[TEST] Inner West PC', isTest: true, stage: 'Lead' });
+    const m = mapClub({ id: 'c1', name: 'Inner West PC', status: 'lead', is_test: true, billing_name: null, billing_email: null, contact_name: 'Jo Treasurer', contact_email: 'Jo@Example.com', crm_company_id: null, crm_contact_id: null, meeting_on: null, meeting_time: null, meeting_minutes: null, batches: [] });
+    expect(m.company).toEqual({ clubId: 'c1', name: '[TEST] Inner West PC', isTest: true, stage: 'Lead', meeting: '' });
     expect(m.contact).toEqual({ email: 'jo@example.com', firstName: 'Jo', lastName: 'Treasurer', fromPublicForm: true });
   });
 });
@@ -333,6 +348,20 @@ describe('a lead in HubSpot, and deleted after 12 months with no activity', () =
     await processCrm(deps);
     expect(hs.companies.get(companyId)!.properties.pmp_club_stage).toBe('Meeting arranged');
     expect(hs.companies.size).toBe(1);
+  });
+
+  it('the meeting date, time and length go to the company in HubSpot, so there is somewhere to see them (UAT 10 Nov 2026)', async () => {
+    const { hs, deps } = await withHubSpot();
+    const id = await newLead();
+    await processCrm(deps);
+    const [, company] = [...hs.companies][0]!;
+    expect(company.properties.pmp_club_meeting).toBe('');
+    await setMeeting(t.db, id, { meetingOn: '2026-11-14' }, t.clock.now);
+    await processCrm(deps);
+    expect([...hs.companies][0]![1].properties.pmp_club_meeting).toBe('Sat 14 Nov 2026');
+    await setMeeting(t.db, id, { meetingOn: '2026-11-14', meetingTime: '18:30', meetingMinutes: '60' }, t.clock.now);
+    await processCrm(deps);
+    expect([...hs.companies][0]![1].properties.pmp_club_meeting).toBe('Sat 14 Nov 2026, 18:30, 60 min');
   });
 
   it('an inactive lead (not going ahead) is deleted after 12 months too; an inactive customer never is', async () => {

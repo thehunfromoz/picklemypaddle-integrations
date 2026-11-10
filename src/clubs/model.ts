@@ -13,3 +13,10 @@ export const STATUS_LABELS: Record<ClubStatus, string> = {
 
 export const BATCH_STATUSES = ['collected', 'returned', 'invoiced', 'paid', 'cancelled'] as const;
 export type BatchStatus = (typeof BATCH_STATUSES)[number];
+
+/** The meeting in words, for the admin and HubSpot (SCRUM-93 UAT): "Fri 14 Nov 2026, 18:30, 60 min". Empty if none. */
+export function meetingText(c: { meetingOn: string | null; meetingTime: string | null; meetingMinutes: number | null }): string {
+  if (!c.meetingOn) return '';
+  const d = new Date(`${c.meetingOn}T00:00:00Z`).toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+  return [d.replace(/,/g, ''), c.meetingTime, c.meetingMinutes ? `${c.meetingMinutes} min` : null].filter(Boolean).join(', ');
+}

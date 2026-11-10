@@ -538,6 +538,19 @@ members' details, so only the club's name and billing details are held here.
   version can't request one.
 - v0.1 says payment is in full for each invoice (no part payments, decided 7 Nov 2026).
 
+## Clubs that post their paddles, and meeting times (SCRUM-94/96/93 UAT, decided 10 Nov 2026)
+
+- **Post as well as pickup.** A club outside pickup range can post a box (we supply it) to the
+  business address and we post the batch back. A batch has a `method` (`pickup` or `post`), one
+  tracking number to us and one back (letters, digits, dashes, up to 60), and the existing free-text
+  note. `collected_on` is the day it came into our hands either way; "Record a batch received" in admin.
+- **Return postage:** we pay it for a posted batch of 6 or more paddles (`FREE_RETURN_POST_MIN`); for fewer
+  it is `[To confirm: how it is charged]`. Postage is never on the club invoice (nothing is built for it yet).
+- **Agreement 0.2** (0.1 was never sent): dead-spot check in 3.2, a new section 5 for post, custody 6.6,
+  later sections renumbered. Liability in transit is `[To confirm]`: to be agreed with each club.
+- **Meeting time and length** are optional and set after the date (migration 19). The meeting goes to the
+  company's "Club meeting" property in HubSpot (run `hubspot-setup` once per portal after deploying).
+
 ## Database (SCRUM-64)
 
 PostgreSQL 18, one server per app, never shared. `DATABASE_URL` is required and secret. Versioned

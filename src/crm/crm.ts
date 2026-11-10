@@ -8,7 +8,7 @@
  */
 import { PRICE_PER_PADDLE_CENTS, STATUSES, type OrderStatus } from '../orders/model.js';
 import { discountCents, type DiscountKind } from '../orders/rules.js';
-import { BATCH_STATUSES, STATUS_LABELS, type BatchStatus, type ClubStatus } from '../clubs/model.js';
+import { BATCH_STATUSES, meetingText, STATUS_LABELS, type BatchStatus, type ClubStatus } from '../clubs/model.js';
 import { clubInvoiceAmounts, clubTreatment, PRICE_LISTS, priceListOn, type PriceList, type TaxSettings } from '../pricing/terms.js';
 
 export interface CrmContact {
@@ -180,6 +180,8 @@ export interface CrmCompany {
   isTest: boolean;
   /** The pipeline stage in words (SCRUM-93): Lead, Meeting arranged, … */
   stage: string;
+  /** The meeting in words (date, then time and length if set); empty if none. */
+  meeting: string;
 }
 
 /** The club's billing contact: name and email only. */
@@ -227,6 +229,9 @@ export interface ClubForCrm {
   contact_email: string | null;
   crm_company_id: string | null;
   crm_contact_id: string | null;
+  meeting_on: string | null;
+  meeting_time: string | null;
+  meeting_minutes: number | null;
   batches: { reference: string; status: BatchStatus; collected_on: string; paddle_count: number; unchanged_count: number; invoice_total: number | null; crm_deal_id: string | null }[];
 }
 
@@ -259,7 +264,7 @@ export function mapClub(c: ClubForCrm, opts: ClubMapOptions = {}): { company: Cr
   const contactEmail = c.billing_email ?? c.contact_email;
   if (!contactEmail) throw new Error('a club needs a billing or contact email to be mirrored');
   return {
-    company: { clubId: c.id, name: tag(c.name), isTest: c.is_test, stage: STATUS_LABELS[c.status] },
+    company: { clubId: c.id, name: tag(c.name), isTest: c.is_test, stage: STATUS_LABELS[c.status], meeting: meetingText({ meetingOn: c.meeting_on, meetingTime: c.meeting_time, meetingMinutes: c.meeting_minutes }) },
     contact: { email: contactEmail.trim().toLowerCase(), ...splitName(c.billing_name ?? c.contact_name ?? c.name), ...(c.billing_email ? {} : { fromPublicForm: true }) },
     deals: c.batches.map((b) => ({
       reference: b.reference,

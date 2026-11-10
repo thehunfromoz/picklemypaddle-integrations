@@ -2,10 +2,11 @@
  * The admin's club pages (SCRUM-85): clubs and their billing details, each club's batches, and a
  * batch's page, where it is returned (issuing its invoice) or cancelled.
  */
-import { BATCH_STATUS_LABELS, isOverdue, MAX_BATCH_PADDLES, MAX_CLUB_NOTE, type Batch, type BatchEmail, type BatchStatus, type Club, type ClubStatus } from '../clubs/clubs.js';
+import { BATCH_STATUS_LABELS, FREE_RETURN_POST_MIN, isOverdue, MAX_BATCH_PADDLES, MAX_TRACKING, MAX_CLUB_NOTE, type Batch, type BatchEmail, type BatchStatus, type Club, type ClubStatus } from '../clubs/clubs.js';
 import type { AgreementVersion } from '../clubs/agreement-versions.js';
 import { MAX_ACCEPTED_BY, MAX_ACCEPTED_NOTE, type ClubAgreement } from '../clubs/agreements.js';
-import { MOVES, STATUS_LABELS } from '../clubs/leads.js';
+import { MOVES } from '../clubs/leads.js';
+import { meetingText, STATUS_LABELS } from '../clubs/model.js';
 import { CLUB_PROBLEMS, MAX_PAYMENT_REFERENCE, METHOD_LABELS, type ClubPayment } from '../clubs/payments.js';
 import { PROBLEM_TEXT } from '../payments/payments.js';
 import { documentDate } from '../documents/documents.js';
@@ -60,7 +61,7 @@ ${
   leads.length
     ? html`<ul class="orders">${leads.map(
         (c) => html`<li><a href="/admin/clubs/${c.id}"><span><span class="ref">${c.name}</span>${testBadge(c.isTest)} <span class="small">${c.contactName ?? '—'}${c.suburb ? ` · ${c.suburb}` : ''}${
-          c.meetingOn ? ` · meeting ${calendarDay(c.meetingOn)}` : ''
+          c.meetingOn ? ` · meeting ${meetingText(c)}` : ''
         } · asked ${when(c.createdAt)}</span></span>${clubBadge(c)}</a></li>`,
       )}</ul>`
     : html`<p class="empty">No leads yet. Clubs ask from the “Talk to us about your club” form on the Clubs page.</p>`
@@ -118,12 +119,15 @@ function pipelineSection(ctx: PageContext, club: Club): Html | string {
 ${
   open
     ? html`<h2>Pipeline</h2>
-<p>Now: <strong>${STATUS_LABELS[club.status]}</strong>${club.meetingOn ? html`, meeting on <strong>${calendarDay(club.meetingOn)}</strong>` : ''}.</p>
+<p>Now: <strong>${STATUS_LABELS[club.status]}</strong>${club.meetingOn ? html`, meeting <strong>${meetingText(club)}</strong>` : ''}.</p>
 <form method="post" action="/admin/clubs/${club.id}/meeting" class="inline">
   ${csrfField(ctx)}
   <label>Meeting date<input type="date" name="meetingOn" value="${club.meetingOn ?? ''}"></label>
-  <button type="submit" class="secondary">Save meeting date</button>
-</form>`
+  <label>Time (optional, Sydney)<input type="time" name="meetingTime" value="${club.meetingTime ?? ''}"></label>
+  <label>Length in minutes (optional)<input name="meetingMinutes" inputmode="numeric" pattern="\\d{1,3}" value="${club.meetingMinutes ?? ''}"></label>
+  <button type="submit" class="secondary">Save meeting</button>
+</form>
+<p class="small">Set the date first and add the time and length later. The meeting shows on the club’s company in HubSpot (“Club meeting”). Clearing the date clears all three.</p>`
     : ''
 }
 ${
@@ -200,10 +204,14 @@ ${agreementSection(ctx, club, agreements, live, today)}
 ${batches.length ? batchRows(batches, false, today) : html`<p class="empty">No batches yet.</p>`}
 ${
   club.status === 'active'
-    ? html`<details class="action"><summary>Record a batch collected</summary>
+    ? html`<details class="action"><summary>Record a batch received</summary>
 <form method="post" action="/admin/clubs/${club.id}/batches">
   ${csrfField(ctx)}
-  <label>Collected on<input type="date" name="collectedOn" required max="${today}" value="${today}"></label>
+  <label>How it reached us
+    <select name="method"><option value="pickup">I picked it up</option><option value="post">It arrived by post</option></select>
+  </label>
+  <label>Received on (the day it was picked up or arrived)<input type="date" name="collectedOn" required max="${today}" value="${today}"></label>
+  <label>Tracking number for the box to us (post only, optional)<input name="inboundTracking" maxlength="${MAX_TRACKING}" autocomplete="off"></label>
   <label>Number of paddles (1 to ${MAX_BATCH_PADDLES})<input name="paddleCount" required inputmode="numeric" pattern="\\d{1,3}"></label>
   <label>Notes (optional, only you see them)<textarea name="notes" maxlength="${MAX_CLUB_NOTE}" rows="2"></textarea></label>
   <button type="submit">Record batch</button>
@@ -315,7 +323,9 @@ ${flashBox(flash)}
 <h1><span class="ref">${b.reference}</span> ${batchBadge(b.status)}${overdueBadge(b, today)}</h1>
 <dl class="facts">
   <dt>Club</dt><dd><a href="/admin/clubs/${b.clubId}">${b.clubName}</a></dd>
-  <dt>Collected</dt><dd>${calendarDay(b.collectedOn)}: ${b.paddleCount} ${b.paddleCount === 1 ? 'paddle' : 'paddles'}</dd>
+  <dt>${b.method === 'post' ? 'Received by post' : 'Picked up'}</dt><dd>${calendarDay(b.collectedOn)}: ${b.paddleCount} ${b.paddleCount === 1 ? 'paddle' : 'paddles'}</dd>
+  ${b.inboundTracking ? html`<dt>Tracking to us</dt><dd>${b.inboundTracking}</dd>` : ''}
+  ${b.returnTracking ? html`<dt>Tracking back to the club</dt><dd>${b.returnTracking}</dd>` : ''}
   ${b.returnedOn ? html`<dt>Returned</dt><dd>${calendarDay(b.returnedOn)}${b.unchangedCount ? `: ${b.unchangedCount} unchanged (not charged), ${charged} re-gritted` : ''}</dd>` : ''}
   ${b.invoice ? html`<dt>Invoice</dt><dd><a href="/admin/documents/${b.invoice.number}">${b.invoice.number}</a>, ${dollars(b.invoice.totalCents)}${b.invoice.dueOn ? `, due ${documentDate(b.invoice.dueOn)}` : ''}</dd>` : ''}
 </dl>
@@ -325,6 +335,12 @@ ${
 <form method="post" action="/admin/batches/${b.reference}/return">
   ${csrfField(ctx)}
   <label>Returned on<input type="date" name="returnedOn" required min="${b.collectedOn}" max="${today}" value="${today}"></label>
+  ${
+    b.method === 'post'
+      ? html`<label>Tracking number for the box back (optional)<input name="returnTracking" maxlength="${MAX_TRACKING}" autocomplete="off"></label>
+  <p class="small">${b.paddleCount >= FREE_RETURN_POST_MIN ? `We pay the return postage: ${b.paddleCount} paddles is ${FREE_RETURN_POST_MIN} or more (agreement 5.3).` : `Fewer than ${FREE_RETURN_POST_MIN} paddles: return postage isn’t covered automatically. [To confirm: how it is charged]`}</p>`
+      : ''
+  }
   <label>Paddles returned unchanged (unsuitable, not charged)<input name="unchangedCount" required inputmode="numeric" pattern="\\d{1,3}" value="0"></label>
   <p class="small">This issues the invoice for the paddles re-gritted, at the club price on today’s terms, and emails it to the club’s billing contact. An invoice can’t be edited afterwards: a mistake needs a credit note.</p>
   <button type="submit">Return and invoice</button>
