@@ -504,12 +504,12 @@ exports[`email templates > club_invoice (production) renders the same text and H
 <tr><td style="padding:20px 24px;border-bottom:4px solid #78A472"><span style="font-family:Sora,Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#4565A6">Pickle<span style="color:#3F6B3E">My</span>Paddle</span></td></tr>
 <tr><td style="padding:24px">
 <p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Hi Jo,</p>
-<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Your batch PMPB-4K7QX is back: 23 paddles re-gritted for Inner West Pickleball Club. Here’s the invoice.</p>
-<table role="presentation" style="margin:0 0 16px;border-collapse:collapse"><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Invoice</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">PMP-INV-0042</td></tr><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Batch</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">PMPB-4K7QX</td></tr><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Total</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">A$1242</td></tr><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Due by</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">Wednesday 18 November 2026</td></tr></table>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Your batch PMPB-4K7QX is re-gritted: 23 paddles for Inner West Pickleball Club. Here’s the invoice. Payment is due before we return the batch (by drop-off or post), so we’ll send the paddles back once it’s paid.</p>
+<table role="presentation" style="margin:0 0 16px;border-collapse:collapse"><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Invoice</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">PMP-INV-0042</td></tr><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Batch</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">PMPB-4K7QX</td></tr><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Total</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">A$1242</td></tr><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Payment</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">Due before your paddles are returned</td></tr></table>
 <p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">No GST has been charged.</p>
 <p style="margin:8px 0 24px"><a href="https://www.picklemypaddle.com/club/invoice?n=PMP-INV-0042#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT" style="display:inline-block;background:#4565A6;color:#ffffff;text-decoration:none;font-weight:600;font-size:16px;padding:12px 20px;border-radius:8px">View or print the invoice</a></p>
 <h2 style="margin:24px 0 8px;font-size:17px;color:#1E2E52">How to pay</h2>
-<ul style="margin:0 0 16px;padding-left:20px;color:#1E2E52"><li style="margin:0 0 4px;font-size:16px;line-height:1.5">PayID or bank transfer to payments@picklemypaddle.com, with PMP-INV-0042 as the reference</li><li style="margin:0 0 4px;font-size:16px;line-height:1.5">In cash, at your club’s next pickup or delivery</li></ul>
+<ul style="margin:0 0 16px;padding-left:20px;color:#1E2E52"><li style="margin:0 0 4px;font-size:16px;line-height:1.5">PayID or bank transfer to payments@picklemypaddle.com, with PMP-INV-0042 as the reference</li><li style="margin:0 0 4px;font-size:16px;line-height:1.5">In cash, by arrangement with us before your paddles are returned</li></ul>
 <p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Payment is in full for each invoice.</p>
 <p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">The invoice link is private to your club: anyone who has it can see and pay this invoice, so please don’t forward it outside your committee.</p>
 <p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Thanks for working with us,<br>Attila, PickleMyPaddle</p>
@@ -521,12 +521,12 @@ exports[`email templates > club_invoice (production) renders the same text and H
   "subject": "Invoice PMP-INV-0042 for Inner West Pickleball Club: 23 paddles re-gritted",
   "text": "Hi Jo,
 
-Your batch PMPB-4K7QX is back: 23 paddles re-gritted for Inner West Pickleball Club. Here’s the invoice.
+Your batch PMPB-4K7QX is re-gritted: 23 paddles for Inner West Pickleball Club. Here’s the invoice. Payment is due before we return the batch (by drop-off or post), so we’ll send the paddles back once it’s paid.
 
   Invoice: PMP-INV-0042
   Batch: PMPB-4K7QX
   Total: A$1242
-  Due by: Wednesday 18 November 2026
+  Payment: Due before your paddles are returned
 
 No GST has been charged.
 
@@ -536,7 +536,7 @@ https://www.picklemypaddle.com/club/invoice?n=PMP-INV-0042#TTTTTTTTTTTTTTTTTTTTT
 HOW TO PAY
 
   - PayID or bank transfer to payments@picklemypaddle.com, with PMP-INV-0042 as the reference
-  - In cash, at your club’s next pickup or delivery
+  - In cash, by arrangement with us before your paddles are returned
 
 Payment is in full for each invoice.
 
@@ -564,12 +564,12 @@ exports[`email templates > club_invoice (staging) renders the same text and HTML
 <tr><td style="padding:24px">
 <blockquote style="margin:0 0 16px;padding:8px 16px;border-left:4px solid #78A472;color:#1E2E52;font-size:16px;line-height:1.5">TEST INVOICE: this email comes from the PickleMyPaddle staging site. Nothing is owed or charged.</blockquote>
 <p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Hi Jo,</p>
-<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Your batch PMPB-4K7QX is back: 23 paddles re-gritted for Inner West Pickleball Club. Here’s the invoice.</p>
-<table role="presentation" style="margin:0 0 16px;border-collapse:collapse"><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Invoice</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">PMP-INV-0042</td></tr><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Batch</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">PMPB-4K7QX</td></tr><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Total</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">A$1242</td></tr><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Due by</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">Wednesday 18 November 2026</td></tr></table>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Your batch PMPB-4K7QX is re-gritted: 23 paddles for Inner West Pickleball Club. Here’s the invoice. Payment is due before we return the batch (by drop-off or post), so we’ll send the paddles back once it’s paid.</p>
+<table role="presentation" style="margin:0 0 16px;border-collapse:collapse"><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Invoice</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">PMP-INV-0042</td></tr><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Batch</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">PMPB-4K7QX</td></tr><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Total</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">A$1242</td></tr><tr><td style="padding:2px 16px 2px 0;font-size:15px;color:#1E2E52;opacity:.75;vertical-align:top">Payment</td><td style="padding:2px 0;font-size:15px;color:#1E2E52;font-weight:600">Due before your paddles are returned</td></tr></table>
 <p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">No GST has been charged.</p>
 <p style="margin:8px 0 24px"><a href="http://home-server:8088/club/invoice?n=PMP-INV-0042#TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT" style="display:inline-block;background:#4565A6;color:#ffffff;text-decoration:none;font-weight:600;font-size:16px;padding:12px 20px;border-radius:8px">View or print the invoice</a></p>
 <h2 style="margin:24px 0 8px;font-size:17px;color:#1E2E52">How to pay</h2>
-<ul style="margin:0 0 16px;padding-left:20px;color:#1E2E52"><li style="margin:0 0 4px;font-size:16px;line-height:1.5">PayID or bank transfer to payments@picklemypaddle.com, with PMP-INV-0042 as the reference</li><li style="margin:0 0 4px;font-size:16px;line-height:1.5">In cash, at your club’s next pickup or delivery</li></ul>
+<ul style="margin:0 0 16px;padding-left:20px;color:#1E2E52"><li style="margin:0 0 4px;font-size:16px;line-height:1.5">PayID or bank transfer to payments@picklemypaddle.com, with PMP-INV-0042 as the reference</li><li style="margin:0 0 4px;font-size:16px;line-height:1.5">In cash, by arrangement with us before your paddles are returned</li></ul>
 <p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Payment is in full for each invoice.</p>
 <p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#1E2E52;opacity:.75">The invoice link is private to your club: anyone who has it can see and pay this invoice, so please don’t forward it outside your committee.</p>
 <p style="margin:0 0 16px;font-size:16px;line-height:1.5;color:#1E2E52">Thanks for working with us,<br>Attila, PickleMyPaddle</p>
@@ -583,12 +583,12 @@ exports[`email templates > club_invoice (staging) renders the same text and HTML
 
 Hi Jo,
 
-Your batch PMPB-4K7QX is back: 23 paddles re-gritted for Inner West Pickleball Club. Here’s the invoice.
+Your batch PMPB-4K7QX is re-gritted: 23 paddles for Inner West Pickleball Club. Here’s the invoice. Payment is due before we return the batch (by drop-off or post), so we’ll send the paddles back once it’s paid.
 
   Invoice: PMP-INV-0042
   Batch: PMPB-4K7QX
   Total: A$1242
-  Due by: Wednesday 18 November 2026
+  Payment: Due before your paddles are returned
 
 No GST has been charged.
 
@@ -598,7 +598,7 @@ http://home-server:8088/club/invoice?n=PMP-INV-0042#TTTTTTTTTTTTTTTTTTTTTTTTTTTT
 HOW TO PAY
 
   - PayID or bank transfer to payments@picklemypaddle.com, with PMP-INV-0042 as the reference
-  - In cash, at your club’s next pickup or delivery
+  - In cash, by arrangement with us before your paddles are returned
 
 Payment is in full for each invoice.
 

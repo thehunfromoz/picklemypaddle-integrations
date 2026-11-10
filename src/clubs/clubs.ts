@@ -4,16 +4,19 @@
  *  - A club holds its name and billing details only. Club members' details are never held: the
  *    club keeps them (decided 6 Oct 2026). SCRUM-85 uses the statuses active and inactive; the
  *    pipeline before them (lead, meeting, agreement sent) is SCRUM-93's.
- *  - A batch is one pickup's paddles: Collected → Returned → Invoiced → Paid, or Cancelled before
- *    it is returned. Marking it returned issues the invoice in the same transaction (paddles
- *    re-gritted × the club price on the issue date, GST added on top once registered) and queues
- *    the invoice email to the billing contact. Paddles returned unchanged aren't charged; a batch
- *    returned entirely unchanged stays Returned, with nothing to invoice.
+ *  - A batch is one pickup's (or posted box's) paddles: Collected → Invoiced → Paid → Returned, or
+ *    Cancelled before it is invoiced (the club pays before its batch goes back, SCRUM-102). Invoicing
+ *    issues the invoice in one transaction (paddles re-gritted × the club price on the issue date,
+ *    less the standard return postage for a posted batch of 6+, GST added on top once registered) and
+ *    queues the invoice email to the billing contact. Paddles unchanged aren't charged; a batch with
+ *    every paddle unchanged goes Collected → Returned, with nothing to invoice.
  *  - Clubs never get discount codes (decided 30 Oct 2026): nothing here applies one.
  */
+import type { Fulfilment } from './service-area.js';
 import { randomInt } from 'node:crypto';
 import type { Db, Queryable } from '../db/db.js';
 import { DocumentError, issueClubInvoice, type Seller } from '../documents/documents.js';
+import { quotePostage } from '../pricing/postage.js';
 import { isAllowed } from '../email/outbox.js';
 import { ISO_DATE_RE, sydneyDate } from '../orders/dates.js';
 import { REFERENCE_ALPHABET } from '../orders/model.js';
@@ -66,6 +69,14 @@ export interface Club {
   /** HH:MM (Sydney) and length in minutes: both optional, and only with a date. */
   meetingTime: string | null;
   meetingMinutes: number | null;
+  /** The service area (SCRUM-102): the venue's postcode (`suburb` is the venue suburb), the default method it gave, any admin override, the list version used. */
+  venuePostcode: string | null;
+  fulfilmentDefault: Fulfilment | null;
+  fulfilmentOverride: Fulfilment | null;
+  fulfilmentOverrideAt: Date | null;
+  areaVersion: string | null;
+  /** The suburb matched with a different postcode: worth a look. */
+  areaReview: boolean;
   lastActivityAt: Date;
 }
 
@@ -101,7 +112,7 @@ export interface Batch {
   returnedOn: string | null;
   unchangedCount: number;
   notes: string | null;
-  /** The invoice issued on return, if any, and what is still owing on it. */
+  /** The invoice issued when the batch was re-gritted, if any, and what is still owing on it. */
   invoice: { id: string; number: string; totalCents: number; dueOn: string | null; balanceCents: number } | null;
 }
 
@@ -179,12 +190,19 @@ interface ClubRow {
   meeting_on: string | null;
   meeting_time: string | null;
   meeting_minutes: number | null;
+  venue_postcode: string | null;
+  fulfilment_default: Fulfilment | null;
+  fulfilment_override: Fulfilment | null;
+  fulfilment_override_at: Date | null;
+  area_version: string | null;
+  area_review: boolean;
   last_activity_at: Date;
 }
 
 /** Every column the Club type reads, with the meeting date as text (no driver makes a moment of it). */
 export const CLUB_COLUMNS = `id, name, billing_name, billing_email, billing_address, abn, notes, status, is_test, created_at,
-  suburb, contact_name, contact_email, contact_phone, club_size, lead_message, preferred_times, meeting_on::text AS meeting_on, meeting_time, meeting_minutes, last_activity_at`;
+  suburb, contact_name, contact_email, contact_phone, club_size, lead_message, preferred_times, meeting_on::text AS meeting_on, meeting_time, meeting_minutes,
+  venue_postcode, fulfilment_default, fulfilment_override, fulfilment_override_at, area_version, area_review, last_activity_at`;
 const CLUB_COLUMNS_C = CLUB_COLUMNS.split(',').map((c) => (c.trim().startsWith('meeting_on::') ? 'c.meeting_on::text AS meeting_on' : `c.${c.trim()}`)).join(', ');
 
 const toClub = (r: ClubRow): Club => ({
@@ -208,6 +226,12 @@ const toClub = (r: ClubRow): Club => ({
   meetingOn: r.meeting_on,
   meetingTime: r.meeting_time,
   meetingMinutes: r.meeting_minutes === null ? null : Number(r.meeting_minutes),
+  venuePostcode: r.venue_postcode,
+  fulfilmentDefault: r.fulfilment_default,
+  fulfilmentOverride: r.fulfilment_override,
+  fulfilmentOverrideAt: r.fulfilment_override_at ? new Date(r.fulfilment_override_at) : null,
+  areaVersion: r.area_version,
+  areaReview: r.area_review,
   lastActivityAt: new Date(r.last_activity_at),
 });
 
@@ -277,7 +301,7 @@ export async function findClub(db: Queryable, id: string): Promise<Club | null> 
 
 export async function listClubs(db: Queryable): Promise<(Club & { openBatches: number })[]> {
   const { rows } = await db.query<ClubRow & { open_batches: number }>(
-    `SELECT ${CLUB_COLUMNS_C}, (SELECT count(*)::int FROM batches b WHERE b.club_id = c.id AND b.status IN ('collected', 'returned', 'invoiced')) AS open_batches
+    `SELECT ${CLUB_COLUMNS_C}, (SELECT count(*)::int FROM batches b WHERE b.club_id = c.id AND (b.status IN ('collected', 'invoiced') OR (b.status = 'paid' AND b.returned_on IS NULL))) AS open_batches
        FROM clubs c ORDER BY (c.status = 'inactive'), lower(c.name)`,
   );
   return rows.map((r) => ({ ...toClub(r), openBatches: Number(r.open_batches) }));
@@ -351,7 +375,7 @@ export async function listBatches(db: Queryable, filter: { clubId?: string; open
   const { rows } = await db.query<BatchRow>(
     `${BATCH_SELECT}
       WHERE ($1::uuid IS NULL OR b.club_id = $1::uuid)
-        AND (NOT $2::boolean OR b.status IN ('collected', 'returned', 'invoiced'))
+        AND (NOT $2::boolean OR (b.status IN ('collected', 'invoiced') OR (b.status = 'paid' AND b.returned_on IS NULL)))
       ORDER BY b.collected_on DESC, b.created_at DESC LIMIT 500`,
     [filter.clubId ?? null, filter.open ?? false],
   );
@@ -424,55 +448,114 @@ export interface ReturnDeps {
   db: Db;
   seller: Seller;
   isProduction: boolean;
-  paymentTermsDays: number;
   now: Date;
   /** Whether card payments are set up here (Stripe): the invoice then offers "Pay by card". */
   payByCard?: boolean;
 }
 
 /**
- * Marks a collected batch returned (SCRUM-85 AC3): in one transaction, the batch is Returned,
- * its invoice is issued (re-gritted paddles only) and the invoice email is queued, and the batch
- * moves on to Invoiced. All of it, or none of it: a failure leaves the batch Collected and no
- * invoice number used.
+ * The standard cost of posting a batch back to the club (SCRUM-102, agreement 5.3): Australia Post
+ * to the club's venue postcode for that many paddles, on the day. A reason instead when it can't be
+ * worked out (no postcode on file, or a size the packing table doesn't cover): then it is entered.
  */
-export async function returnBatch(
+export function standardReturnPostage(paddles: number, postcode: string | null, date: string): { cents: number } | { reason: string } {
+  if (!postcode) return { reason: 'This club has no venue postcode on file: enter the standard postage.' };
+  const q = quotePostage(paddles, postcode, date);
+  return q.ok ? { cents: q.postageCents } : { reason: q.reason };
+}
+
+export const MAX_POSTAGE_ALLOWANCE_CENTS = 20_000;
+
+/**
+ * A batch is re-gritted: in one transaction its invoice is issued (re-gritted paddles only, with
+ * the standard return postage taken off for a posted batch of 6 or more) and queued by email, and the
+ * batch moves to Invoiced. The club pays before the batch goes back (agreement 7.3). All of it, or
+ * none of it. A batch where every paddle came back unchanged has nothing to invoice: it goes back
+ * with `returnBatch` instead.
+ */
+export async function invoiceBatch(
   deps: ReturnDeps,
-  args: { reference: string; returnedOn: string; unchangedCount: number; returnTracking?: string | null },
-): Promise<{ invoiceId: string | null }> {
+  args: { reference: string; unchangedCount: number; postageAllowanceCents?: number | null },
+): Promise<{ invoiceId: string; postageAllowanceCents: number }> {
   const { now } = deps;
-  if (!isDate(args.returnedOn)) throw new ClubError('bad_date', 'Give the return date.');
-  if (args.returnedOn > sydneyDate(now)) throw new ClubError('future_date', 'The return date can’t be in the future.');
   checkCount(args.unchangedCount, 'Paddles returned unchanged');
-  const returnTracking = cleanTracking(args.returnTracking);
   try {
     return await deps.db.tx(async (q) => {
-      const { rows } = await q.query<{ id: string; club_id: string; collected_on: string; paddle_count: number; status: BatchStatus; method: BatchMethod }>(
-        `SELECT id, club_id, collected_on::text AS collected_on, paddle_count, status, method FROM batches WHERE reference = $1 FOR UPDATE`,
+      const { rows } = await q.query<{ id: string; club_id: string; paddle_count: number; status: BatchStatus; method: BatchMethod; venue_postcode: string | null }>(
+        `SELECT b.id, b.club_id, b.paddle_count, b.status, b.method, c.venue_postcode
+           FROM batches b JOIN clubs c ON c.id = b.club_id WHERE b.reference = $1 FOR UPDATE OF b`,
         [args.reference],
       );
       const b = rows[0];
       if (!b) throw new ClubError('no_batch', 'No such batch.');
-      if (b.status !== 'collected') throw new ClubError('not_collected', 'Only a collected batch can be returned.');
-      if (args.returnedOn < b.collected_on) throw new ClubError('before_collection', 'The return date can’t be before the collection date.');
-      if (args.unchangedCount > Number(b.paddle_count)) throw new ClubError('bad_count', 'More paddles unchanged than were collected.');
-      if (returnTracking && b.method !== 'post') throw new ClubError('bad_tracking', 'A tracking number only goes with a batch sent back by post.');
-      await q.query(
-        `UPDATE batches SET status = 'returned', returned_on = $2::date, unchanged_count = $3, return_tracking = $5, status_changed_at = $4, updated_at = $4 WHERE id = $1`,
-        [b.id, args.returnedOn, args.unchangedCount, now, returnTracking || null],
-      );
-      await enqueueClubCrmSync(q, b.club_id, now);
-      if (args.unchangedCount === Number(b.paddle_count)) return { invoiceId: null };
+      if (b.status !== 'collected') throw new ClubError('not_collected', 'Only a collected batch can be invoiced.');
+      if (args.unchangedCount >= Number(b.paddle_count)) throw new ClubError('nothing_to_invoice', 'Every paddle is unchanged, so there is nothing to invoice: return the batch without an invoice instead.');
+      let allowance = 0;
+      if (b.method === 'post' && Number(b.paddle_count) >= FREE_RETURN_POST_MIN) {
+        if (args.postageAllowanceCents != null) {
+          allowance = args.postageAllowanceCents;
+        } else {
+          const std = standardReturnPostage(Number(b.paddle_count), b.venue_postcode, sydneyDate(now));
+          if ('reason' in std) throw new ClubError('postage_needed', std.reason);
+          allowance = std.cents;
+        }
+        if (!Number.isInteger(allowance) || allowance < 1 || allowance > MAX_POSTAGE_ALLOWANCE_CENTS) {
+          throw new ClubError('bad_postage', `The postage allowance is between A$0.01 and A$${MAX_POSTAGE_ALLOWANCE_CENTS / 100}.`);
+        }
+      }
+      await q.query(`UPDATE batches SET unchanged_count = $2, updated_at = $3 WHERE id = $1`, [b.id, args.unchangedCount, now]);
       const invoiceId = await issueClubInvoice(q, {
-        batchId: b.id, seller: deps.seller, isProduction: deps.isProduction, paymentTermsDays: deps.paymentTermsDays, now, payByCard: deps.payByCard ?? false,
+        batchId: b.id, seller: deps.seller, isProduction: deps.isProduction, now, payByCard: deps.payByCard ?? false, postageAllowanceCents: allowance,
       });
       await q.query(`UPDATE batches SET status = 'invoiced', status_changed_at = $2, updated_at = $2 WHERE id = $1`, [b.id, now]);
-      return { invoiceId };
+      await enqueueClubCrmSync(q, b.club_id, now);
+      return { invoiceId, postageAllowanceCents: allowance };
     });
   } catch (err) {
     if (err instanceof DocumentError) throw new ClubError(err.code, err.message);
     throw err;
   }
+}
+
+/**
+ * The batch goes back to the club (dropped off, or posted with a tracking number): its return date is
+ * recorded and it is Returned. Only once the invoice is paid (agreement 7.3), or when every paddle came
+ * back unchanged and there was nothing to invoice (`unchangedCount` = all of them).
+ */
+export async function returnBatch(
+  deps: { db: Db; now: Date },
+  args: { reference: string; returnedOn: string; returnTracking?: string | null; unchangedCount?: number },
+): Promise<void> {
+  const { now } = deps;
+  if (!isDate(args.returnedOn)) throw new ClubError('bad_date', 'Give the return date.');
+  if (args.returnedOn > sydneyDate(now)) throw new ClubError('future_date', 'The return date can’t be in the future.');
+  const returnTracking = cleanTracking(args.returnTracking);
+  await deps.db.tx(async (q) => {
+    const { rows } = await q.query<{ id: string; club_id: string; collected_on: string; paddle_count: number; status: BatchStatus; method: BatchMethod }>(
+      `SELECT id, club_id, collected_on::text AS collected_on, paddle_count, status, method FROM batches WHERE reference = $1 FOR UPDATE`,
+      [args.reference],
+    );
+    const b = rows[0];
+    if (!b) throw new ClubError('no_batch', 'No such batch.');
+    if (b.status === 'collected') {
+      // Nothing to invoice: only when every paddle came back unchanged.
+      if (args.unchangedCount === undefined) throw new ClubError('not_paid', 'The club pays before the batch goes back: invoice it first.');
+      checkCount(args.unchangedCount, 'Paddles returned unchanged');
+      if (args.unchangedCount !== Number(b.paddle_count)) throw new ClubError('not_paid', 'Only a batch with every paddle unchanged goes back without an invoice: invoice this one first.');
+      await q.query(`UPDATE batches SET unchanged_count = $2 WHERE id = $1`, [b.id, args.unchangedCount]);
+    } else if (b.status === 'invoiced') {
+      throw new ClubError('not_paid', 'The invoice isn’t paid yet: the club pays before the batch goes back.');
+    } else if (b.status !== 'paid') {
+      throw new ClubError('not_returnable', 'This batch can’t be returned.');
+    }
+    if (args.returnedOn < b.collected_on) throw new ClubError('before_collection', 'The return date can’t be before the collection date.');
+    if (returnTracking && b.method !== 'post') throw new ClubError('bad_tracking', 'A tracking number only goes with a batch sent back by post.');
+    await q.query(
+      `UPDATE batches SET status = 'returned', returned_on = $2::date, return_tracking = $4, status_changed_at = $3, updated_at = $3 WHERE id = $1`,
+      [b.id, args.returnedOn, now, returnTracking || null],
+    );
+    await enqueueClubCrmSync(q, b.club_id, now);
+  });
 }
 
 /** Saves a batch's internal note. */
@@ -510,3 +593,6 @@ export async function batchEmails(db: Queryable, batchId: string): Promise<Batch
   );
   return rows.map((r) => ({ id: String(r.id), template: r.template, state: r.state, attempts: Number(r.attempts), lastError: r.last_error, createdAt: new Date(r.created_at) }));
 }
+
+/** How this club's batches travel: the admin's override, else the service area's default; null when neither is known (a club made before the service area). */
+export const effectiveFulfilment = (c: Pick<Club, 'fulfilmentDefault' | 'fulfilmentOverride'>): Fulfilment | null => c.fulfilmentOverride ?? c.fulfilmentDefault;

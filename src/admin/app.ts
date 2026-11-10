@@ -57,10 +57,10 @@ import { ADMIN_CSS } from './style.js';
 import { batchesPage, batchPage, clubPage, clubsPage } from './club-pages.js';
 import { liveAgreement } from '../clubs/agreement-versions.js';
 import { agreementsOfClub, recordAcceptance, sendAgreement } from '../clubs/agreements.js';
-import { moveClub, setMeeting } from '../clubs/leads.js';
+import { moveClub, setFulfilmentOverride, setMeeting } from '../clubs/leads.js';
 import { flaggedCardPayments, paymentsOfInvoice, recordClubPayment } from '../clubs/payments.js';
 import {
-  batchEmails, cancelBatch, clubCrmSync, ClubError, createBatch, createClub, findBatch, findClub, listBatches, listClubs, returnBatch, setBatchNote, setClubActive, updateClub, validateClub,
+  batchEmails, cancelBatch, clubCrmSync, ClubError, createBatch, createClub, findBatch, findClub, invoiceBatch, listBatches, listClubs, returnBatch, setBatchNote, setClubActive, updateClub, validateClub,
   type Club, type ClubInput,
 } from '../clubs/clubs.js';
 
@@ -121,11 +121,12 @@ const DONE: Record<string, string> = {
   agreement_accepted: 'Acceptance recorded.',
   agreement_accepted_active: 'Acceptance recorded: the club is now Active.',
   meeting_saved: 'Meeting saved.',
+  fulfilment_saved: 'Saved how this club’s batches travel.',
   club_inactive: 'The club is now inactive.',
   club_active: 'The club is active again.',
   batch_created: 'Batch recorded.',
-  batch_returned: 'Returned: the invoice is issued and its email goes out within a minute.',
-  batch_returned_unchanged: 'Returned. Every paddle was unchanged, so nothing was invoiced.',
+  batch_invoiced: 'Invoiced: the invoice email goes out within a minute. The batch goes back once the club has paid.',
+  batch_returned: 'Marked returned.',
   batch_cancelled: 'Batch cancelled.',
   batch_noted: 'Notes saved.',
   payment_recorded: 'Payment recorded.',
@@ -545,6 +546,19 @@ export function createAdminApp(deps: AdminDeps) {
       return clubPageFor(c, club, { kind: 'error', text: err.message }, 400);
     }
   });
+  app.post('/admin/clubs/:id/fulfilment', async (c) => {
+    const club = await findClub(deps.db, c.req.param('id'));
+    if (!club) return c.html(notFoundPage(ctx(c), 'No such club.'), 404);
+    try {
+      const value = field(await c.req.parseBody(), 'fulfilment') ?? '';
+      await setFulfilmentOverride(deps.db, club.id, value, now());
+      log('admin_club_fulfilment', { club: club.id, override: value || 'default' });
+      return c.redirect(`/admin/clubs/${club.id}?done=fulfilment_saved`, 303);
+    } catch (err) {
+      if (!(err instanceof ClubError)) throw err;
+      return clubPageFor(c, club, { kind: 'error', text: err.message }, 400);
+    }
+  });
   // SCRUM-94: send the agreement, and record the "I agree" reply.
   app.post('/admin/clubs/:id/agreement/send', async (c) => {
     const club = await findClub(deps.db, c.req.param('id'));
@@ -609,18 +623,44 @@ export function createAdminApp(deps: AdminDeps) {
     return c.html(batchPage(ctx(c), batch, sydneyDate(now()), flash, await batchEmails(deps.db, batch.id), pays), status);
   };
   app.get('/admin/batches/:ref', async (c) => batchPageFor(c, c.req.param('ref'), flashOf(c)));
-  app.post('/admin/batches/:ref/return', async (c) => {
+  // SCRUM-102: the club pays before its batch goes back, so a batch is invoiced when re-gritted ...
+  app.post('/admin/batches/:ref/invoice', async (c) => {
     const reference = c.req.param('ref');
     if (!(await findBatch(deps.db, reference))) return c.html(notFoundPage(ctx(c), 'No such batch.'), 404);
     const body = await c.req.parseBody();
     const unchanged = field(body, 'unchangedCount') ?? '0';
+    const allowanceRaw = (field(body, 'postageAllowance') ?? '').replace(/^A?\$/, '').replace(/,/g, '');
+    const allowance = allowanceRaw ? parseAmount(allowanceRaw) : undefined;
     try {
-      const { invoiceId } = await returnBatch(
-        { db: deps.db, seller, isProduction: deps.isProduction, paymentTermsDays: deps.clubPaymentTermsDays ?? 14, now: now(), payByCard: deps.paymentsConfigured ?? false },
-        { reference, returnedOn: field(body, 'returnedOn') ?? '', unchangedCount: /^\d{1,3}$/.test(unchanged) ? Number(unchanged) : NaN, returnTracking: field(body, 'returnTracking') ?? null },
+      const r = await invoiceBatch(
+        { db: deps.db, seller, isProduction: deps.isProduction, now: now(), payByCard: deps.paymentsConfigured ?? false },
+        { reference, unchangedCount: /^\d{1,3}$/.test(unchanged) ? Number(unchanged) : NaN, postageAllowanceCents: allowanceRaw ? (allowance ?? NaN) : null },
       );
-      log('admin_batch_returned', { batch: reference, invoiced: !!invoiceId });
-      return c.redirect(`/admin/batches/${reference}?done=${invoiceId ? 'batch_returned' : 'batch_returned_unchanged'}`, 303);
+      log('admin_batch_invoiced', { batch: reference, postageAllowanceCents: r.postageAllowanceCents });
+      return c.redirect(`/admin/batches/${reference}?done=batch_invoiced`, 303);
+    } catch (err) {
+      if (!(err instanceof ClubError)) throw err;
+      return batchPageFor(c, reference, { kind: 'error', text: err.message }, 400);
+    }
+  });
+  // ... and goes back once paid (or at once when every paddle was unchanged and there is nothing to invoice).
+  app.post('/admin/batches/:ref/return', async (c) => {
+    const reference = c.req.param('ref');
+    if (!(await findBatch(deps.db, reference))) return c.html(notFoundPage(ctx(c), 'No such batch.'), 404);
+    const body = await c.req.parseBody();
+    const unchanged = field(body, 'unchangedCount');
+    try {
+      await returnBatch(
+        { db: deps.db, now: now() },
+        {
+          reference,
+          returnedOn: field(body, 'returnedOn') ?? '',
+          returnTracking: field(body, 'returnTracking') ?? null,
+          ...(unchanged !== undefined ? { unchangedCount: /^\d{1,3}$/.test(unchanged) ? Number(unchanged) : NaN } : {}),
+        },
+      );
+      log('admin_batch_returned', { batch: reference });
+      return c.redirect(`/admin/batches/${reference}?done=batch_returned`, 303);
     } catch (err) {
       if (!(err instanceof ClubError)) throw err;
       return batchPageFor(c, reference, { kind: 'error', text: err.message }, 400);

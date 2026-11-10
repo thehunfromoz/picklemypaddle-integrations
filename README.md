@@ -538,6 +538,20 @@ members' details, so only the club's name and billing details are held here.
   version can't request one.
 - v0.1 says payment is in full for each invoice (no part payments, decided 7 Nov 2026).
 
+## Payment before return, and the postage allowance (SCRUM-102, decided 11 Nov 2026)
+
+- A club pays before its batch goes back (agreement 7.3). The order is Collected → Invoiced → Paid →
+  Returned (migration 21). "Re-gritted: invoice the club" issues the invoice and emails it; "Mark
+  returned" (with the return date, and a tracking number for post) is only offered once it is paid. A
+  batch where every paddle came back unchanged has nothing to invoice and goes back directly.
+- The invoice has no due date (it is due before return), so the "overdue" flag no longer fires.
+  `CLUB_PAYMENT_TERMS_DAYS` is unused. What "overdue" means now is Attila's to decide.
+- A posted batch of 6 or more paddles gets a negative line, "Return postage allowance", for the
+  standard cost: Australia Post's price to the club's venue postcode on the invoice date
+  (`pricing/postage.ts`, postage only), or an amount entered when that can't be worked out. GST, once
+  registered, is on the invoice after it. `[To confirm with the accountant: GST on the allowance.]`
+- A returned, invoiced batch stays a Closed-won deal in HubSpot.
+
 ## Clubs that post their paddles, and meeting times (SCRUM-94/96/93 UAT, decided 10 Nov 2026)
 
 - **Post as well as pickup.** A club outside pickup range can post a box (we supply it) to the
@@ -550,6 +564,22 @@ members' details, so only the club's name and billing details are held here.
   later sections renumbered. Liability in transit is `[To confirm]`: to be agreed with each club.
 - **Meeting time and length** are optional and set after the date (migration 19). The meeting goes to the
   company's "Club meeting" property in HubSpot (run `hubspot-setup` once per portal after deploying).
+
+## The local pickup service area (SCRUM-102, decided 10 Nov 2026)
+
+- `service-area-suburbs.json` is the single source of truth for the area (never copy suburbs into
+  code) and `service-area.ts` checks a venue against it. **The site owns both** (`src/lib/`: the map and
+  the suburb list are public site content); they are copied byte-for-byte into `src/clubs/` here, and
+  `tests/service-area-parity.test.ts` checks the copies against the site's `main`. Change the site first.
+- Inside = suburb matches and (no postcode, or the postcode is one of its postcodes). A listed suburb
+  with another postcode is outside and flagged for review (`area_review`); an unknown suburb is postal.
+- The lead form takes the venue suburb and postcode (4 digits, required). The club stores the default
+  (`fulfilment_default`), the list version (`area_version`), and any admin override
+  (`fulfilment_override` + `_at`), so a later list change doesn't silently change existing clubs.
+  Admin shows and overrides it; the batch form starts on it; HubSpot's company has "Club pickup or post".
+- A new list version is a new JSON `version`; nothing is re-evaluated for existing clubs.
+- Agreement 0.3 (0.2 was sent to a staging test club, so it is left as it was) carries Attila's UAT
+  wording; the Schedule shows the venue, how batches travel and the list version.
 
 ## Database (SCRUM-64)
 

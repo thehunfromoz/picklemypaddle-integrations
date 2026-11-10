@@ -4,7 +4,7 @@
  * recovers when HubSpot loses a record or a sync crashes before saving the IDs.
  */
 import { afterEach, describe, expect, it } from 'vitest';
-import { cancelBatch, createBatch, createClub, returnBatch, updateClub, type ClubInput } from '../src/clubs/clubs.js';
+import { cancelBatch, createBatch, createClub, invoiceBatch, updateClub, type ClubInput } from '../src/clubs/clubs.js';
 import { recordClubPayment } from '../src/clubs/payments.js';
 import { CLUB_STAGES, mapClub, mapOrder } from '../src/crm/crm.js';
 import { applySetup, HubSpotError, hubspotAdapter, hubspotClient, planSetup, portalIdOf } from '../src/crm/hubspot.js';
@@ -47,7 +47,7 @@ describe(`Clubs in HubSpot (${DB_BACKEND})`, () => {
     expect(await processCrm(deps)).toMatchObject({ synced: 1 });
 
     const [companyId, company] = [...hs.companies][0]!;
-    expect(company.properties).toEqual({ name: '[TEST] Inner West PC', pmp_club_id: club.id, pmp_club_stage: 'Active', pmp_club_meeting: '', pmp_is_test: 'true' });
+    expect(company.properties).toEqual({ name: '[TEST] Inner West PC', pmp_club_id: club.id, pmp_club_stage: 'Active', pmp_club_meeting: '', pmp_club_fulfilment: '', pmp_is_test: 'true' });
     const contact = hs.contacts.get('jo@test.picklemypaddle.com')!;
     expect(contact.properties).toEqual({ email: 'jo@test.picklemypaddle.com', firstname: 'Jo', lastname: 'Treasurer' });
     expect([...company.contacts]).toEqual([contact.id]);
@@ -62,7 +62,7 @@ describe(`Clubs in HubSpot (${DB_BACKEND})`, () => {
     expect([...deal.companies, ...deal.contacts]).toEqual([companyId, contact.id]);
 
     // Returned with one unchanged → invoiced at the invoice's total (4 × A$54).
-    await returnBatch({ db: t.db, seller, isProduction: false, paymentTermsDays: 14, now: t.clock.now }, { reference: batch.reference, returnedOn: '2026-11-04', unchangedCount: 1 });
+    await invoiceBatch({ db: t.db, seller, isProduction: false, now: t.clock.now }, { reference: batch.reference, unchangedCount: 1 });
     await processCrm(deps);
     expect(stageLabel(hs.deals.get(dealId)!.properties.dealstage!)).toBe(CLUB_STAGES.invoiced.label);
     expect(hs.deals.get(dealId)!.properties.amount).toBe('216.00');
@@ -213,7 +213,7 @@ describe(`Clubs in HubSpot (${DB_BACKEND})`, () => {
       { from: '2027-07-01', pricePerPaddleCents: 6500, clubRemitPerPaddleCents: 5850 },
     ];
     const club = (collected_on: string) => ({
-      id: 'c1', name: 'Inner West PC', status: 'active' as const, is_test: false, billing_name: 'Jo Treasurer', billing_email: 'jo@x.org', contact_name: null, contact_email: null, crm_company_id: null, crm_contact_id: null, meeting_on: null, meeting_time: null, meeting_minutes: null,
+      id: 'c1', name: 'Inner West PC', status: 'active' as const, is_test: false, billing_name: 'Jo Treasurer', billing_email: 'jo@x.org', contact_name: null, contact_email: null, crm_company_id: null, crm_contact_id: null, meeting_on: null, meeting_time: null, meeting_minutes: null, fulfilment_default: null, fulfilment_override: null,
       batches: [{ reference: 'PMPB-1', status: 'collected' as const, collected_on, paddle_count: 10, unchanged_count: 2, invoice_total: null, crm_deal_id: null }],
     });
     // The invoice uses the price list on its issue date, whenever the batch was collected.
@@ -225,7 +225,7 @@ describe(`Clubs in HubSpot (${DB_BACKEND})`, () => {
 
   it('once GST-registered the estimate carries the GST the invoice will add on top, worked out the way the invoice does, so the amount doesn’t jump at invoicing', () => {
     const club = (paddles: number) => ({
-      id: 'c1', name: 'Inner West PC', status: 'active' as const, is_test: false, billing_name: 'Jo Treasurer', billing_email: 'jo@x.org', contact_name: null, contact_email: null, crm_company_id: null, crm_contact_id: null, meeting_on: null, meeting_time: null, meeting_minutes: null,
+      id: 'c1', name: 'Inner West PC', status: 'active' as const, is_test: false, billing_name: 'Jo Treasurer', billing_email: 'jo@x.org', contact_name: null, contact_email: null, crm_company_id: null, crm_contact_id: null, meeting_on: null, meeting_time: null, meeting_minutes: null, fulfilment_default: null, fulfilment_override: null,
       batches: [{ reference: 'PMPB-1', status: 'collected' as const, collected_on: '2026-11-02', paddle_count: paddles, unchanged_count: 0, invoice_total: null, crm_deal_id: null }],
     });
     const tax = { gstRegisteredFrom: '2026-12-01' };

@@ -115,7 +115,8 @@ export interface TemplateContext {
     subtotalCents?: number;
     gstCents: number;
     totalCents: number;
-    dueOn: string;
+    /** Return postage allowed off a posted batch of 6 or more (SCRUM-102), in cents; 0 for none. */
+    postageAllowanceCents: number;
     treatment: TaxTreatment;
     payId: string;
     /** Whether the invoice's page takes card payments (SCRUM-85, second part). */
@@ -379,7 +380,7 @@ function build(name: TemplateName, ctx: TemplateContext): { subject: string; blo
     }
 
     case 'club_invoice': {
-      // SCRUM-85: on return of a batch. The invoice in brief, its private page, and how to pay.
+      // SCRUM-85: when a batch is re-gritted (payment is due before it goes back, SCRUM-102). The invoice in brief, its private page, and how to pay.
       const batch = need(ctx, 'reference', name);
       const club = need(ctx, 'club', name);
       const inv = need(ctx, 'invoice', name);
@@ -391,15 +392,15 @@ function build(name: TemplateName, ctx: TemplateContext): { subject: string; blo
         subject: `Invoice ${inv.number} for ${club.name}: ${inv.paddles} ${paddleWord(inv.paddles)} re-gritted`,
         blocks: [
           { p: `Hi ${need(ctx, 'firstName', name)},` },
-          { p: `Your batch ${batch} is back: ${inv.paddles} ${paddleWord(inv.paddles)} re-gritted for ${club.name}. Here’s the invoice.` },
-          { kv: [['Invoice', inv.number], ['Batch', batch], ...amounts, ['Due by', longDate(inv.dueOn)]] },
+          { p: `Your batch ${batch} is re-gritted: ${inv.paddles} ${paddleWord(inv.paddles)} for ${club.name}. Here’s the invoice. Payment is due before we return the batch (by drop-off or post), so we’ll send the paddles back once it’s paid.` },
+          { kv: [['Invoice', inv.number], ['Batch', batch], ...(inv.postageAllowanceCents > 0 ? [['Return postage allowance', `-${money(inv.postageAllowanceCents)}`] as [string, string]] : []), ...amounts, ['Payment', 'Due before your paddles are returned']] },
           ...(inv.treatment === 'not_registered' ? [{ small: 'No GST has been charged.' } as Block] : []),
           { button: { label: inv.payByCard ? 'View, print or pay by card' : 'View or print the invoice', url: inv.url } },
           { h: 'How to pay' },
           { list: [
             `PayID or bank transfer to ${inv.payId}, with ${inv.number} as the reference`,
             ...(inv.payByCard ? ['By card, with the button above'] : []),
-            'In cash, at your club’s next pickup or delivery',
+            'In cash, by arrangement with us before your paddles are returned',
           ] },
           { p: 'Payment is in full for each invoice.' },
           { small: 'The invoice link is private to your club: anyone who has it can see and pay this invoice, so please don’t forward it outside your committee.' },
@@ -683,7 +684,7 @@ export function sampleContext(name: TemplateName, test: boolean): TemplateContex
             paddles: 23,
             gstCents: 0,
             totalCents: 124200,
-            dueOn: '2026-11-18',
+            postageAllowanceCents: 0,
             treatment: 'not_registered' as const,
             payId: 'payments@picklemypaddle.com',
             payByCard: false,

@@ -171,7 +171,7 @@ function mountLeadRoutes(
     c.header('Retry-After', String(retryAfterSeconds));
     return c.json({ error: 'rate_limited', message: RATE_MESSAGE, retryAfter: retryAfterSeconds }, 429);
   };
-  const FIELDS = ['clubName', 'suburb', 'contactName', 'contactEmail', 'contactPhone', 'memberCount', 'message', 'preferredTimes'] as const;
+  const FIELDS = ['clubName', 'suburb', 'postcode', 'contactName', 'contactEmail', 'contactPhone', 'memberCount', 'message', 'preferredTimes'] as const;
 
   app.get('/lead/form', (c) => c.json({ open: true, formToken: issueFormToken(deps.keys.formKey, now()) }));
 

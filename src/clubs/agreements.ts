@@ -10,6 +10,7 @@
  *  - Gate: pickups (SCRUM-96) can't be requested until the club has accepted a version:
  *    `requireAcceptedAgreement`.
  */
+import { FULFILMENT_LABELS, type Fulfilment } from './service-area.js';
 import type { Db, Queryable } from '../db/db.js';
 import { enqueueClubCrmSync } from '../crm/sync.js';
 import { CLUB_LINK_DAYS } from '../documents/documents.js';
@@ -35,12 +36,18 @@ interface ClubFacts {
   contact_name: string | null;
   contact_email: string | null;
   contact_phone: string | null;
+  suburb: string | null;
+  venue_postcode: string | null;
+  fulfilment_default: Fulfilment | null;
+  fulfilment_override: Fulfilment | null;
+  area_version: string | null;
 }
 
 /** The club's contact for pickups and for this agreement: the enquiry's contact, else the billing contact. */
 export const agreementRecipient = (c: Pick<ClubFacts, 'contact_email' | 'billing_email'>): string | null => c.contact_email ?? c.billing_email;
 
 export function scheduleFor(c: ClubFacts): ScheduleRow[] {
+  const method = c.fulfilment_override ?? c.fulfilment_default;
   const pickupName = c.contact_name ?? c.billing_name;
   const pickup = [pickupName, c.contact_email ?? c.billing_email, c.contact_phone].filter(Boolean).join(', ');
   return [
@@ -49,6 +56,9 @@ export function scheduleFor(c: ClubFacts): ScheduleRow[] {
     ['Contact for pickups (name, email, phone)', pickup || 'To be agreed by email'],
     ['Billing contact (name, email)', c.billing_name && c.billing_email ? `${c.billing_name}, ${c.billing_email}` : 'To be given before the first invoice'],
     ['Billing address', c.billing_address ?? 'To be given before the first invoice'],
+    ['Venue (suburb and postcode)', c.suburb ? [c.suburb, c.venue_postcode].filter(Boolean).join(' ') : 'To be agreed by email'],
+    ['How batches travel', method ? FULFILMENT_LABELS[method] : 'To be agreed by email'],
+    ...(c.area_version ? [['Service area list used', c.area_version] as ScheduleRow] : []),
     ['Pickup and return location', 'To be agreed by email'],
     ['Pickup arrangement', 'On request (default), or recurring: to be agreed by email'],
     ['Tagging method', 'Agreed with us before the first pickup'],
@@ -122,7 +132,8 @@ export async function sendAgreement(
   const sha = agreementSha(live);
   return db.tx(async (q) => {
     const { rows } = await q.query<ClubFacts & { id: string }>(
-      `SELECT id, name, abn, status, billing_name, billing_email, billing_address, contact_name, contact_email, contact_phone
+      `SELECT id, name, abn, status, billing_name, billing_email, billing_address, contact_name, contact_email, contact_phone,
+            suburb, venue_postcode, fulfilment_default, fulfilment_override, area_version
          FROM clubs WHERE id = $1::uuid FOR UPDATE`,
       [args.clubId],
     );

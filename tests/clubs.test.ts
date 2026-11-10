@@ -12,7 +12,7 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import {
-  cancelBatch, ClubError, createBatch, createClub, findBatch, returnBatch, setClubActive, validateClub, type ClubInput,
+  cancelBatch, ClubError, createBatch, createClub, findBatch, invoiceBatch, returnBatch, setClubActive, validateClub, type ClubInput,
 } from '../src/clubs/clubs.js';
 import {
   clubInvoiceSnapshot, creditNoteSnapshot, DEFAULT_SELLER, PAYID_PLACEHOLDER, receiptSnapshot, type ClubInvoiceFacts, type Seller,
@@ -37,8 +37,8 @@ const facts: ClubInvoiceFacts = {
   paddles: 23,
   remitPerPaddleCents: 5400,
   collectedOn: '2027-02-20',
-  returnedOn: '2027-03-02',
-  dueOn: '2027-03-16',
+  method: 'pickup',
+  postageAllowanceCents: 0,
   payByCard: false,
 };
 
@@ -61,14 +61,15 @@ describe('club invoice amounts (GST on top for clubs, decided 4 Nov 2026)', () =
 });
 
 describe('club invoice wording by issue date', () => {
-  it('before the GST date: "Invoice", no GST, the club as buyer, due date and how to pay', () => {
+  it('before the GST date: "Invoice", no GST, the club as buyer, payment due before return and how to pay', () => {
     const s = clubInvoiceSnapshot('PMP-INV-0042', '2027-02-28', facts, registered);
-    expect(s).toMatchObject({ kind: 'invoice', heading: 'Invoice', treatment: 'not_registered', totalCents: 124200, gstCents: 0, gstLine: 'No GST has been charged', dueOn: '2027-03-16' });
+    expect(s).toMatchObject({ kind: 'invoice', heading: 'Invoice', treatment: 'not_registered', totalCents: 124200, gstCents: 0, gstLine: 'No GST has been charged' });
+    expect(s.dueOn).toBeUndefined();
     expect(s.subtotalCents).toBeUndefined();
     expect(s.buyer).toEqual({ name: 'Inner West Pickleball Club', abn: '51 824 753 556', address: 'Attn: Jo Treasurer\n1 Court St\nNewtown NSW 2042' });
-    expect(s.lines).toEqual([{ description: 'Paddle re-grit, both faces: club batch collected 20 February 2027, returned 2 March 2027', quantity: 23, unitCents: 5400, amountCents: 124200 }]);
-    expect(s.notes[0]).toBe('Due by 16 March 2027.');
-    expect(s.notes[1]).toBe('How to pay: PayID or bank transfer to payments@picklemypaddle.com, with PMP-INV-0042 as the reference; or in cash at your club’s next pickup or delivery.');
+    expect(s.lines).toEqual([{ description: 'Paddle re-grit, both faces: club batch collected 20 February 2027', quantity: 23, unitCents: 5400, amountCents: 124200 }]);
+    expect(s.notes[0]).toBe('Payment is due before your paddles are returned (dropped off or posted back).');
+    expect(s.notes[1]).toBe('How to pay: PayID or bank transfer to payments@picklemypaddle.com, with PMP-INV-0042 as the reference; or in cash, by arrangement with us before your paddles are returned.');
     expect(s.payId).toBe('payments@picklemypaddle.com');
     // Clubs deal with Attila directly (UAT 6 Nov 2026), and pay in full (no part payments).
     expect(s.seller.email).toBe('attila@picklemypaddle.com');
@@ -209,8 +210,8 @@ describe('clubs and batches in the database', () => {
     const club = await createClub(t.db, input, { isProduction: false, now: t.clock.now });
     return club;
   };
-  const deps = (over: Partial<Parameters<typeof returnBatch>[0]> = {}) => ({
-    db: t.db, seller: { ...DEFAULT_SELLER, payId: 'payments@picklemypaddle.com' }, isProduction: false, paymentTermsDays: 14, now: t.clock.now, ...over,
+  const deps = (over: Partial<Parameters<typeof invoiceBatch>[0]> = {}) => ({
+    db: t.db, seller: { ...DEFAULT_SELLER, payId: 'payments@picklemypaddle.com' }, isProduction: false, now: t.clock.now, ...over,
   });
   const count = async (sql: string, params: unknown[] = []) => Number((await t.db.query<{ n: number }>(sql, params)).rows[0]!.n);
 
@@ -232,38 +233,42 @@ describe('clubs and batches in the database', () => {
     await expect(createBatch(t.db, { clubId: club.id, collectedOn: '2026-11-03', paddleCount: 1, notes: null, now: t.clock.now })).rejects.toMatchObject({ code: 'club_inactive' });
   });
 
-  it('returning a batch issues exactly one invoice and one email, and moves it to Invoiced', async () => {
+  it('invoicing a re-gritted batch issues exactly one invoice and one email, and moves it to Invoiced (not yet returned)', async () => {
     const club = await setup();
     const b = await createBatch(t.db, { clubId: club.id, collectedOn: '2026-10-28', paddleCount: 12, notes: null, now: t.clock.now });
-    const { invoiceId } = await returnBatch(deps(), { reference: b.reference, returnedOn: '2026-11-04', unchangedCount: 2 });
+    const { invoiceId } = await invoiceBatch(deps(), { reference: b.reference, unchangedCount: 2 });
     expect(invoiceId).not.toBeNull();
     const after = (await findBatch(t.db, b.reference))!;
-    expect(after).toMatchObject({ status: 'invoiced', returnedOn: '2026-11-04', unchangedCount: 2 });
-    // 10 re-gritted × A$54, numbered in the shared sequence, due 14 days after issue.
-    expect(after.invoice).toEqual({ id: invoiceId, number: 'PMP-INV-0001', totalCents: 54000, dueOn: '2026-11-18', balanceCents: 54000 });
+    expect(after).toMatchObject({ status: 'invoiced', unchangedCount: 2 });
+    // 10 re-gritted × A$54, numbered in the shared sequence, due before the batch goes back (no date).
+    expect(after.returnedOn).toBeNull();
+    expect(after.invoice).toEqual({ id: invoiceId, number: 'PMP-INV-0001', totalCents: 54000, dueOn: null, balanceCents: 54000 });
     expect(await count(`SELECT count(*)::int AS n FROM documents WHERE batch_id = $1`, [b.id])).toBe(1);
     const emails = await t.db.query<{ recipient: string; template: string; order_id: string | null }>(`SELECT recipient, template, order_id FROM outbox WHERE batch_id = $1`, [b.id]);
     expect(emails.rows).toEqual([{ recipient: 'jo@test.picklemypaddle.com', template: 'club_invoice', order_id: null }]);
     // Twice: refused, and nothing new issued or queued.
-    await expect(returnBatch(deps(), { reference: b.reference, returnedOn: '2026-11-04', unchangedCount: 0 })).rejects.toMatchObject({ code: 'not_collected' });
+    await expect(invoiceBatch(deps(), { reference: b.reference, unchangedCount: 0 })).rejects.toMatchObject({ code: 'not_collected' });
     expect(await count(`SELECT count(*)::int AS n FROM outbox WHERE batch_id = $1`, [b.id])).toBe(1);
     await expect(cancelBatch(t.db, b.reference, t.clock.now)).rejects.toMatchObject({ code: 'not_cancellable' });
   });
 
-  it('a batch returned entirely unchanged is Returned with nothing invoiced or emailed', async () => {
+  it('a batch with every paddle unchanged is refused an invoice, and goes back with nothing invoiced or emailed', async () => {
     const club = await setup();
     const b = await createBatch(t.db, { clubId: club.id, collectedOn: '2026-11-01', paddleCount: 3, notes: null, now: t.clock.now });
-    expect((await returnBatch(deps(), { reference: b.reference, returnedOn: '2026-11-04', unchangedCount: 3 })).invoiceId).toBeNull();
-    expect(await findBatch(t.db, b.reference)).toMatchObject({ status: 'returned', invoice: null });
+    await expect(invoiceBatch(deps(), { reference: b.reference, unchangedCount: 3 })).rejects.toMatchObject({ code: 'nothing_to_invoice' });
+    await expect(returnBatch(deps(), { reference: b.reference, returnedOn: '2026-11-04' })).rejects.toMatchObject({ code: 'not_paid' });
+    await returnBatch(deps(), { reference: b.reference, returnedOn: '2026-11-04', unchangedCount: 3 });
+    expect(await findBatch(t.db, b.reference)).toMatchObject({ status: 'returned', returnedOn: '2026-11-04', unchangedCount: 3, invoice: null });
     expect(await count(`SELECT count(*)::int AS n FROM outbox WHERE batch_id = $1`, [b.id])).toBe(0);
   });
 
-  it('refuses a return before collection, in the future, or with more unchanged than collected', async () => {
+  it('refuses a return before collection or in the future, and an invoice with more unchanged than collected', async () => {
     const club = await setup();
     const b = await createBatch(t.db, { clubId: club.id, collectedOn: '2026-11-02', paddleCount: 3, notes: null, now: t.clock.now });
-    await expect(returnBatch(deps(), { reference: b.reference, returnedOn: '2026-11-01', unchangedCount: 0 })).rejects.toMatchObject({ code: 'before_collection' });
-    await expect(returnBatch(deps(), { reference: b.reference, returnedOn: '2026-11-05', unchangedCount: 0 })).rejects.toMatchObject({ code: 'future_date' });
-    await expect(returnBatch(deps(), { reference: b.reference, returnedOn: '2026-11-04', unchangedCount: 4 })).rejects.toMatchObject({ code: 'bad_count' });
+    await expect(returnBatch(deps(), { reference: b.reference, returnedOn: '2026-11-01', unchangedCount: 3 })).rejects.toMatchObject({ code: 'before_collection' });
+    await expect(returnBatch(deps(), { reference: b.reference, returnedOn: '2026-11-05', unchangedCount: 3 })).rejects.toMatchObject({ code: 'future_date' });
+    await expect(invoiceBatch(deps(), { reference: b.reference, unchangedCount: 4 })).rejects.toMatchObject({ code: 'nothing_to_invoice' });
+    await expect(invoiceBatch(deps(), { reference: b.reference, unchangedCount: 1000 })).rejects.toMatchObject({ code: 'bad_count' });
     expect(await findBatch(t.db, b.reference)).toMatchObject({ status: 'collected', returnedOn: null });
   });
 
@@ -277,7 +282,7 @@ describe('clubs and batches in the database', () => {
   it('production refuses to invoice without a PayID: the batch stays Collected and no number is used', async () => {
     const club = await setup();
     const b = await createBatch(t.db, { clubId: club.id, collectedOn: '2026-11-02', paddleCount: 3, notes: null, now: t.clock.now });
-    await expect(returnBatch(deps({ isProduction: true, seller: DEFAULT_SELLER }), { reference: b.reference, returnedOn: '2026-11-04', unchangedCount: 0 }))
+    await expect(invoiceBatch(deps({ isProduction: true, seller: DEFAULT_SELLER }), { reference: b.reference, unchangedCount: 0 }))
       .rejects.toSatisfy((e: unknown) => e instanceof ClubError && e.code === 'payid_missing');
     expect(await findBatch(t.db, b.reference)).toMatchObject({ status: 'collected', returnedOn: null });
     expect(await count(`SELECT last AS n FROM document_counters WHERE series = 'INV'`)).toBe(0);
@@ -286,7 +291,7 @@ describe('clubs and batches in the database', () => {
   it('the invoice email goes to the billing contact, replies to attila@, and its private link opens the invoice', async () => {
     const club = await setup();
     const b = await createBatch(t.db, { clubId: club.id, collectedOn: '2026-11-02', paddleCount: 2, notes: null, now: t.clock.now });
-    await returnBatch(deps(), { reference: b.reference, returnedOn: '2026-11-04', unchangedCount: 0 });
+    await invoiceBatch(deps(), { reference: b.reference, unchangedCount: 0 });
     const sent: EmailMessage[] = [];
     const sender: EmailSender = { name: 'fake', send: async (m) => (sent.push(m), { id: `e${sent.length}` }) };
     await processOutbox({ db: t.db, sender, settings: { isProduction: false, allowList: ['jo@test.picklemypaddle.com'], siteUrl: SITE, adminUrl: null }, now: () => t.clock.now });
@@ -295,7 +300,9 @@ describe('clubs and batches in the database', () => {
     expect(m).toMatchObject({ to: 'jo@test.picklemypaddle.com', replyTo: CLUB_REPLY_TO });
     expect(m.subject).toBe('[TEST] Invoice PMP-INV-0001 for Inner West PC: 2 paddles re-gritted');
     expect(m.text).toContain('Hi Jo,');
-    expect(m.text).toContain('Due by: Wednesday 18 November 2026');
+    expect(m.text).toContain('Payment: Due before your paddles are returned');
+    expect(m.text).toContain('we’ll send the paddles back once it’s paid');
+    expect(m.text).not.toContain('Due by');
     const link = /http:\/\/localhost:4321\/club\/invoice\?n=PMP-INV-0001#([A-Za-z0-9_-]{43})/.exec(m.text);
     expect(link).not.toBeNull();
     const token = link![1]!;
@@ -323,7 +330,7 @@ describe('clubs and batches in the database', () => {
   it('a failed send deletes the token it minted, so no live link exists that nobody received', async () => {
     const club = await setup();
     const b = await createBatch(t.db, { clubId: club.id, collectedOn: '2026-11-02', paddleCount: 2, notes: null, now: t.clock.now });
-    await returnBatch(deps(), { reference: b.reference, returnedOn: '2026-11-04', unchangedCount: 0 });
+    await invoiceBatch(deps(), { reference: b.reference, unchangedCount: 0 });
     const sender: EmailSender = { name: 'fake', send: async () => { throw new Error('boom'); } };
     await processOutbox({ db: t.db, sender, settings: { isProduction: false, allowList: ['jo@test.picklemypaddle.com'], siteUrl: SITE, adminUrl: null }, now: () => t.clock.now });
     expect(await count('SELECT count(*)::int AS n FROM document_tokens')).toBe(0);
@@ -342,8 +349,8 @@ describe('club batches: all-or-nothing, GST end to end, settings and email edge 
     const batch = await createBatch(t.db, { clubId: club.id, collectedOn: '2026-11-02', paddleCount: 4, notes: null, now: t.clock.now });
     return { club, batch };
   };
-  const deps = (over: Partial<Parameters<typeof returnBatch>[0]> = {}) => ({
-    db: t.db, seller: { ...DEFAULT_SELLER, payId: 'payments@picklemypaddle.com' }, isProduction: false, paymentTermsDays: 14, now: t.clock.now, ...over,
+  const deps = (over: Partial<Parameters<typeof invoiceBatch>[0]> = {}) => ({
+    db: t.db, seller: { ...DEFAULT_SELLER, payId: 'payments@picklemypaddle.com' }, isProduction: false, now: t.clock.now, ...over,
   });
   const n = async (sql: string, params: unknown[] = []) => Number((await t.db.query<{ n: number }>(sql, params)).rows[0]!.n);
   const mail = (sender: EmailSender, allow = ['jo@test.picklemypaddle.com']) =>
@@ -356,7 +363,7 @@ describe('club batches: all-or-nothing, GST end to end, settings and email edge 
     // insert have run (renaming the whole table failed earlier, at the CRM job, and proved nothing).
     await t.db.exec(`CREATE FUNCTION refuse_email() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'email refused for the test'; END $$;
       CREATE TRIGGER refuse_email BEFORE INSERT ON outbox FOR EACH ROW WHEN (NEW.kind = 'email') EXECUTE FUNCTION refuse_email()`);
-    await expect(returnBatch(deps(), { reference: batch.reference, returnedOn: '2026-11-04', unchangedCount: 0 })).rejects.toThrow('email refused for the test');
+    await expect(invoiceBatch(deps(), { reference: batch.reference, unchangedCount: 0 })).rejects.toThrow('email refused for the test');
     await t.db.exec('DROP TRIGGER refuse_email ON outbox');
     expect(await n(`SELECT last AS n FROM document_counters WHERE series = 'INV'`)).toBe(0);
     expect(await n('SELECT count(*)::int AS n FROM documents')).toBe(0);
@@ -367,8 +374,8 @@ describe('club batches: all-or-nothing, GST end to end, settings and email edge 
   it('two returns at once: one invoice and one email; the other is refused', async () => {
     const { batch } = await setup();
     const results = await Promise.allSettled([
-      returnBatch(deps(), { reference: batch.reference, returnedOn: '2026-11-04', unchangedCount: 0 }),
-      returnBatch(deps(), { reference: batch.reference, returnedOn: '2026-11-04', unchangedCount: 1 }),
+      invoiceBatch(deps(), { reference: batch.reference, unchangedCount: 0 }),
+      invoiceBatch(deps(), { reference: batch.reference, unchangedCount: 1 }),
     ]);
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
     expect(results.find((r) => r.status === 'rejected')).toMatchObject({ reason: { code: 'not_collected' } });
@@ -379,22 +386,22 @@ describe('club batches: all-or-nothing, GST end to end, settings and email edge 
   it('once GST-registered, a returned batch is invoiced with GST on top, in the database and the email', async () => {
     const { batch } = await setup();
     const seller = { ...DEFAULT_SELLER, abn: '51824753556', gstRegisteredFrom: '2026-11-01', payId: 'payments@picklemypaddle.com' };
-    await returnBatch(deps({ seller, paymentTermsDays: 30 }), { reference: batch.reference, returnedOn: '2026-11-04', unchangedCount: 1 });
+    await invoiceBatch(deps({ seller }), { reference: batch.reference, unchangedCount: 1 });
     const doc = (await t.db.query<{ total_cents: number; gst_cents: number; due_on: string; snapshot: string }>('SELECT total_cents, gst_cents, due_on::text AS due_on, snapshot FROM documents')).rows[0]!;
     // 3 × A$54 = A$162, plus GST A$16.20.
-    expect({ total: Number(doc.total_cents), gst: Number(doc.gst_cents), due: doc.due_on }).toEqual({ total: 17820, gst: 1620, due: '2026-12-04' });
+    expect({ total: Number(doc.total_cents), gst: Number(doc.gst_cents), due: doc.due_on }).toEqual({ total: 17820, gst: 1620, due: null });
     expect(JSON.parse(doc.snapshot)).toMatchObject({ heading: 'Tax invoice', treatment: 'gst_exclusive', subtotalCents: 16200 });
     const sent: EmailMessage[] = [];
     await mail({ name: 'fake', send: async (m) => (sent.push(m), { id: 'e1' }) });
     expect(sent[0]!.text).toContain('Subtotal (excluding GST): A$162');
     expect(sent[0]!.text).toContain('GST (10%): A$16.20');
     expect(sent[0]!.text).toContain('Total: A$178.20');
-    expect(sent[0]!.text).toContain('Due by: Friday 4 December 2026');
+    expect(sent[0]!.text).toContain('Payment: Due before your paddles are returned');
   });
 
   it('outside production, a billing email not on the allow-list is never sent (and no link is made)', async () => {
     const { batch } = await setup();
-    await returnBatch(deps(), { reference: batch.reference, returnedOn: '2026-11-04', unchangedCount: 0 });
+    await invoiceBatch(deps(), { reference: batch.reference, unchangedCount: 0 });
     const sent: EmailMessage[] = [];
     await mail({ name: 'fake', send: async (m) => (sent.push(m), { id: 'e1' }) }, ['someone-else@test.picklemypaddle.com']);
     expect(sent).toHaveLength(0);
@@ -404,7 +411,7 @@ describe('club batches: all-or-nothing, GST end to end, settings and email edge 
 
   it('a temporary failure keeps the link (it may have been delivered) and retries; the admin can retry a failed one', async () => {
     const { batch } = await setup();
-    await returnBatch(deps(), { reference: batch.reference, returnedOn: '2026-11-04', unchangedCount: 0 });
+    await invoiceBatch(deps(), { reference: batch.reference, unchangedCount: 0 });
     const { SendError } = await import('../src/email/sender.js');
     await mail({ name: 'fake', send: async () => { throw new SendError('timeout', false); } });
     expect(await n('SELECT count(*)::int AS n FROM document_tokens')).toBe(1);
@@ -421,7 +428,7 @@ describe('club batches: all-or-nothing, GST end to end, settings and email edge 
 
   it('an issued club invoice can’t be moved to another batch or have its due date changed', async () => {
     const { batch } = await setup();
-    await returnBatch(deps(), { reference: batch.reference, returnedOn: '2026-11-04', unchangedCount: 0 });
+    await invoiceBatch(deps(), { reference: batch.reference, unchangedCount: 0 });
     await expect(t.db.query(`UPDATE documents SET due_on = '2027-01-01'`)).rejects.toThrow(/never edited/);
     await expect(t.db.query(`UPDATE documents SET batch_id = NULL`)).rejects.toThrow(/never edited/);
   });
@@ -430,7 +437,7 @@ describe('club batches: all-or-nothing, GST end to end, settings and email edge 
     await setup();
     const cols = async (table: string) => (await t.db.query<{ c: string }>(`SELECT column_name AS c FROM information_schema.columns WHERE table_name = $1`, [table])).rows.map((r) => r.c);
     for (const table of ['clubs', 'batches']) {
-      expect((await cols(table)).filter((c) => /member|player|discount|code/.test(c)), table).toEqual([]);
+      expect((await cols(table)).filter((c) => /member|player|discount|(^|_)code($|_)/.test(c)), table).toEqual([]);
     }
   });
 
@@ -468,9 +475,13 @@ describe('the admin club pages', () => {
     const batchUrl = batch.headers.get('location')!.replace(/\?.*$/, '');
     expect(batchUrl).toMatch(/^\/admin\/batches\/PMPB-[A-Z2-9]{5}$/);
 
-    const returned = await admin.post(`${batchUrl}/return`, { returnedOn: '2026-11-04', unchangedCount: '1' });
+    // The club pays before the batch goes back: invoicing comes first.
+    const early = await admin.post(`${batchUrl}/return`, { returnedOn: '2026-11-04' });
+    expect(early.status).toBe(400);
+    expect(await early.text()).toContain('invoice it first');
+    const returned = await admin.post(`${batchUrl}/invoice`, { unchangedCount: '1' });
     expect(returned.status).toBe(303);
-    expect(returned.headers.get('location')).toContain('done=batch_returned');
+    expect(returned.headers.get('location')).toContain('done=batch_invoiced');
     const page = await (await admin.get(batchUrl)).text();
     expect(page).toContain('PMP-INV-0001');
     expect(page).toContain('A$216'); // 4 × A$54
@@ -480,7 +491,7 @@ describe('the admin club pages', () => {
     expect(docs).toContain(`href="${batchUrl}"`);
     const doc = await (await admin.get('/admin/documents/PMP-INV-0001')).text();
     expect(doc).toContain('Club batch');
-    expect(doc).toContain('Due by');
+    expect(doc).toContain('Payment is due before your paddles are returned');
   });
 
   it('on staging a real club’s address is refused when adding or editing a club: nothing is saved, queued or synced', async () => {

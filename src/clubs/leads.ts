@@ -16,6 +16,7 @@ import { enqueueClubEmail } from '../email/outbox.js';
 import { ISO_DATE_RE } from '../orders/dates.js';
 import { allowedHere, ClubError, CUSTOMER_SQL, type ClubStatus, type EmailGuard } from './clubs.js';
 import { CLUB_STATUSES, STATUS_LABELS } from './model.js';
+import { checkServiceArea, SERVICE_AREA_VERSION, type Fulfilment } from './service-area.js';
 
 export const MAX_LEAD_MESSAGE = 2000;
 export const MAX_PREFERRED_TIMES = 300;
@@ -26,11 +27,12 @@ const PHONE_RE = /^[0-9 +()\-.]{6,25}$/;
 export { STATUS_LABELS };
 
 /** The form's fields, as strings. */
-export type LeadForm = Partial<Record<'clubName' | 'suburb' | 'contactName' | 'contactEmail' | 'contactPhone' | 'memberCount' | 'message' | 'preferredTimes', string | null | undefined>>;
+export type LeadForm = Partial<Record<'clubName' | 'suburb' | 'postcode' | 'contactName' | 'contactEmail' | 'contactPhone' | 'memberCount' | 'message' | 'preferredTimes', string | null | undefined>>;
 
 export interface LeadInput {
   clubName: string;
   suburb: string;
+  postcode: string;
   contactName: string;
   contactEmail: string;
   contactPhone: string | null;
@@ -48,6 +50,7 @@ export function validateLead(form: LeadForm, guard: EmailGuard): { ok: true; inp
   const errors: LeadErrors = {};
   const clubName = clean(form.clubName);
   const suburb = clean(form.suburb);
+  const postcode = clean(form.postcode).replace(/\s+/g, '');
   const contactName = clean(form.contactName);
   const contactEmail = clean(form.contactEmail).toLowerCase();
   const phone = clean(form.contactPhone);
@@ -56,6 +59,7 @@ export function validateLead(form: LeadForm, guard: EmailGuard): { ok: true; inp
   const preferredTimes = clean(form.preferredTimes).replace(/\r\n/g, '\n');
   if (!clubName || clubName.length > 120) errors.clubName = 'Tell us the club’s name (up to 120 characters).';
   if (!suburb || suburb.length > 80) errors.suburb = 'Tell us the suburb (up to 80 characters).';
+  if (!/^\d{4}$/.test(postcode)) errors.postcode = 'Enter the 4-digit postcode of the club’s venue.';
   if (!contactName || contactName.length > 120) errors.contactName = 'Tell us your name (up to 120 characters).';
   if (!EMAIL_RE.test(contactEmail) || contactEmail.length > 254) errors.contactEmail = 'Enter a valid email address.';
   else if (!allowedHere(contactEmail, guard)) {
@@ -67,7 +71,7 @@ export function validateLead(form: LeadForm, guard: EmailGuard): { ok: true; inp
   if (message.length > MAX_LEAD_MESSAGE) errors.message = `Your message can be up to ${MAX_LEAD_MESSAGE} characters.`;
   if (preferredTimes.length > MAX_PREFERRED_TIMES) errors.preferredTimes = `Up to ${MAX_PREFERRED_TIMES} characters, please.`;
   if (Object.keys(errors).length > 0) return { ok: false, errors };
-  return { ok: true, input: { clubName, suburb, contactName, contactEmail, contactPhone: phone || null, memberCount: count, message: message || null, preferredTimes: preferredTimes || null } };
+  return { ok: true, input: { clubName, suburb, postcode, contactName, contactEmail, contactPhone: phone || null, memberCount: count, message: message || null, preferredTimes: preferredTimes || null } };
 }
 
 const isUniqueViolation = (err: unknown) => (err as { code?: string })?.code === '23505';
@@ -85,10 +89,13 @@ export async function createLead(
 ): Promise<{ clubId: string; created: boolean }> {
   try {
     return await db.tx(async (q) => {
+      const area = checkServiceArea({ suburb: input.suburb, postcode: input.postcode });
       const { rows } = await q.query<{ id: string }>(
-        `INSERT INTO clubs (name, status, is_test, suburb, contact_name, contact_email, contact_phone, club_size, lead_message, preferred_times, created_at, updated_at, last_activity_at)
-         VALUES ($1, 'lead', $2, $3, $4, $5, $6, $7, $8, $9, $10, $10, $10) RETURNING id`,
-        [input.clubName, !opts.isProduction, input.suburb, input.contactName, input.contactEmail, input.contactPhone, input.memberCount, input.message, input.preferredTimes, opts.now],
+        `INSERT INTO clubs (name, status, is_test, suburb, contact_name, contact_email, contact_phone, club_size, lead_message, preferred_times,
+                            venue_postcode, fulfilment_default, area_version, area_review, created_at, updated_at, last_activity_at)
+         VALUES ($1, 'lead', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $14, $14) RETURNING id`,
+        [input.clubName, !opts.isProduction, input.suburb, input.contactName, input.contactEmail, input.contactPhone, input.memberCount, input.message, input.preferredTimes,
+          input.postcode, area.inside ? 'local' : 'postal', SERVICE_AREA_VERSION, area.needsReview, opts.now],
       );
       const id = rows[0]!.id;
       await enqueueClubEmail(q, id, 'club_lead_ack', opts.now);
@@ -186,3 +193,18 @@ export async function pipelineCounts(db: Queryable): Promise<Record<ClubStatus, 
   return out;
 }
 
+
+/**
+ * An admin override of how this club's batches travel (SCRUM-102): 'local', 'postal', or '' to go
+ * back to the service area's default. The override and when it was made are recorded.
+ */
+export async function setFulfilmentOverride(db: Queryable, id: string, value: string, now: Date): Promise<boolean> {
+  const v = value.trim();
+  if (v !== '' && v !== 'local' && v !== 'postal') throw new ClubError('bad_fulfilment', 'Choose local pickup, post, or the default.');
+  const { rows } = await db.query(
+    'UPDATE clubs SET fulfilment_override = $2, fulfilment_override_at = $4, updated_at = $3, last_activity_at = $3 WHERE id = $1::uuid RETURNING id',
+    [id, v || null, now, v ? now : null],
+  );
+  if (rows.length === 1) await enqueueClubCrmSync(db, id, now);
+  return rows.length === 1;
+}

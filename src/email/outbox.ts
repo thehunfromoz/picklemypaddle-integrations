@@ -392,7 +392,7 @@ async function sendBatchEmail(deps: OutboxDeps, row: OutboxRow, now: Date): Prom
       subtotalCents: snap.subtotalCents,
       gstCents: snap.gstCents,
       totalCents: snap.totalCents,
-      dueOn: snap.dueOn ?? snap.issuedOn,
+      postageAllowanceCents: snap.lines.length > 1 ? -(snap.lines[1]?.amountCents ?? 0) : 0,
       treatment: snap.treatment,
       payId: snap.payId ?? '',
       payByCard: snap.payByCard === true,

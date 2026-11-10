@@ -91,10 +91,17 @@ export function clubTreatment(date: string, tax: TaxSettings): TaxTreatment {
  * A club invoice's amounts (SCRUM-85, GST rule decided 4 Nov 2026): the paddles at the club price
  * (GST-exclusive), then GST at 10% of that subtotal rounded to the cent, then the total.
  */
-export function clubInvoiceAmounts(paddles: number, remitPerPaddleCents: number, treatment: TaxTreatment): { subtotalCents: number; gstCents: number; totalCents: number } {
+export function clubInvoiceAmounts(
+  paddles: number,
+  remitPerPaddleCents: number,
+  treatment: TaxTreatment,
+  /** Return postage we allow a club for a posted batch of 6 or more (SCRUM-102): taken off before GST. */
+  postageAllowanceCents = 0,
+): { subtotalCents: number; gstCents: number; totalCents: number } {
   if (!Number.isInteger(paddles) || paddles < 1) throw new Error('a club invoice is for at least one paddle');
   if (treatment === 'gst_inclusive') throw new Error('club invoices are never GST-inclusive');
-  const subtotalCents = paddles * remitPerPaddleCents;
+  if (!Number.isInteger(postageAllowanceCents) || postageAllowanceCents < 0 || postageAllowanceCents >= paddles * remitPerPaddleCents) throw new Error('the postage allowance must be less than the paddles’ price');
+  const subtotalCents = paddles * remitPerPaddleCents - postageAllowanceCents;
   const gstCents = treatment === 'gst_exclusive' ? Math.round((subtotalCents * GST_PERCENT) / 100) : 0;
   return { subtotalCents, gstCents, totalCents: subtotalCents + gstCents };
 }
