@@ -1,6 +1,6 @@
 /**
- * Calendar dates for the turnaround promise: back in the post within 10 business days of the
- * paddles arriving (decided 6 Oct 2026).
+ * Calendar dates for the turnaround promise: back in the post within 10 business days (by default;
+ * Attila can set another number per order, SCRUM-105) of the paddles arriving (decided 6 Oct 2026).
  *
  * Business days skip weekends and NSW public holidays (SCRUM-73, ./holidays.ts). Dates are plain
  * YYYY-MM-DD calendar dates in Sydney, counted with UTC arithmetic so daylight-saving changes
