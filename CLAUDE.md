@@ -27,3 +27,8 @@ bash ci/container-test.sh     # the image under QEMU -cpu Penryn with a real Pos
 - Dummy secrets in tests are assembled at runtime, so push protection doesn't reject them.
 - On staging, try the jobs with `ssh pmp-staging cli <name> …` (backdate-order, unpaid-run,
   retention-run, crm-resync, hubspot-setup) and look with `ssh pmp-staging sql "select …"`.
+- **A sent agreement version is frozen** (`src/clubs/agreements/`, hash pinned in a test). Add a
+  new version file; never edit an old one.
+- **Turnaround:** `TURNAROUND_BUSINESS_DAYS` in `src/orders/dates.ts` is the one default; the site's
+  copy is compared by a test. Per-order value is `orders.turnaround_days`, fixed once queued.
+- Staging emails all carry a "TEST INVOICE…" banner, club emails included: expected, not a bug.
