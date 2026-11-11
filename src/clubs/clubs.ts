@@ -469,7 +469,7 @@ export const MAX_POSTAGE_ALLOWANCE_CENTS = 20_000;
 
 /**
  * A batch is re-gritted: in one transaction its invoice is issued (re-gritted paddles only, with
- * the standard return postage taken off for a posted batch of 6 or more) and queued by email, and the
+ * the standard cost of the club's postage to us taken off a posted batch of 6 or more) and queued by email, and the
  * batch moves to Invoiced. The club pays before the batch goes back (agreement 7.3). All of it, or
  * none of it. A batch where every paddle came back unchanged has nothing to invoice: it goes back
  * with `returnBatch` instead.
