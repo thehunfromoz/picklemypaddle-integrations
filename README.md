@@ -171,7 +171,7 @@ writes a history row with who made it, and queues its email in the same transact
 Questions sends nothing: Attila writes to the customer himself from info@.
 
 **Queue and promise (SCRUM-73).** When an order enters In queue, its promise date is stored:
-arrival + 10 business days, skipping weekends and NSW public holidays (`src/orders/holidays.ts`,
+arrival + the order's turnaround (10 business days by default, `TURNAROUND_BUSINESS_DAYS` in `src/orders/dates.ts`, the one place to change it; Attila sets another number, 1 to 65, when he accepts the order, SCRUM-105: stored as `turnaround_days`, in the acceptance email and the payment email, and fixed once queued), skipping weekends and NSW public holidays (`src/orders/holidays.ts`,
 from nsw.gov.au; the August Bank Holiday is a working day). The In queue email, the status page
 ("back in the post by", In queue and Re-gritted) and the admin all show that same date; the admin
 flags it within 2 business days and once past. The status page also shows the paddles ahead in

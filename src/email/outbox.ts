@@ -65,6 +65,8 @@ export interface EmailPayload {
   gstCents?: number;
   taxTreatment?: TaxTreatment;
   backInPostBy?: string;
+  /** Accepted (SCRUM-105): the turnaround Attila set, in business days. */
+  turnaroundDays?: number;
   reason?: string;
   /** Payment reminder (SCRUM-83): the Sydney day the order lapses. */
   lapsesOn?: string;
@@ -185,6 +187,8 @@ interface OrderFacts {
   tracking_number: string | null;
   /** YYYY-MM-DD, read as text so no driver turns the calendar date into a moment in time. */
   arrived_on: string | null;
+  /** SCRUM-105: business days Attila set at Accept; null before it (the default). */
+  turnaround_days: number | null;
   /** SCRUM-63: the code on the order and what it gives, saved at submit. */
   discount_code: string | null;
   discount_kind: DiscountKind | null;
@@ -259,7 +263,7 @@ async function sendOne(deps: OutboxDeps, row: OutboxRow, now: Date): Promise<key
   if (row.club_id) return sendClubEmail(deps, row, now);
 
   const { rows: orders } = await db.query<OrderFacts>(
-    `SELECT id, reference, name, tracking_number, arrived_on::text AS arrived_on, discount_code, discount_kind, discount_value
+    `SELECT id, reference, name, tracking_number, arrived_on::text AS arrived_on, turnaround_days, discount_code, discount_kind, discount_value
        FROM orders WHERE id = $1`,
     [row.order_id],
   );
@@ -321,6 +325,7 @@ async function sendOne(deps: OutboxDeps, row: OutboxRow, now: Date): Promise<key
     adminUrl: settings.adminUrl ? `${settings.adminUrl}/admin/orders/${order.reference}` : null,
     trackingNumber: order.tracking_number ?? undefined,
     arrivedOn: order.arrived_on ?? undefined,
+    turnaroundDays: order.turnaround_days ?? undefined,
     ...(order.discount_code && order.discount_kind && order.discount_value !== null
       ? { discountOffer: { code: order.discount_code, kind: order.discount_kind, value: Number(order.discount_value) } }
       : {}),

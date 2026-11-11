@@ -432,6 +432,25 @@ describe('moving orders (SCRUM-72 AC3, AC4, AC6, AC7)', () => {
   });
 });
 
+describe('turnaround at Accept (SCRUM-105)', () => {
+  it('the Accept form asks for it (10 by default), refuses a bad number, and saves Attila’s one for the email and the date', async () => {
+    t = await makeApp();
+    const a = await makeAdmin(t);
+    const { reference } = await placeOrder(t);
+    const page = await (await a.get(`/admin/orders/${reference}?to=accepted`)).text();
+    expect(page).toMatch(/name="turnaround"[^>]*value="10"/);
+    for (const bad of ['0', '66', '2.5', 'abc']) {
+      const res = await a.post(`/admin/orders/${reference}/status`, { to: 'accepted', turnaround: bad });
+      expect(res.status, bad).toBe(400);
+      expect(await res.text()).toContain('whole number of business days, 1 to 65');
+      expect(await statusOf(t, reference)).toBe('submitted');
+    }
+    await move(a, reference, 'accepted', { turnaround: '30' });
+    const stored = (await t.db.query<{ turnaround_days: number }>('SELECT turnaround_days FROM orders WHERE reference = $1', [reference])).rows[0]!;
+    expect(stored.turnaround_days).toBe(30);
+  });
+});
+
 describe('outbox retry (SCRUM-72 AC2)', () => {
   it('puts a failed email back in the queue, and only a failed one', async () => {
     t = await makeApp();

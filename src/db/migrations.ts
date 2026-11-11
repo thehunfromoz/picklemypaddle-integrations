@@ -725,6 +725,16 @@ export const MIGRATIONS: readonly Migration[] = [
       ALTER TABLE orders ADD COLUMN IF NOT EXISTS artwork_ack_at timestamptz;
     `,
   },
+  {
+    version: 23,
+    name: 'order turnaround',
+    sql: `
+      -- SCRUM-105: the turnaround Attila set when he accepted the order, in business days (1 to 65).
+      -- NULL for orders accepted before this: they use the default. Not personal data, so erasure keeps it.
+      ALTER TABLE orders ADD COLUMN IF NOT EXISTS turnaround_days integer
+        CHECK (turnaround_days IS NULL OR turnaround_days BETWEEN 1 AND 65);
+    `,
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

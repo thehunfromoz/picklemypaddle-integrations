@@ -2,7 +2,8 @@
  * Status transitions (the server-side core of SCRUM-72) and the emails they queue (SCRUM-69).
  */
 import { afterEach, describe, expect, it } from 'vitest';
-import { addBusinessDays, backInPostBy, sydneyDate } from '../src/orders/dates.js';
+import { addBusinessDays, backInPostBy, parseTurnaround, sydneyDate, TURNAROUND_BUSINESS_DAYS } from '../src/orders/dates.js';
+import { render, sampleContext } from '../src/email/templates.js';
 import { STATUSES, type OrderStatus } from '../src/orders/model.js';
 import { canTransition, EMAIL_ON, TRANSITIONS, TransitionError, transitionOrder, type Actor } from '../src/orders/transitions.js';
 import { POSTAGE_TABLES, type PostageTable } from '../src/pricing/postage-data.js';
@@ -208,7 +209,7 @@ describe(`price frozen at Accept (SCRUM-81, ${DB_BACKEND})`, () => {
       postage_override_reason: null, gst_cents: 0, tax_treatment: 'not_registered', terms_version: 'price:2026-01-01;gst:none',
       terms_date: sydneyDate(t.clock.now),
     });
-    expect(await acceptedEmail(ref)).toEqual({ amountCents: 13800, subtotalCents: 12000, postageCents: 1800, gstCents: 0, taxTreatment: 'not_registered' });
+    expect(await acceptedEmail(ref)).toEqual({ amountCents: 13800, subtotalCents: 12000, postageCents: 1800, gstCents: 0, taxTreatment: 'not_registered', turnaroundDays: 10 });
   });
 
   it('includes GST from the registration day, and leaves orders accepted before it unchanged', async () => {
@@ -257,6 +258,64 @@ describe(`price frozen at Accept (SCRUM-81, ${DB_BACKEND})`, () => {
     const ref = await newOrder();
     for (const postageCents of [-1, 100_001, 12.5]) {
       expect((await accept(ref, { postageCents, postageReason: 'x' }).catch((e) => e)).code, String(postageCents)).toBe('postage_invalid');
+    }
+  });
+});
+
+describe(`turnaround set at Accept (SCRUM-105, ${DB_BACKEND})`, () => {
+  let t: TestApp;
+  afterEach(async () => t?.close());
+  const deps = () => ({ db: t.db, isProduction: false, now: t.clock.now });
+  const newOrder = async () => ((await (await post(t, await orderForm(t))).json()) as { reference: string }).reference;
+  const row = async (ref: string) =>
+    (await t.db.query<{ turnaround_days: number | null; promise_on: string | null }>('SELECT turnaround_days, promise_on::text AS promise_on FROM orders WHERE reference = $1', [ref])).rows[0]!;
+  const payloadOf = async (ref: string, template: string) =>
+    (await t.db.query<{ payload: { turnaroundDays?: number; backInPostBy?: string } }>(
+      `SELECT x.payload FROM outbox x JOIN orders o ON o.id = x.order_id WHERE o.reference = $1 AND x.template = $2`, [ref, template])).rows[0]!.payload;
+
+  it('is 10 business days unless Attila sets another: stored, in the acceptance email, and the back-in-post date follows it', async () => {
+    t = await makeApp({ env: { APP_ENV: 'staging' } });
+    const dflt = await newOrder();
+    const custom = await newOrder();
+    await transitionOrder(deps(), { reference: dflt, to: 'accepted', actor: 'admin' });
+    await transitionOrder(deps(), { reference: custom, to: 'accepted', actor: 'admin', turnaroundDays: 25 });
+    expect((await row(dflt)).turnaround_days).toBe(TURNAROUND_BUSINESS_DAYS);
+    expect((await row(custom)).turnaround_days).toBe(25);
+    expect((await payloadOf(custom, 'accepted')).turnaroundDays).toBe(25);
+    for (const ref of [dflt, custom]) {
+      await transitionOrder(deps(), { reference: ref, to: 'paid', actor: 'stripe' });
+      await transitionOrder(deps(), { reference: ref, to: 'in_queue', actor: 'admin', arrivedOn: '2026-10-26' });
+    }
+    expect((await row(dflt)).promise_on).toBe(backInPostBy('2026-10-26'));
+    expect((await row(custom)).promise_on).toBe(addBusinessDays('2026-10-26', 25));
+    expect((await payloadOf(custom, 'in_queue')).backInPostBy).toBe(addBusinessDays('2026-10-26', 25));
+    // The history says when it isn't the default, and not when it is.
+    const notes = (await t.db.query<{ note: string | null }>(`SELECT h.note FROM status_history h JOIN orders o ON o.id = h.order_id WHERE o.reference = $1 AND h.status = 'accepted'`, [custom])).rows[0]!.note;
+    expect(notes).toContain('Turnaround set to 25 business days (default 10).');
+  });
+
+  it('refuses 0, 66, fractions and nonsense, and accepts 1 and 65', async () => {
+    t = await makeApp({ env: { APP_ENV: 'staging' } });
+    const ref = await newOrder(); // one order: a refusal changes nothing, and the form is rate limited
+    for (const bad of [0, 66, 2.5, -3, Number.NaN]) {
+      const err = await transitionOrder(deps(), { reference: ref, to: 'accepted', actor: 'admin', turnaroundDays: bad }).catch((e) => e);
+      expect(err, String(bad)).toBeInstanceOf(TransitionError);
+      expect([err.httpStatus, err.code]).toEqual([400, 'turnaround_invalid']);
+      expect((await t.db.query<{ status: string }>('SELECT status FROM orders WHERE reference = $1', [ref])).rows[0]!.status).toBe('submitted');
+    }
+    for (const ok of [1, 65]) {
+      const fresh = ok === 1 ? ref : await newOrder();
+      await transitionOrder(deps(), { reference: fresh, to: 'accepted', actor: 'admin', turnaroundDays: ok });
+      expect((await row(fresh)).turnaround_days).toBe(ok);
+    }
+    expect([parseTurnaround('1'), parseTurnaround(' 65 '), parseTurnaround('66'), parseTurnaround('0'), parseTurnaround('1.5'), parseTurnaround('abc'), parseTurnaround('')]).toEqual([1, 65, null, null, null, null, null]);
+  });
+
+  it('the acceptance and payment emails say the number, and 10 when none is given', () => {
+    for (const name of ['accepted', 'payment_received'] as const) {
+      const base = sampleContext(name, true);
+      expect(render(name, base).text).toContain('within 10 business days of arriving');
+      expect(render(name, { ...base, turnaroundDays: 30 }).text).toContain('within 30 business days of arriving');
     }
   });
 });
