@@ -195,6 +195,25 @@ export async function pipelineCounts(db: Queryable): Promise<Record<ClubStatus, 
 
 
 /**
+ * The club's venue suburb and postcode, set by hand (a club added in admin has only a billing address).
+ * The service area's default, its list version and the review flag are worked out again from them.
+ */
+export async function setVenue(db: Queryable, id: string, input: { suburb: string; postcode: string }, now: Date): Promise<boolean> {
+  const suburb = input.suburb.trim().replace(/\s+/g, ' ');
+  const postcode = input.postcode.trim();
+  if (suburb.length < 2 || suburb.length > 100) throw new ClubError('bad_venue', 'Enter the venue suburb.');
+  if (!/^\d{4}$/.test(postcode)) throw new ClubError('bad_venue', 'The postcode is 4 digits, like 2077.');
+  const area = checkServiceArea({ suburb, postcode });
+  const { rows } = await db.query(
+    `UPDATE clubs SET suburb = $2, venue_postcode = $3, fulfilment_default = $4, area_version = $5, area_review = $6, updated_at = $7, last_activity_at = $7
+      WHERE id = $1::uuid RETURNING id`,
+    [id, suburb, postcode, area.inside ? 'local' : 'postal', SERVICE_AREA_VERSION, area.needsReview, now],
+  );
+  if (rows.length === 1) await enqueueClubCrmSync(db, id, now);
+  return rows.length === 1;
+}
+
+/**
  * An admin override of how this club's batches travel (SCRUM-102): 'local', 'postal', or '' to go
  * back to the service area's default. The override and when it was made are recorded.
  */

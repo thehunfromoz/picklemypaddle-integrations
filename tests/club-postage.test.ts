@@ -3,7 +3,7 @@
  * instead of picked up, with one tracking number to us and one back, and a note.
  */
 import { afterEach, describe, expect, it } from 'vitest';
-import { cancelBatch, ClubError, cleanTracking, createBatch, createClub, findBatch, invoiceBatch, returnBatch } from '../src/clubs/clubs.js';
+import { cancelBatch, ClubError, cleanTracking, createBatch, createClub, findBatch, invoiceBatch, postcodeFromAddress, returnBatch } from '../src/clubs/clubs.js';
 import { recordClubPayment } from '../src/clubs/payments.js';
 import { quotePostage } from '../src/pricing/postage.js';
 import { DEFAULT_SELLER } from '../src/documents/documents.js';
@@ -147,7 +147,7 @@ describe('the admin for postal batches', () => {
     // No venue postcode on this club, so the standard cost can't be worked out: it is entered.
     const noQuote = await admin.post(`/admin/batches/${ref}/invoice`, { unchangedCount: '0' });
     expect(noQuote.status).toBe(400);
-    expect(await noQuote.text()).toContain('no venue postcode on file');
+    expect(await noQuote.text()).toContain('no venue postcode on file, and its billing address doesn’t end in one');
     const inv = await admin.post(`/admin/batches/${ref}/invoice`, { unchangedCount: '0', postageAllowance: '18.50' });
     expect(inv.status).toBe(303);
     let bpage = await (await admin.get(`/admin/batches/${ref}`)).text();
@@ -230,5 +230,48 @@ describe('pickup or post in the admin (SCRUM-102)', () => {
       `INSERT INTO clubs (name, status, is_test, contact_email, suburb, venue_postcode, fulfilment_default, area_version, area_review) VALUES ('Odd PC', 'lead', true, 'jo@test.picklemypaddle.com', 'Hornsby', '2560', 'postal', 'v', true) RETURNING id`,
     );
     expect(await (await admin.get(`/admin/clubs/${r.rows[0]!.id}`)).text()).toContain('different postcode');
+  });
+});
+
+describe('the club’s postcode for the postage allowance (11 Nov 2026 UAT: a club added by hand has only a billing address)', () => {
+  it('reads the postcode at the end of an address, and nothing else', () => {
+    expect(postcodeFromAddress('10/13 Racecourse Rd, Gosford NSW 2250')).toBe('2250');
+    expect(postcodeFromAddress('Unit 4, 22 Smith St Hornsby 2077 ')).toBe('2077');
+    expect(postcodeFromAddress('2250')).toBe('2250');
+    for (const none of ['1 Court St', '12345', 'PO Box 22345', 'Gosford NSW', '', null, undefined]) expect(postcodeFromAddress(none)).toBeNull();
+    expect(postcodeFromAddress('2250 Main Rd')).toBeNull(); // a street number is not a postcode
+  });
+
+  it('a club with no venue postcode is invoiced from the postcode in its billing address', async () => {
+    t = await makeApp();
+    const c = await createClub(t.db, { name: 'Gosford PC', billingName: 'Jo', billingEmail: 'jo@test.picklemypaddle.com', billingAddress: '10/13 Racecourse Rd, Gosford NSW 2250', abn: null, notes: null }, { isProduction: false, now: t.clock.now });
+    expect(c.venuePostcode).toBeNull();
+    const b = await createBatch(t.db, { clubId: c.id, collectedOn: today(), paddleCount: 6, notes: null, now: t.clock.now, method: 'post' });
+    const quote = quotePostage(6, '2250', today());
+    if (!quote.ok) throw new Error('fixture: no quote');
+    expect((await invoiceBatch(deps(), { reference: b.reference, unchangedCount: 0 })).postageAllowanceCents).toBe(quote.postageCents);
+  });
+
+  it('a venue postcode set on the club wins over the billing address, and sets the pickup-or-post default', async () => {
+    t = await makeApp();
+    const admin = await makeAdmin(t);
+    const c = await createClub(t.db, { name: 'Gosford PC', billingName: 'Jo', billingEmail: 'jo@test.picklemypaddle.com', billingAddress: '10/13 Racecourse Rd, Gosford NSW 2250', abn: null, notes: null }, { isProduction: false, now: t.clock.now });
+    const page = await (await admin.get(`/admin/clubs/${c.id}`)).text();
+    expect(page).toContain('invoices use the 2250 at the end of the billing address');
+    expect(page).toContain('name="postcode"');
+    const bad = await admin.post(`/admin/clubs/${c.id}/venue`, { suburb: 'Hornsby', postcode: '20 77' });
+    expect(bad.status).toBe(400);
+    expect(await bad.text()).toContain('The postcode is 4 digits');
+    const ok = await admin.post(`/admin/clubs/${c.id}/venue`, { suburb: 'Hornsby', postcode: '2077' });
+    expect(ok.headers.get('location')).toContain('done=venue_saved');
+    const after = (await t.db.query<{ suburb: string; venue_postcode: string; fulfilment_default: string }>(`SELECT suburb, venue_postcode, fulfilment_default FROM clubs WHERE id = $1`, [c.id])).rows[0]!;
+    expect(after).toMatchObject({ suburb: 'Hornsby', venue_postcode: '2077', fulfilment_default: 'local' });
+    const b = await createBatch(t.db, { clubId: c.id, collectedOn: today(), paddleCount: 6, notes: null, now: t.clock.now, method: 'post' });
+    const quote = quotePostage(6, '2077', today());
+    if (!quote.ok) throw new Error('fixture: no quote');
+    expect((await invoiceBatch(deps(), { reference: b.reference, unchangedCount: 0 })).postageAllowanceCents).toBe(quote.postageCents);
+    const outside = await admin.post(`/admin/clubs/${c.id}/venue`, { suburb: 'Gosford', postcode: '2250' });
+    expect(outside.status).toBe(303);
+    expect((await t.db.query<{ fulfilment_default: string }>(`SELECT fulfilment_default FROM clubs WHERE id = $1`, [c.id])).rows[0]!.fulfilment_default).toBe('postal');
   });
 });

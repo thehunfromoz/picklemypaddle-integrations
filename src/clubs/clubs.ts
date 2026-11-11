@@ -454,13 +454,21 @@ export interface ReturnDeps {
 }
 
 /**
+ * The four-digit postcode at the end of an address ("10/13 Racecourse Rd, Gosford NSW 2250" → "2250"), or null.
+ * The fallback for a club with no venue postcode of its own (clubs added by hand have only a billing address).
+ */
+export function postcodeFromAddress(address: string | null | undefined): string | null {
+  return /(?:^|[\s,])(\d{4})\s*$/.exec(address ?? '')?.[1] ?? null;
+}
+
+/**
  * The standard cost of the club posting a batch to us (SCRUM-102, agreement 5.3): Australia Post's
  * price for that many paddles at the club's venue postcode, on the day (the same table that prices
  * return postage on individual orders; the route is taken as the same either way). A reason instead when it can't be
  * worked out (no postcode on file, or a size the packing table doesn't cover): then it is entered.
  */
 export function standardPostage(paddles: number, postcode: string | null, date: string): { cents: number } | { reason: string } {
-  if (!postcode) return { reason: 'This club has no venue postcode on file: enter the standard postage.' };
+  if (!postcode) return { reason: 'This club has no venue postcode on file, and its billing address doesn’t end in one: set the venue on the club’s page, or enter the standard postage here.' };
   const q = quotePostage(paddles, postcode, date);
   return q.ok ? { cents: q.postageCents } : { reason: q.reason };
 }
@@ -482,8 +490,8 @@ export async function invoiceBatch(
   checkCount(args.unchangedCount, 'Paddles returned unchanged');
   try {
     return await deps.db.tx(async (q) => {
-      const { rows } = await q.query<{ id: string; club_id: string; paddle_count: number; status: BatchStatus; method: BatchMethod; venue_postcode: string | null }>(
-        `SELECT b.id, b.club_id, b.paddle_count, b.status, b.method, c.venue_postcode
+      const { rows } = await q.query<{ id: string; club_id: string; paddle_count: number; status: BatchStatus; method: BatchMethod; venue_postcode: string | null; billing_address: string | null }>(
+        `SELECT b.id, b.club_id, b.paddle_count, b.status, b.method, c.venue_postcode, c.billing_address
            FROM batches b JOIN clubs c ON c.id = b.club_id WHERE b.reference = $1 FOR UPDATE OF b`,
         [args.reference],
       );
@@ -496,7 +504,7 @@ export async function invoiceBatch(
         if (args.postageAllowanceCents != null) {
           allowance = args.postageAllowanceCents;
         } else {
-          const std = standardPostage(Number(b.paddle_count), b.venue_postcode, sydneyDate(now));
+          const std = standardPostage(Number(b.paddle_count), b.venue_postcode ?? postcodeFromAddress(b.billing_address), sydneyDate(now));
           if ('reason' in std) throw new ClubError('postage_needed', std.reason);
           allowance = std.cents;
         }
