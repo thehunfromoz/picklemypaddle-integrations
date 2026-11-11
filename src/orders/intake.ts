@@ -77,6 +77,7 @@ export function parseOrderForm(fd: FormData): ParsedForm {
       postcode: str(fd.get('postcode')),
       consent: str(fd.get('consent')) === 'yes',
       tournamentAck: str(fd.get('tournamentAck')) === 'yes',
+      artworkAck: str(fd.get('artworkAck')) === 'yes',
       paddles: paddles.map((p) => ({ brand: p.brand, model: p.model, front: info(p.front), back: info(p.back) })),
     },
     files: paddles.map((p) => ({ front: p.front, back: p.back })),
@@ -201,8 +202,8 @@ export async function createOrder(
         const reference = (deps.newReference ?? newReference)();
         const { rows } = await q.query<{ id: string }>(
           `INSERT INTO orders (reference, status, status_changed_at, is_test, is_smoke, name, email, email_norm, phone,
-             street, suburb, state, postcode, consent_at, tournament_ack_at, idempotency_key, created_at, updated_at)
-           VALUES ($1, 'submitted', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $2, $2, $13, $2, $2)
+             street, suburb, state, postcode, consent_at, tournament_ack_at, artwork_ack_at, idempotency_key, created_at, updated_at)
+           VALUES ($1, 'submitted', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $2, $2, $2, $13, $2, $2)
            RETURNING id`,
           [reference, now, isTest, isSmoke, t(input.name), t(input.email), emailNorm, t(input.phone) || null,
             t(input.street), t(input.suburb), input.state, t(input.postcode), idempotencyKey],

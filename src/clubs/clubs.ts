@@ -17,7 +17,7 @@ import { randomInt } from 'node:crypto';
 import type { Db, Queryable } from '../db/db.js';
 import { DocumentError, issueClubInvoice, type Seller } from '../documents/documents.js';
 import { quotePostage } from '../pricing/postage.js';
-import { isAllowed } from '../email/outbox.js';
+import { enqueueBatchEmail, isAllowed } from '../email/outbox.js';
 import { ISO_DATE_RE, sydneyDate } from '../orders/dates.js';
 import { REFERENCE_ALPHABET } from '../orders/model.js';
 import { isValidAbn } from '../pricing/terms.js';
@@ -563,6 +563,7 @@ export async function returnBatch(
       `UPDATE batches SET status = 'returned', returned_on = $2::date, return_tracking = $4, status_changed_at = $3, updated_at = $3 WHERE id = $1`,
       [b.id, args.returnedOn, now, returnTracking || null],
     );
+    await enqueueBatchEmail(q, b.id, 'club_returned', now);
     await enqueueClubCrmSync(q, b.club_id, now);
   });
 }

@@ -35,6 +35,7 @@ describe(`POST /api/orders (${DB_BACKEND})`, () => {
     expect(o.email_norm).toBe('player@test.picklemypaddle.com');
     expect(o.consent_at).toBeTruthy();
     expect(o.tournament_ack_at).toBeTruthy();
+    expect(o.artwork_ack_at).toBeTruthy(); // SCRUM-104
     expect(await count(t.db, 'status_history')).toBe(1);
     expect(await count(t.db, 'paddles')).toBe(1);
     expect(await count(t.db, 'photos')).toBe(2);
@@ -90,11 +91,21 @@ describe(`POST /api/orders (${DB_BACKEND})`, () => {
 
   it('re-validates every field the browser checks (400 with keys the form can show)', async () => {
     t = await makeApp();
-    const fd = await orderForm(t, { overrides: { email: 'nope', postcode: '20', state: 'XX', consent: '', tournamentAck: 'no' } });
+    const fd = await orderForm(t, { overrides: { email: 'nope', postcode: '20', state: 'XX', consent: '', tournamentAck: 'no', artworkAck: '' } });
     const res = await post(t, fd);
     expect(res.status).toBe(400);
     const { errors } = (await res.json()) as { errors: Record<string, string> };
-    expect(Object.keys(errors).sort()).toEqual(['consent', 'email', 'postcode', 'state', 'tournamentAck']);
+    expect(Object.keys(errors).sort()).toEqual(['artworkAck', 'consent', 'email', 'postcode', 'state', 'tournamentAck']);
+  });
+
+  it('refuses an order without the artwork tick-box, and stores when it was accepted (SCRUM-104)', async () => {
+    t = await makeApp();
+    const res = await post(t, await orderForm(t, { overrides: { artworkAck: '' } }));
+    expect(res.status).toBe(400);
+    const { errors } = (await res.json()) as { errors: Record<string, string> };
+    expect(Object.keys(errors)).toEqual(['artworkAck']);
+    expect(errors.artworkAck).toMatch(/black and not see-through/);
+    expect(await count(t.db, 'orders')).toBe(0);
   });
 
   it('refuses a disguised file by its content, as a field error', async () => {
@@ -183,7 +194,7 @@ describe(`POST /api/orders (${DB_BACKEND})`, () => {
     let calls = 0;
     const order = await createOrder(
       { db: t.db, photos: t.photos, isProduction: false, now: () => t.clock.now, newReference: () => (++calls === 1 ? first.reference : 'PMP-ZZZZZ') },
-      { name: 'B', email: 'b@test.picklemypaddle.com', street: 's', suburb: 's', state: 'NSW', postcode: '2000', consent: true, tournamentAck: true, paddles: [{ brand: 'X' }] },
+      { name: 'B', email: 'b@test.picklemypaddle.com', street: 's', suburb: 's', state: 'NSW', postcode: '2000', consent: true, tournamentAck: true, artworkAck: true, paddles: [{ brand: 'X' }] },
       [{ front: photo, back: photo }],
       null,
     );

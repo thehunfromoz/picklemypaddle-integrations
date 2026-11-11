@@ -29,6 +29,7 @@ export const TEMPLATES = [
   'payment_received',
   'refund_issued',
   'club_invoice',
+  'club_returned',
   'club_lead_ack',
   'alert_club_lead',
   'club_agreement',
@@ -103,6 +104,16 @@ export interface TemplateContext {
     sections: { heading: string; blocks: ({ p: string } | { list: string[] })[] }[];
     schedule: [string, string][];
     url: string;
+  };
+  /** A club batch going back to the club (SCRUM-102 UAT): how, when, and the tracking number for a posted one. */
+  returned?: {
+    method: 'pickup' | 'post';
+    paddles: number;
+    /** The return date, YYYY-MM-DD. */
+    on: string;
+    tracking: string | null;
+    /** How many came back unchanged (not re-gritted, not charged). */
+    unchanged: number;
   };
   /** SCRUM-93 alert: the club was already on file, so this is a second enquiry. */
   duplicate?: boolean;
@@ -409,6 +420,33 @@ function build(name: TemplateName, ctx: TemplateContext): { subject: string; blo
       };
     }
 
+    case 'club_returned': {
+      // SCRUM-102 UAT: when the batch goes back to the club, by drop-off or post (with its tracking number).
+      const batch = need(ctx, 'reference', name);
+      const club = need(ctx, 'club', name);
+      const r = need(ctx, 'returned', name);
+      const posted = r.method === 'post';
+      return {
+        customer: true,
+        subject: posted ? `Your batch ${batch} is on its way back to ${club.name}` : `Your batch ${batch} has been returned to ${club.name}`,
+        blocks: [
+          { p: `Hi ${need(ctx, 'firstName', name)},` },
+          { p: posted
+            ? `Your batch ${batch} (${r.paddles} ${paddleWord(r.paddles)}) was posted back to ${club.name} on ${longDate(r.on)}.`
+            : `Your batch ${batch} (${r.paddles} ${paddleWord(r.paddles)}) was dropped back to ${club.name} on ${longDate(r.on)}.` },
+          { kv: [
+            ['Batch', batch],
+            ['Paddles', String(r.paddles)],
+            [posted ? 'Posted on' : 'Returned on', longDate(r.on)],
+            ...(posted ? [['Tracking number', r.tracking ?? 'None, it was not tracked'] as [string, string]] : []),
+          ] },
+          ...(r.unchanged > 0 ? [{ p: `${r.unchanged} of the ${r.paddles} ${paddleWord(r.paddles)} came back unchanged (not re-gritted, and not charged).` } as Block] : []),
+          ...(posted ? [{ p: 'Please let us know if the box hasn’t arrived within a few business days of the date above.' } as Block] : []),
+          { p: 'Thanks for working with us,\nAttila, PickleMyPaddle' },
+        ],
+      };
+    }
+
     case 'club_lead_ack': {
       // SCRUM-93: the acknowledgement to whoever filled in the Clubs page form.
             return {
@@ -689,6 +727,14 @@ export function sampleContext(name: TemplateName, test: boolean): TemplateContex
             payId: 'payments@picklemypaddle.com',
             payByCard: false,
           },
+        }
+      : {}),
+    ...(name === 'club_returned'
+      ? {
+          reference: 'PMPB-4K7QX',
+          firstName: 'Jo',
+          club: { name: 'Inner West Pickleball Club' },
+          returned: { method: 'post' as const, paddles: 23, on: '2026-11-16', tracking: 'AB123456789AU', unchanged: 0 },
         }
       : {}),
     ...(name === 'club_lead_ack' || name === 'alert_club_lead'

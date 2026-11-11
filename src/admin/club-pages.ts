@@ -292,7 +292,7 @@ ${batches.length ? batchRows(batches, true, today) : html`<p class="empty">${all
   );
 }
 
-const EMAIL_LABELS: Record<string, string> = { club_invoice: 'Invoice email' };
+const EMAIL_LABELS: Record<string, string> = { club_invoice: 'Invoice email', club_returned: 'Returned email' };
 const EMAIL_STATE: Record<BatchEmail['state'], string> = { pending: 'Queued', sending: 'Sending', sent: 'Sent', failed: 'Failed', suppressed: 'Not sent (test allow-list)' };
 
 function emailsSection(ctx: PageContext, emails: BatchEmail[]): Html | string {

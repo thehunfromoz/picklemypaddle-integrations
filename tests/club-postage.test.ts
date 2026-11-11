@@ -8,7 +8,9 @@ import { recordClubPayment } from '../src/clubs/payments.js';
 import { quotePostage } from '../src/pricing/postage.js';
 import { DEFAULT_SELLER } from '../src/documents/documents.js';
 import { makeAdmin } from './helpers/admin.js';
-import { makeApp, type TestApp } from './helpers/app.js';
+import { makeApp, SITE, type TestApp } from './helpers/app.js';
+import { processOutbox } from '../src/email/outbox.js';
+import type { EmailMessage } from '../src/email/sender.js';
 
 let t: TestApp;
 afterEach(async () => t?.close());
@@ -270,8 +272,81 @@ describe('the club’s postcode for the postage allowance (11 Nov 2026 UAT: a cl
     const quote = quotePostage(6, '2077', today());
     if (!quote.ok) throw new Error('fixture: no quote');
     expect((await invoiceBatch(deps(), { reference: b.reference, unchangedCount: 0 })).postageAllowanceCents).toBe(quote.postageCents);
+    // An override of Attila's still wins over the new default, and the page says so (SCRUM-102 UAT 11 Nov).
+    await admin.post(`/admin/clubs/${c.id}/fulfilment`, { fulfilment: 'postal' });
+    const kept = await admin.post(`/admin/clubs/${c.id}/venue`, { suburb: 'Hornsby', postcode: '2077' });
+    expect(kept.headers.get('location')).toContain('done=venue_saved_override');
+    const note = await (await admin.get(`/admin/clubs/${c.id}?done=venue_saved_override`)).text();
+    expect(note).toContain('has your own override, which still applies');
+    await admin.post(`/admin/clubs/${c.id}/fulfilment`, { fulfilment: '' });
     const outside = await admin.post(`/admin/clubs/${c.id}/venue`, { suburb: 'Gosford', postcode: '2250' });
     expect(outside.status).toBe(303);
     expect((await t.db.query<{ fulfilment_default: string }>(`SELECT fulfilment_default FROM clubs WHERE id = $1`, [c.id])).rows[0]!.fulfilment_default).toBe('postal');
+  });
+});
+
+describe('the club is emailed when its batch goes back (SCRUM-102 UAT, 11 Nov 2026)', () => {
+  const sendMail = async () => {
+    const sent: EmailMessage[] = [];
+    await processOutbox({ db: t.db, sender: { name: 'fake', send: async (m) => (sent.push(m), { id: 'e' }) }, settings: { isProduction: false, allowList: ['jo@test.picklemypaddle.com'], siteUrl: SITE, adminUrl: null }, now: () => t.clock.now });
+    return sent.filter((m) => /on its way back|has been returned/.test(m.subject));
+  };
+  const returnedEmails = async (reference: string) =>
+    (await t.db.query<{ template: string; recipient: string }>(`SELECT o.template, o.recipient FROM outbox o JOIN batches b ON b.id = o.batch_id WHERE b.reference = $1 AND o.template = 'club_returned'`, [reference])).rows;
+
+  it('a posted batch: one email to the billing contact with the date and the tracking number, queued only when it is returned', async () => {
+    t = await makeApp();
+    const c = await club();
+    const b = await createBatch(t.db, { clubId: c.id, collectedOn: today(), paddleCount: 4, notes: null, now: t.clock.now, method: 'post', inboundTracking: 'AP 1' });
+    await invoiceBatch(deps(), { reference: b.reference, unchangedCount: 0 });
+    await pay(b.reference, 4 * 5400);
+    expect(await returnedEmails(b.reference)).toEqual([]);
+    await returnBatch(deps(), { reference: b.reference, returnedOn: today(), returnTracking: 'AP 999' });
+    expect(await returnedEmails(b.reference)).toEqual([{ template: 'club_returned', recipient: 'jo@test.picklemypaddle.com' }]);
+    const sent = await sendMail();
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.to).toBe('jo@test.picklemypaddle.com');
+    expect(sent[0]!.subject).toBe(`[TEST] Your batch ${b.reference} is on its way back to Far Away PC`);
+    expect(sent[0]!.text).toContain('was posted back to Far Away PC on');
+    expect(sent[0]!.text).toMatch(/Tracking number:?\s+AP 999/);
+    expect(sent[0]!.html).not.toMatch(/<img|<script|src=/i);
+    expect(await sendMail()).toEqual([]); // sent once
+  });
+
+  it('a posted batch without a tracking number says so; a dropped-off batch has no tracking line', async () => {
+    t = await makeApp();
+    const c = await club();
+    const posted = await createBatch(t.db, { clubId: c.id, collectedOn: today(), paddleCount: 4, notes: null, now: t.clock.now, method: 'post' });
+    const picked = await createBatch(t.db, { clubId: c.id, collectedOn: today(), paddleCount: 4, notes: null, now: t.clock.now });
+    for (const b of [posted, picked]) {
+      await invoiceBatch(deps(), { reference: b.reference, unchangedCount: 0 });
+      await pay(b.reference, 4 * 5400);
+      await returnBatch(deps(), { reference: b.reference, returnedOn: today() });
+    }
+    const mails = await sendMail();
+    const byRef = (ref: string) => mails.find((m) => m.subject.includes(ref))!;
+    expect(byRef(posted.reference).text).toContain('None, it was not tracked');
+    expect(byRef(picked.reference).subject).toBe(`[TEST] Your batch ${picked.reference} has been returned to Far Away PC`);
+    expect(byRef(picked.reference).text).toContain('was dropped back to Far Away PC on');
+    expect(byRef(picked.reference).text).not.toContain('Tracking number');
+  });
+
+  it('a batch with nothing to invoice (all unchanged) is emailed too, and says none were charged', async () => {
+    t = await makeApp();
+    const c = await club();
+    const b = await createBatch(t.db, { clubId: c.id, collectedOn: today(), paddleCount: 3, notes: null, now: t.clock.now });
+    await returnBatch(deps(), { reference: b.reference, returnedOn: today(), unchangedCount: 3 });
+    const sent = await sendMail();
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.text).toContain('3 of the 3 paddles came back unchanged');
+  });
+
+  it('a refused return (unpaid) queues nothing', async () => {
+    t = await makeApp();
+    const c = await club();
+    const b = await createBatch(t.db, { clubId: c.id, collectedOn: today(), paddleCount: 4, notes: null, now: t.clock.now });
+    await invoiceBatch(deps(), { reference: b.reference, unchangedCount: 0 });
+    await expect(returnBatch(deps(), { reference: b.reference, returnedOn: today() })).rejects.toMatchObject({ code: 'not_paid' });
+    expect(await returnedEmails(b.reference)).toEqual([]);
   });
 });

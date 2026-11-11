@@ -121,6 +121,7 @@ export async function orderForm(t: TestApp, o: OrderFormOptions = {}): Promise<F
     postcode: '2000',
     consent: 'yes',
     tournamentAck: 'yes',
+    artworkAck: 'yes',
     formToken: o.formToken ?? t.formToken(),
     website: o.honeypot ?? '',
     ...(o.idempotencyKey ? { idempotencyKey: o.idempotencyKey } : {}),

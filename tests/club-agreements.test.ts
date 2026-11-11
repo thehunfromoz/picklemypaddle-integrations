@@ -368,3 +368,24 @@ describe('in the admin', () => {
     expect(done).not.toContain('Record an “I agree” reply');
   });
 });
+
+describe('v0.4 (artwork and logos, SCRUM-104, 11 Nov 2026)', () => {
+  const v = AGREEMENT_VERSIONS[3]!;
+  const text = agreementLines(v).join('\n');
+  it('is the next numbered draft: not approved, and 0.3 (sent to a staging test club) is exactly as it was sent', () => {
+    expect(v).toMatchObject({ version: 4, label: '0.4', dated: '2026-11-11', approvedOn: null });
+    expect(text).toContain('this is version 0.4, dated 11 November 2026');
+    // The hash recorded when 0.3 was sent on staging: an edit to 0.3 would change it (and a re-send be refused).
+    expect(agreementSha(AGREEMENT_VERSIONS[2]!)).toBe('e501b150ab8ea78a8d98e15472f71010bfefc9146c57c1e2fcacd5384f52cc95');
+  });
+  it('2.5: the new grit is black and not see-through, logos and artwork are hidden, and the club tells its members (3.1 lists it)', () => {
+    expect(text).toMatch(/2\.5 Artwork and logos\. The new grit is black and not see-through, so any logo or artwork on the paddle faces is hidden/);
+    expect(text).toMatch(/2\.5 [^\n]*The club tells its members this before taking their paddles/);
+    expect(text).toContain('(2.3, 2.5, 6.4 and the price)');
+  });
+  it('adds nothing else: the rest of the text is 0.3’s, and no new [To confirm]', () => {
+    const old = agreementLines(AGREEMENT_VERSIONS[2]!).filter((l) => !l.includes('this is version 0.3') && !l.includes('(2.3, 6.4 and the price)'));
+    for (const l of old) expect(text, l.slice(0, 40)).toContain(l);
+    expect(placeholdersInAgreement(v)).toEqual(placeholdersInAgreement(AGREEMENT_VERSIONS[2]!));
+  });
+});
