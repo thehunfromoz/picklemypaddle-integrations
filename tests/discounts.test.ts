@@ -209,7 +209,7 @@ describe('discount codes in the service', () => {
     const photos = [{ front: { data: jpeg, width: 1, height: 1 }, back: { data: jpeg, width: 1, height: 1 } }];
     const input = {
       name: 'Racer', email: 'r@test.picklemypaddle.com', street: '1 St', suburb: 'Sydney', state: 'NSW', postcode: '2000',
-      consent: true, tournamentAck: true, paddles: [{ brand: 'Joola' }],
+      consent: true, tournamentAck: true, artworkAck: true, paddles: [{ brand: 'Joola' }],
     };
     const deps = { db: t.db, photos: t.photos, isProduction: false, now: () => t.clock.now };
     const results = await Promise.allSettled([createOrder(deps, input, photos, null, 'LAST'), createOrder(deps, input, photos, null, 'LAST')]);

@@ -46,7 +46,7 @@ try {
     if (!order.is_test) throw new Error(`Refused: ${reference} isn't a TEST order.`);
     await q.query(
       `UPDATE orders SET created_at = created_at - $2::interval, status_changed_at = status_changed_at - $2::interval,
-              consent_at = consent_at - $2::interval, tournament_ack_at = tournament_ack_at - $2::interval,
+              consent_at = consent_at - $2::interval, tournament_ack_at = tournament_ack_at - $2::interval, artwork_ack_at = artwork_ack_at - $2::interval,
               arrived_on = arrived_on - $2::interval, promise_on = promise_on - $2::interval,
               review_reminder_at = review_reminder_at - $2::interval,
               payment_reminder_at = payment_reminder_at - $2::interval, terms_date = terms_date - $2::interval

@@ -123,6 +123,7 @@ const DONE: Record<string, string> = {
   meeting_saved: 'Meeting saved.',
   fulfilment_saved: 'Saved how this club’s batches travel.',
   venue_saved: 'Saved the venue. The pickup-or-post default was worked out again.',
+  venue_saved_override: 'Saved the venue. The pickup-or-post default was worked out again, but this club has your own override, which still applies: set Method to “Use the service area’s default” to follow the new venue.',
   club_inactive: 'The club is now inactive.',
   club_active: 'The club is active again.',
   batch_created: 'Batch recorded.',
@@ -567,7 +568,10 @@ export function createAdminApp(deps: AdminDeps) {
       const body = await c.req.parseBody();
       await setVenue(deps.db, club.id, { suburb: field(body, 'suburb') ?? '', postcode: field(body, 'postcode') ?? '' }, now());
       log('admin_club_venue', { club: club.id });
-      return c.redirect(`/admin/clubs/${club.id}?done=venue_saved`, 303);
+      // The override wins over the default (SCRUM-102): say so, so a changed venue that "did nothing" is explained.
+      const saved = await findClub(deps.db, club.id);
+      const overridden = !!saved?.fulfilmentOverride && saved.fulfilmentOverride !== (saved.fulfilmentDefault ?? '');
+      return c.redirect(`/admin/clubs/${club.id}?done=${overridden ? 'venue_saved_override' : 'venue_saved'}`, 303);
     } catch (err) {
       if (!(err instanceof ClubError)) throw err;
       return clubPageFor(c, club, { kind: 'error', text: err.message }, 400);

@@ -13,6 +13,7 @@ const valid = (): OrderInput => ({
   postcode: '2000',
   consent: true,
   tournamentAck: true,
+  artworkAck: true,
   paddles: [{ brand: 'Selkirk', model: '', front: photo, back: photo }],
 });
 
@@ -27,6 +28,7 @@ const cases: Case[] = [
   ['postcode', '2000', true], ['postcode', '0800', true], ['postcode', '200', false], ['postcode', '20000', false], ['postcode', 'abcd', false],
   ['consent', true, true], ['consent', false, false],
   ['tournamentAck', true, true], ['tournamentAck', false, false],
+  ['artworkAck', true, true], ['artworkAck', false, false],
 ];
 
 describe('validateOrder: each field', () => {

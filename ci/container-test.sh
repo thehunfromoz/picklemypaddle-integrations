@@ -129,7 +129,7 @@ node --input-type=module -e "
 token="$(curl -fsS http://127.0.0.1:8080/api/orders/form | node -pe 'JSON.parse(require("fs").readFileSync(0)).formToken')"
 resp="$(curl -sS -w '\n%{http_code}' -X POST http://127.0.0.1:8080/api/orders -H 'Origin: http://home-server:8088' \
   -F name='CI Player' -F email='ci+container@example.com' -F street='1 Court St' -F suburb=Sydney -F state=NSW \
-  -F postcode=2000 -F consent=yes -F tournamentAck=yes -F formToken="$token" -F website= \
+  -F postcode=2000 -F consent=yes -F tournamentAck=yes -F artworkAck=yes -F formToken="$token" -F website= \
   -F 'paddles[0][brand]=Selkirk' -F 'paddles[0][front]=@/tmp/paddle.jpg;type=image/jpeg' \
   -F 'paddles[0][back]=@/tmp/paddle.jpg;type=image/jpeg')"
 echo "$resp"
@@ -185,7 +185,7 @@ fi
 token="$(curl -fsS http://127.0.0.1:8081/api/orders/form | node -pe 'JSON.parse(require("fs").readFileSync(0)).formToken')"
 code="$(curl -sS -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8081/api/orders -H 'Origin: http://home-server:8088' \
   -F name='CI Player' -F email='ci+oldcpu@example.com' -F street='1 Court St' -F suburb=Sydney -F state=NSW \
-  -F postcode=2000 -F consent=yes -F tournamentAck=yes -F formToken="$token" -F website= \
+  -F postcode=2000 -F consent=yes -F tournamentAck=yes -F artworkAck=yes -F formToken="$token" -F website= \
   -F 'paddles[0][brand]=Selkirk' -F 'paddles[0][front]=@/tmp/paddle.jpg;type=image/jpeg' \
   -F 'paddles[0][back]=@/tmp/paddle.jpg;type=image/jpeg')"
 [ "$code" = 201 ] || fail "order on the emulated older CPU got $code"

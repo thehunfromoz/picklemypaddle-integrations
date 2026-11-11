@@ -356,8 +356,8 @@ export const clubDocumentUrl = (siteUrl: string, number: string, token: string) 
 async function sendBatchEmail(deps: OutboxDeps, row: OutboxRow, now: Date): Promise<keyof OutboxRun> {
   const { db, settings } = deps;
   const ref = { outbox: Number(row.id), template: row.template };
-  const { rows: batches } = await db.query<{ reference: string; name: string; billing_name: string }>(
-    'SELECT b.reference, c.name, c.billing_name FROM batches b JOIN clubs c ON c.id = b.club_id WHERE b.id = $1',
+  const { rows: batches } = await db.query<{ reference: string; name: string; billing_name: string; method: 'pickup' | 'post'; paddle_count: number; returned_on: string | null; return_tracking: string | null; unchanged_count: number | null }>(
+    'SELECT b.reference, c.name, c.billing_name, b.method, b.paddle_count, b.returned_on::text AS returned_on, b.return_tracking, b.unchanged_count FROM batches b JOIN clubs c ON c.id = b.club_id WHERE b.id = $1',
     [row.batch_id],
   );
   const batch = batches[0];
@@ -405,6 +405,9 @@ async function sendBatchEmail(deps: OutboxDeps, row: OutboxRow, now: Date): Prom
     firstName: firstName(batch.billing_name),
     club: { name: batch.name },
     invoice,
+    returned: batch.returned_on
+      ? { method: batch.method, paddles: Number(batch.paddle_count), on: batch.returned_on, tracking: batch.return_tracking, unchanged: Number(batch.unchanged_count ?? 0) }
+      : undefined,
     problem: payload.problem,
     refund: payload.refund,
     adminUrl: settings.adminUrl ? `${settings.adminUrl}/admin/batches/${batch.reference}` : null,

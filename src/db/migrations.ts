@@ -716,6 +716,15 @@ export const MIGRATIONS: readonly Migration[] = [
       );
     `,
   },
+  {
+    version: 22,
+    name: 'order artwork acknowledgement',
+    sql: `
+      -- SCRUM-104: the customer accepts that the black re-grit hides logos and artwork on the paddle faces.
+      -- Nullable: orders made before this had no such tick-box. Not personal data, so erasure keeps it.
+      ALTER TABLE orders ADD COLUMN IF NOT EXISTS artwork_ack_at timestamptz;
+    `,
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

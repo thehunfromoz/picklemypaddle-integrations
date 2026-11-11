@@ -55,6 +55,8 @@ export interface OrderInput {
   consent: boolean;
   /** Accepts that a re-gritted paddle can't be used in sanctioned competitions. */
   tournamentAck: boolean;
+  /** Accepts that the new grit is black and not see-through, so logos and artwork on the faces are hidden (SCRUM-104). */
+  artworkAck: boolean;
   paddles: PaddleInput[];
 }
 
@@ -95,6 +97,7 @@ export function validateOrder(input: OrderInput): OrderErrors {
   if (!POSTCODE_RE.test(text(input.postcode))) errors.postcode = 'Enter a 4-digit postcode.';
   if (!input.consent) errors.consent = 'Please agree so we can store your details and photos to process your order.';
   if (!input.tournamentAck) errors.tournamentAck = 'Please confirm you understand a re-gritted paddle can\'t be used in sanctioned competitions or tournaments.';
+  if (!input.artworkAck) errors.artworkAck = 'Please confirm you understand the new grit is black and not see-through, so any logo or artwork on the paddle faces will be hidden.';
 
   if (input.paddles.length === 0) errors.paddles = 'Add at least one paddle.';
   if (input.paddles.length > MAX_PADDLES) errors.paddles = `You can send up to ${MAX_PADDLES} paddles per order.`;

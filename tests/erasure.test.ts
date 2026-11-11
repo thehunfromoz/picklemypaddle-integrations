@@ -81,7 +81,7 @@ describe('erasure on request', () => {
     const kept = { reference: paid.reference, name: 'Erin Erasable', status: 'completed', is_test: true, is_smoke: false, amount_cents: 12000,
       subtotal_cents: 12000, discount_cents: 0, postage_cents: 0, postage_quoted_cents: 1800, gst_cents: 0, tax_treatment: 'not_registered', terms_version: 'price:2026-01-01;gst:none' };
     for (const [col, value] of Object.entries(kept)) expect(o[col], col).toBe(value);
-    for (const col of ['id', 'created_at', 'status_changed_at', 'consent_at', 'tournament_ack_at', 'updated_at', 'erased_at', 'arrived_on', 'promise_on', 'crm_deal_id', 'review_reminder_at']) {
+    for (const col of ['id', 'created_at', 'status_changed_at', 'consent_at', 'tournament_ack_at', 'artwork_ack_at', 'updated_at', 'erased_at', 'arrived_on', 'promise_on', 'crm_deal_id', 'review_reminder_at']) {
       expect(o[col], col).not.toBeNull();
     }
     for (const [col, value] of Object.entries({ email: '', email_norm: '', street: '', suburb: '', state: '', postcode: '' })) expect(o[col], col).toBe(value);
@@ -95,7 +95,7 @@ describe('erasure on request', () => {
     // SCRUM-83: when a payment reminder went (none here: the order was paid).
     expect(o.payment_reminder_at, 'payment_reminder_at').toBeNull();
     // Nothing else on the order has been forgotten in this list.
-    const checked = new Set([...Object.keys(kept), 'id', 'created_at', 'status_changed_at', 'consent_at', 'tournament_ack_at', 'updated_at', 'erased_at', 'arrived_on', 'promise_on', 'crm_deal_id', 'review_reminder_at', 'email', 'email_norm', 'street', 'suburb', 'state', 'postcode', 'phone', 'tracking_number', 'idempotency_key', 'crm_contact_id', 'retain_until', 'retain_reason', 'retain_set_at', 'postage_detail', 'postage_override_reason', 'terms_date', 'discount_code', 'discount_kind', 'discount_value', 'payment_reminder_at']);
+    const checked = new Set([...Object.keys(kept), 'id', 'created_at', 'status_changed_at', 'consent_at', 'tournament_ack_at', 'artwork_ack_at', 'updated_at', 'erased_at', 'arrived_on', 'promise_on', 'crm_deal_id', 'review_reminder_at', 'email', 'email_norm', 'street', 'suburb', 'state', 'postcode', 'phone', 'tracking_number', 'idempotency_key', 'crm_contact_id', 'retain_until', 'retain_reason', 'retain_set_at', 'postage_detail', 'postage_override_reason', 'terms_date', 'discount_code', 'discount_kind', 'discount_value', 'payment_reminder_at']);
     expect(Object.keys(o).filter((c) => !checked.has(c))).toEqual([]);
 
     const id = o.id as string;

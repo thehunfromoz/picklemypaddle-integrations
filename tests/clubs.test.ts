@@ -252,14 +252,15 @@ describe('clubs and batches in the database', () => {
     await expect(cancelBatch(t.db, b.reference, t.clock.now)).rejects.toMatchObject({ code: 'not_cancellable' });
   });
 
-  it('a batch with every paddle unchanged is refused an invoice, and goes back with nothing invoiced or emailed', async () => {
+  it('a batch with every paddle unchanged is refused an invoice, and goes back with nothing invoiced, and only the return email', async () => {
     const club = await setup();
     const b = await createBatch(t.db, { clubId: club.id, collectedOn: '2026-11-01', paddleCount: 3, notes: null, now: t.clock.now });
     await expect(invoiceBatch(deps(), { reference: b.reference, unchangedCount: 3 })).rejects.toMatchObject({ code: 'nothing_to_invoice' });
     await expect(returnBatch(deps(), { reference: b.reference, returnedOn: '2026-11-04' })).rejects.toMatchObject({ code: 'not_paid' });
     await returnBatch(deps(), { reference: b.reference, returnedOn: '2026-11-04', unchangedCount: 3 });
     expect(await findBatch(t.db, b.reference)).toMatchObject({ status: 'returned', returnedOn: '2026-11-04', unchangedCount: 3, invoice: null });
-    expect(await count(`SELECT count(*)::int AS n FROM outbox WHERE batch_id = $1`, [b.id])).toBe(0);
+    const queued = await t.db.query<{ template: string }>(`SELECT template FROM outbox WHERE batch_id = $1`, [b.id]);
+    expect(queued.rows).toEqual([{ template: 'club_returned' }]); // SCRUM-102 UAT: the club is told it went back; no invoice email
   });
 
   it('refuses a return before collection or in the future, and an invoice with more unchanged than collected', async () => {

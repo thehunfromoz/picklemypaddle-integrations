@@ -52,7 +52,7 @@ closed (production answers `503` until it is switched on, see the infra producti
 | Field | Notes |
 | --- | --- |
 | `name`, `email`, `phone` (optional), `street`, `suburb`, `state`, `postcode` | rules in `src/orders/rules.ts` |
-| `consent`, `tournamentAck` | must both be `yes`; stored with timestamps |
+| `consent`, `tournamentAck`, `artworkAck` | must all be `yes`; stored with timestamps (`artwork_ack_at`: the new grit is black and hides logos and artwork, SCRUM-104; orders from before it have none) |
 | `paddles[i][brand]`, `paddles[i][model]` (optional), `paddles[i][front]`, `paddles[i][back]` | 1 to 10 paddles; `i` is the form's stable index and may have gaps, positions follow its order |
 | `formToken` | from `GET /api/orders/form` |
 | `idempotencyKey` | 16 to 64 of `A-Z a-z 0-9 _ -`, one per submission (see below) |
