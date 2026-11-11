@@ -563,8 +563,8 @@ members' details, so only the club's name and billing details are held here.
   note. `collected_on` is the day it came into our hands either way; "Record a batch received" in admin.
 - **Postage (as decided 11 Nov 2026, replacing the 10 Nov wording):** the club pays the postage to us; for a
   posted batch of 6 or more paddles (`POSTAGE_ALLOWANCE_MIN`) its standard cost comes off the invoice as
-  its own line, so clubs are encouraged to send bigger batches. Who pays the postage back is
-  `[To confirm]` (agreement 0.3, 5.3).
+  its own line, so clubs are encouraged to send bigger batches. We pay the postage back to the
+  club, for every batch (decided 11 Nov; agreement 0.3, 5.3).
 - **Agreement 0.2** (0.1 was never sent): dead-spot check in 3.2, a new section 5 for post, custody 6.6,
   later sections renumbered. Liability in transit is `[To confirm]`: to be agreed with each club.
 - **Meeting time and length** are optional and set after the date (migration 19). The meeting goes to the

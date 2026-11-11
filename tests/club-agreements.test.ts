@@ -220,7 +220,8 @@ describe('v0.3 (Attila’s UAT of 0.2, 10 Nov 2026)', () => {
     expect(text).toContain('430 mm × 300 mm × 300 mm, which holds 8 to 10 paddles');
     expect(text).toContain('For a batch of 6 or more paddles, we take the standard cost of that postage off the club’s invoice, as its own line');
     expect(text).toContain('The club pays the postage of the box to us.');
-    expect(text).toContain('[To confirm: who pays the postage back to the club, and for batches under 6.]');
+    expect(text).toContain('We pay the postage back to the club, for every batch.');
+    expect(text).not.toContain('who pays the postage back');
     expect(text).toContain('the Australia Post price for posting that batch from the club’s venue postcode on the invoice date; if the club’s postage costs more, the club bears the difference');
     expect(text).toContain('within 2 business days of the return delivery');
   });
