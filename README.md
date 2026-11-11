@@ -553,6 +553,8 @@ members' details, so only the club's name and billing details are held here.
   for that many paddles at the club's venue postcode on the invoice date
   (`pricing/postage.ts`, postage only), or an amount entered when that can't be worked out. GST, once
   registered, is on the invoice after it. `[To confirm with the accountant: GST on the allowance.]`
+  The postcode is the club's venue postcode (set on the club's page, "Venue"); a club added by hand has
+  none, so it falls back to the postcode at the end of the billing address (`postcodeFromAddress`).
 - A returned, invoiced batch stays a Closed-won deal in HubSpot.
 
 ## Clubs that post their paddles, and meeting times (SCRUM-94/96/93 UAT, decided 10 Nov 2026)

@@ -2,7 +2,7 @@
  * The admin's club pages (SCRUM-85): clubs and their billing details, each club's batches, and a
  * batch's page, where it is invoiced, paid, returned or cancelled.
  */
-import { BATCH_STATUS_LABELS, effectiveFulfilment, POSTAGE_ALLOWANCE_MIN, isOverdue, MAX_BATCH_PADDLES, MAX_TRACKING, MAX_CLUB_NOTE, type Batch, type BatchEmail, type BatchStatus, type Club, type ClubStatus } from '../clubs/clubs.js';
+import { BATCH_STATUS_LABELS, effectiveFulfilment, postcodeFromAddress, POSTAGE_ALLOWANCE_MIN, isOverdue, MAX_BATCH_PADDLES, MAX_TRACKING, MAX_CLUB_NOTE, type Batch, type BatchEmail, type BatchStatus, type Club, type ClubStatus } from '../clubs/clubs.js';
 import type { AgreementVersion } from '../clubs/agreement-versions.js';
 import { MAX_ACCEPTED_BY, MAX_ACCEPTED_NOTE, type ClubAgreement } from '../clubs/agreements.js';
 import { MOVES } from '../clubs/leads.js';
@@ -127,6 +127,14 @@ ${club.areaReview ? html`<p class="flash error" role="note">The suburb is on our
     </select>
   </label>
   <button type="submit" class="secondary">Save</button>
+</form>
+<h3>Venue</h3>
+<p class="small">Where the club plays. It sets the default above and the standard postage on a posted batch’s invoice.${!club.venuePostcode && postcodeFromAddress(club.billingAddress) ? ` No venue postcode is saved, so invoices use the ${postcodeFromAddress(club.billingAddress)} at the end of the billing address.` : ''}</p>
+<form method="post" action="/admin/clubs/${club.id}/venue" class="inline">
+  ${csrfField(ctx)}
+  <label>Venue suburb<input name="suburb" required maxlength="100" value="${club.suburb ?? ''}"></label>
+  <label>Postcode<input name="postcode" required inputmode="numeric" pattern="\\d{4}" maxlength="4" value="${club.venuePostcode ?? postcodeFromAddress(club.billingAddress) ?? ''}"></label>
+  <button type="submit" class="secondary">Save venue</button>
 </form>`;
 }
 
@@ -370,7 +378,7 @@ ${
   ${
     b.method === 'post' && b.paddleCount >= POSTAGE_ALLOWANCE_MIN
       ? html`<label>Postage allowance, A$ (the club’s postage to us; leave empty for the standard cost)<input name="postageAllowance" inputmode="decimal" pattern="\\d{1,3}(\\.\\d{1,2})?" autocomplete="off"></label>
-  <p class="small">${b.paddleCount} paddles is ${POSTAGE_ALLOWANCE_MIN} or more, so agreement 5.3 takes the standard cost of the postage off the invoice, as its own line. Left empty, it is Australia Post’s price for this many paddles at the club’s venue postcode today; if that can’t be worked out, enter it.</p>`
+  <p class="small">${b.paddleCount} paddles is ${POSTAGE_ALLOWANCE_MIN} or more, so agreement 5.3 takes the standard cost of the postage off the invoice, as its own line. Left empty, it is Australia Post’s price for this many paddles at the club’s venue postcode (or, with none saved, the postcode ending its billing address) today; if that can’t be worked out, enter it.</p>`
       : b.method === 'post'
         ? html`<p class="small">Fewer than ${POSTAGE_ALLOWANCE_MIN} paddles: no postage is taken off the invoice (agreement 5.3).</p>`
         : ''
