@@ -2,7 +2,7 @@
  * The admin's club pages (SCRUM-85): clubs and their billing details, each club's batches, and a
  * batch's page, where it is invoiced, paid, returned or cancelled.
  */
-import { BATCH_STATUS_LABELS, effectiveFulfilment, FREE_RETURN_POST_MIN, isOverdue, MAX_BATCH_PADDLES, MAX_TRACKING, MAX_CLUB_NOTE, type Batch, type BatchEmail, type BatchStatus, type Club, type ClubStatus } from '../clubs/clubs.js';
+import { BATCH_STATUS_LABELS, effectiveFulfilment, POSTAGE_ALLOWANCE_MIN, isOverdue, MAX_BATCH_PADDLES, MAX_TRACKING, MAX_CLUB_NOTE, type Batch, type BatchEmail, type BatchStatus, type Club, type ClubStatus } from '../clubs/clubs.js';
 import type { AgreementVersion } from '../clubs/agreement-versions.js';
 import { MAX_ACCEPTED_BY, MAX_ACCEPTED_NOTE, type ClubAgreement } from '../clubs/agreements.js';
 import { MOVES } from '../clubs/leads.js';
@@ -368,11 +368,11 @@ ${
   ${csrfField(ctx)}
   <label>Paddles that can’t be re-gritted (unsuitable, returned unchanged, not charged)<input name="unchangedCount" required inputmode="numeric" pattern="\\d{1,3}" value="0"></label>
   ${
-    b.method === 'post' && b.paddleCount >= FREE_RETURN_POST_MIN
-      ? html`<label>Return postage allowance, A$ (leave empty for the standard cost)<input name="postageAllowance" inputmode="decimal" pattern="\\d{1,3}(\\.\\d{1,2})?" autocomplete="off"></label>
-  <p class="small">${b.paddleCount} paddles is ${FREE_RETURN_POST_MIN} or more, so agreement 5.3 takes the standard cost of the postage off the invoice, as its own line. Left empty, it is Australia Post’s price to the club’s venue postcode today; if that can’t be worked out, enter it.</p>`
+    b.method === 'post' && b.paddleCount >= POSTAGE_ALLOWANCE_MIN
+      ? html`<label>Postage allowance, A$ (the club’s postage to us; leave empty for the standard cost)<input name="postageAllowance" inputmode="decimal" pattern="\\d{1,3}(\\.\\d{1,2})?" autocomplete="off"></label>
+  <p class="small">${b.paddleCount} paddles is ${POSTAGE_ALLOWANCE_MIN} or more, so agreement 5.3 takes the standard cost of the postage off the invoice, as its own line. Left empty, it is Australia Post’s price for this many paddles at the club’s venue postcode today; if that can’t be worked out, enter it.</p>`
       : b.method === 'post'
-        ? html`<p class="small">Fewer than ${FREE_RETURN_POST_MIN} paddles: no postage is taken off the invoice (agreement 5.3).</p>`
+        ? html`<p class="small">Fewer than ${POSTAGE_ALLOWANCE_MIN} paddles: no postage is taken off the invoice (agreement 5.3).</p>`
         : ''
   }
   <p class="small">This issues the invoice for the paddles re-gritted, at the club price on today’s terms, and emails it to the club’s billing contact. The club pays before the batch goes back (agreement 7.3). An invoice can’t be edited afterwards: a mistake needs a credit note.</p>

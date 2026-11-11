@@ -193,7 +193,7 @@ export interface ClubInvoiceFacts {
   collectedOn: string;
   /** How the batch reached us, for the line's wording. */
   method: 'pickup' | 'post';
-  /** Standard return postage taken off for a posted batch of 6 or more paddles (SCRUM-102); 0 for none. */
+  /** The standard cost of the club's postage to us, taken off a posted batch of 6 or more paddles (SCRUM-102, agreement 5.3); 0 for none. */
   postageAllowanceCents: number;
   /** Whether clubs can pay this invoice by card from its page (SCRUM-85, second part). */
   payByCard: boolean;
@@ -228,7 +228,7 @@ export function clubInvoiceSnapshot(number: string, issuedOn: string, f: ClubInv
         amountCents: f.paddles * f.remitPerPaddleCents,
       },
       ...(f.postageAllowanceCents > 0
-        ? [{ description: 'Return postage allowance (standard cost, batch of 6 or more paddles)', quantity: 1, unitCents: -f.postageAllowanceCents, amountCents: -f.postageAllowanceCents }]
+        ? [{ description: 'Postage allowance (standard cost of posting the batch to us, batch of 6 or more paddles)', quantity: 1, unitCents: -f.postageAllowanceCents, amountCents: -f.postageAllowanceCents }]
         : []),
     ],
     ...(exclusive ? { subtotalCents: amounts.subtotalCents } : {}),

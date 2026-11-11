@@ -10,7 +10,7 @@ import type { AgreementVersion } from '../agreement-versions.js';
  * Changes from 0.2: 3.2 dead-spot wording and tournament-standard rule (no brand list); 4.0 the
  * local pickup area (map and suburb list on the Clubs page; post by agreement); 4.1 three business
  * days; 4.2 service area and at least 5 paddles; 5.2 box size, 8 to 10 paddles; 5.3 the club pays
- * postage and we take the standard cost off the invoice for 6+; 5.4 two business days; 6.3 and 6.6
+ * the postage to us and we take its standard cost off the invoice for 6+; 5.4 two business days; 6.3 and 6.6
  * second-hand value up to A$100 a paddle; 7.1 price to members up to A$66; 7.3 payment before the
  * batch goes back (and 2.2, 4.4, 5.5, 7.4, 9.3 follow it; the invoice carries the postage allowance of
  * 5.3 as its own line); 7.5 five business days unpaid; 7.7 ten business days.
@@ -76,7 +76,7 @@ export const v0_3: AgreementVersion = {
       blocks: [
         { p: '5.1 Choosing. The Schedule records whether the club uses pickup (section 4), post (this section), or both. A club that uses pickup can still post a batch to us if we agree.' },
         { p: '5.2 The box. We supply a cardboard box for the club’s use (typically 430 mm × 300 mm × 300 mm, which holds 8 to 10 paddles) [To confirm: how the box reaches the club]. The club packs the vetted paddles (3.2) with a list showing the number of paddles and their tags (3.4), and posts the box to our business address [To confirm: business address, shown on the email we send]. The club emails us the tracking number when it posts.' },
-        { p: '5.3 Postage. The club pays for postage [To confirm: to us only, or back to the club too]. For a batch of 6 or more paddles, we take the standard cost of the postage off the club’s invoice, as its own line. The standard cost is the Australia Post price for posting that batch to the club’s venue postcode on the invoice date; if the club’s postage costs more, the club bears the difference. For a batch of fewer than 6 paddles, no postage is taken off. Postage is never part of the club’s share (7.1).' },
+        { p: '5.3 Postage. The club pays the postage of the box to us. For a batch of 6 or more paddles, we take the standard cost of that postage off the club’s invoice, as its own line. The standard cost is the Australia Post price for posting that batch from the club’s venue postcode on the invoice date; if the club’s postage costs more, the club bears the difference. For a batch of fewer than 6 paddles, no postage is taken off. We pay the postage back to the club, for every batch. Postage is never part of the club’s share (7.1).' },
         { p: '5.4 Receipt. When the box arrives we count the paddles and check their tags against the club’s list, and email the pickup contact the count. If it doesn’t match the list, or a paddle is unsuitable (2.4), we say so in that email. The club tells us of any difference within 2 business days of the return delivery.' },
         { p: '5.5 Return. Once the invoice is paid (7.3), we post the batch back to the return address in the Schedule, tracked, and email the club the return tracking number. The club’s contact checks the count and tags on arrival and confirms the batch is complete.' },
       ],

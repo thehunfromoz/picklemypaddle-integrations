@@ -368,7 +368,7 @@ describe('a lead in HubSpot, and deleted after 12 months with no activity', () =
 
   it('the method is on the company in HubSpot, following an override', async () => {
     const { hs, deps } = await withHubSpot();
-    const id = await newLead('Milperra PC', 'attila+m@test.picklemypaddle.com', { suburb: 'Milperra', postcode: '2214' });
+    const id = await newLead('Hornsby PC', 'attila+m@test.picklemypaddle.com', { suburb: 'Hornsby', postcode: '2077' });
     await processCrm(deps);
     expect([...hs.companies][0]![1].properties.pmp_club_fulfilment).toBe('Local pickup and drop-off');
     await setFulfilmentOverride(t.db, id, 'postal', t.clock.now);
@@ -476,8 +476,8 @@ describe('the service area on a lead (SCRUM-102)', () => {
 
   it('a venue inside the area defaults to local pickup, with the list version recorded', async () => {
     t = await makeApp();
-    const id = await lead({ clubName: 'Milperra PC', suburb: 'Milperra', postcode: '2214', contactEmail: 'attila+m@test.picklemypaddle.com' });
-    expect(await findClub(t.db, id)).toMatchObject({ suburb: 'Milperra', venuePostcode: '2214', fulfilmentDefault: 'local', fulfilmentOverride: null, areaVersion: SERVICE_AREA_VERSION, areaReview: false });
+    const id = await lead({ clubName: 'Hornsby PC', suburb: 'Hornsby', postcode: '2077', contactEmail: 'attila+m@test.picklemypaddle.com' });
+    expect(await findClub(t.db, id)).toMatchObject({ suburb: 'Hornsby', venuePostcode: '2077', fulfilmentDefault: 'local', fulfilmentOverride: null, areaVersion: SERVICE_AREA_VERSION, areaReview: false });
   });
 
   it('a venue outside the area, or an unknown suburb, defaults to post', async () => {
@@ -490,7 +490,7 @@ describe('the service area on a lead (SCRUM-102)', () => {
 
   it('a listed suburb with the wrong postcode is postal and flagged for review', async () => {
     t = await makeApp();
-    const id = await lead({ clubName: 'Odd PC', suburb: 'Milperra', postcode: '2560', contactEmail: 'attila+o@test.picklemypaddle.com' });
+    const id = await lead({ clubName: 'Odd PC', suburb: 'Hornsby', postcode: '2560', contactEmail: 'attila+o@test.picklemypaddle.com' });
     expect(await findClub(t.db, id)).toMatchObject({ fulfilmentDefault: 'postal', areaReview: true });
   });
 

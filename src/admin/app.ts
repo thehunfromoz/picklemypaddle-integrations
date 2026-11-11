@@ -87,7 +87,7 @@ export interface AdminDeps {
   paymentsConfigured?: boolean;
   /** SCRUM-84: who issues receipts (a reinstated late payment issues one), and SCRUM-85's club invoices. */
   seller?: Seller;
-  /** SCRUM-85: CLUB_PAYMENT_TERMS_DAYS, days a club has to pay an invoice. */
+  /** SCRUM-85: CLUB_PAYMENT_TERMS_DAYS, days a club has to pay an invoice. Unused while payment is due before return; review after going to production. */
   clubPaymentTermsDays?: number;
 }
 

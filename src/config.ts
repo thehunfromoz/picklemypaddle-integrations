@@ -214,7 +214,11 @@ const schema = z
     BUSINESS_PAYID: optional(
       z.string().trim().min(3).max(100).refine((v) => !/\[To confirm/i.test(v), { message: 'still says [To confirm…]' }),
     ),
-    /** SCRUM-85: days a club has to pay an invoice ([To confirm] with Attila; 14 until then). */
+    /**
+     * SCRUM-85: days a club has to pay an invoice (14 by default). NOT USED while payment is due before the batch
+     * goes back (SCRUM-102); kept available on purpose, because clubs may insist on deferred payment.
+     * REVIEW AFTER GOING TO PRODUCTION, once Attila knows how the club negotiations land.
+     */
     CLUB_PAYMENT_TERMS_DAYS: z.preprocess(
       (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
       z.coerce.number().int().min(1, 'must be 1 to 90 days').max(90, 'must be 1 to 90 days').default(14),

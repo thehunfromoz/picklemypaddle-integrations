@@ -115,7 +115,7 @@ export interface TemplateContext {
     subtotalCents?: number;
     gstCents: number;
     totalCents: number;
-    /** Return postage allowed off a posted batch of 6 or more (SCRUM-102), in cents; 0 for none. */
+    /** The club's postage to us, allowed off a posted batch of 6 or more (SCRUM-102), in cents; 0 for none. */
     postageAllowanceCents: number;
     treatment: TaxTreatment;
     payId: string;
@@ -393,7 +393,7 @@ function build(name: TemplateName, ctx: TemplateContext): { subject: string; blo
         blocks: [
           { p: `Hi ${need(ctx, 'firstName', name)},` },
           { p: `Your batch ${batch} is re-gritted: ${inv.paddles} ${paddleWord(inv.paddles)} for ${club.name}. Here’s the invoice. Payment is due before we return the batch (by drop-off or post), so we’ll send the paddles back once it’s paid.` },
-          { kv: [['Invoice', inv.number], ['Batch', batch], ...(inv.postageAllowanceCents > 0 ? [['Return postage allowance', `-${money(inv.postageAllowanceCents)}`] as [string, string]] : []), ...amounts, ['Payment', 'Due before your paddles are returned']] },
+          { kv: [['Invoice', inv.number], ['Batch', batch], ...(inv.postageAllowanceCents > 0 ? [['Postage allowance', `-${money(inv.postageAllowanceCents)}`] as [string, string]] : []), ...amounts, ['Payment', 'Due before your paddles are returned']] },
           ...(inv.treatment === 'not_registered' ? [{ small: 'No GST has been charged.' } as Block] : []),
           { button: { label: inv.payByCard ? 'View, print or pay by card' : 'View or print the invoice', url: inv.url } },
           { h: 'How to pay' },
