@@ -49,7 +49,7 @@ import { documentListPage, documentPage, documentsSection } from './document-pag
 import { html } from './html.js';
 import { CODE_STATES, codePrefixes, createCodes, DiscountCodeError, findCode, listCodes, setCodeActive, setCodeNote, usesOf, type CodeState } from '../orders/discounts.js';
 import type { DiscountKind } from '../orders/rules.js';
-import { sydneyDate } from '../orders/dates.js';
+import { parseTurnaround, sydneyDate, TURNAROUND_MAX, TURNAROUND_MIN } from '../orders/dates.js';
 import { addNote, listOrders, loadOrder, MAX_NOTE, outboxRow, photoPath } from './data.js';
 import { adminGuard, type AdminIdentity } from './guard.js';
 import { detailPage, filterStatuses, listPage, notFoundPage, parseFilter, type Flash, type PageContext } from './pages.js';
@@ -229,6 +229,16 @@ export function createAdminApp(deps: AdminDeps) {
       postageCents = parseAmount(postage.replace(/^A?\$/, ''));
       if (postageCents === undefined) return showOrder(c, reference, { kind: 'error', text: 'The postage must be dollars, like 20 or 22.25.' }, 400);
     }
+    // SCRUM-105: the turnaround Attila sets when he accepts (a whole number of business days, 1 to 65).
+    let turnaroundDays: number | undefined;
+    if (to === 'accepted') {
+      const t = field(body, 'turnaround');
+      if (t !== undefined) {
+        const n = parseTurnaround(t);
+        if (n === null) return showOrder(c, reference, { kind: 'error', text: `The turnaround is a whole number of business days, ${TURNAROUND_MIN} to ${TURNAROUND_MAX}.` }, 400);
+        turnaroundDays = n;
+      }
+    }
     return move(c, {
       reference,
       to: to as OrderStatus,
@@ -238,6 +248,7 @@ export function createAdminApp(deps: AdminDeps) {
       arrivedOn: field(body, 'arrivedOn'),
       postageCents,
       postageReason: to === 'accepted' ? field(body, 'postageReason') : undefined,
+      turnaroundDays,
       note: field(body, 'note'),
     });
   });

@@ -22,6 +22,7 @@ import { processOutbox } from '../src/email/outbox.js';
 import type { EmailMessage, EmailSender } from '../src/email/sender.js';
 import { eraseCustomer, planErasure } from '../src/orders/erasure.js';
 import { createCode } from '../src/orders/discounts.js';
+import { addBusinessDays } from '../src/orders/dates.js';
 import { transitionOrder } from '../src/orders/transitions.js';
 import { pollEvents, reinstateLatePayment } from '../src/payments/payments.js';
 import { makeAdmin } from './helpers/admin.js';
@@ -107,10 +108,10 @@ describe('documents in the database', () => {
     (await t.db.query<{ template: string; payload: Record<string, unknown> | string }>(`SELECT template, payload FROM outbox WHERE kind = 'email' ORDER BY id`)).rows.map((r) => ({
       template: r.template, payload: typeof r.payload === 'string' ? JSON.parse(r.payload) : r.payload,
     }));
-  const accepted = async (email?: string, code?: string) => {
+  const accepted = async (email?: string, code?: string, turnaroundDays?: number) => {
     const fd = await orderForm(t, { email, overrides: { name: 'Sam Player', street: '1 Secret St', ...(code ? { discountCode: code } : {}) } });
     const { reference, statusToken } = (await (await post(t, fd)).json()) as { reference: string; statusToken: string };
-    await transitionOrder(deps(), { reference, to: 'accepted', actor: 'admin' });
+    await transitionOrder(deps(), { reference, to: 'accepted', actor: 'admin', turnaroundDays });
     return { reference, token: statusToken };
   };
   const pay = async (token: string) => {
@@ -184,6 +185,24 @@ describe('documents in the database', () => {
       expect(bad.status).toBe(404);
       expect(await bad.json()).toEqual({ error: 'invalid_link', message: 'This link isn’t valid or has expired.' });
     }
+  });
+
+  it('the number Attila set at Accept reaches the acceptance and the payment emails as sent, and the In-queue date (SCRUM-105)', async () => {
+    await setup();
+    const { reference, token } = await accepted(undefined, undefined, 30);
+    await api('orders/paid', { sessionId: await pay(token) });
+    await transitionOrder(deps(), { reference, to: 'in_queue', actor: 'admin', arrivedOn: '2026-10-26' });
+    const sent: EmailMessage[] = [];
+    const sender: EmailSender = { name: 'fake', send: async (m) => (sent.push(m), { id: `e${sent.length}` }) };
+    await processOutbox({ db: t.db, sender, settings: { isProduction: false, allowList: ['player@test.picklemypaddle.com'], siteUrl: SITE, adminUrl: null }, now: () => t.clock.now });
+    for (const subject of ['Payment received', 'accepted']) {
+      const m = sent.find((x) => x.subject.toLowerCase().includes(subject.toLowerCase()) && !x.subject.includes('In the queue'));
+      expect(m, subject).toBeDefined();
+      expect(m!.text, subject).toContain('within 30 business days of arriving');
+      expect(m!.text, subject).not.toContain('within 10 business days of arriving');
+    }
+    const inQueue = (await t.db.query<{ payload: { backInPostBy: string } }>(`SELECT x.payload FROM outbox x JOIN orders o ON o.id = x.order_id WHERE o.reference = $1 AND x.template = 'in_queue'`, [reference])).rows[0]!;
+    expect(inQueue.payload.backInPostBy).toBe(addBusinessDays('2026-10-26', 30));
   });
 
   it('the payment email links the receipt with a fresh status token; the In-queue email links it again', async () => {

@@ -389,3 +389,27 @@ describe('v0.4 (artwork and logos, SCRUM-104, 11 Nov 2026)', () => {
     expect(placeholdersInAgreement(v)).toEqual(placeholdersInAgreement(AGREEMENT_VERSIONS[2]!));
   });
 });
+
+describe('v0.5 (turnaround, SCRUM-105, 11 Nov 2026)', () => {
+  const v = AGREEMENT_VERSIONS[4]!;
+  const prev = AGREEMENT_VERSIONS[3]!;
+  const text = agreementLines(v).join('\n');
+  it('is the next numbered draft; 0.4 is left as it was', () => {
+    expect(v).toMatchObject({ version: 5, label: '0.5', dated: '2026-11-11', approvedOn: null });
+    expect(text).toContain('this is version 0.5, dated 11 November 2026');
+    expect(agreementLines(prev).join('\n')).toContain('[To confirm: number] business days');
+  });
+  it('2.2: the usual turnaround is 10 business days, we may set another for a batch, and always tell the club the number', () => {
+    expect(text).toMatch(/2\.2 Our usual turnaround is 10 business days from picking up a batch or receiving it by post/);
+    expect(text).toContain('We may set a different number of business days for a batch');
+    expect(text).toContain('we will always tell the club the number when we respond to its request');
+    expect(text).not.toContain('[To confirm: number] business days');
+  });
+  it('changes nothing else but the version line and 2.2', () => {
+    const rest = agreementLines(prev).filter((l) => !l.includes('this is version 0.4') && !l.startsWith('2.2 '));
+    for (const l of rest) expect(text, l.slice(0, 40)).toContain(l);
+    const left = placeholdersInAgreement(prev);
+    left.splice(left.indexOf('[To confirm: number]'), 1); // only 2.2's goes
+    expect(placeholdersInAgreement(v)).toEqual(left);
+  });
+});

@@ -2,7 +2,7 @@
  * The admin's pages (SCRUM-72): the order list and an order's detail, as plain server-rendered
  * HTML forms. No client-side script, so the CSP can allow none; works on a phone over Tailscale.
  */
-import { sydneyDate } from '../orders/dates.js';
+import { sydneyDate, TURNAROUND_BUSINESS_DAYS, TURNAROUND_MAX, TURNAROUND_MIN } from '../orders/dates.js';
 import { quotePostage } from '../pricing/postage.js';
 import { taxWording, termsOn, type TaxSettings } from '../pricing/terms.js';
 import { STATUSES, type OrderStatus, PRICE_PER_PADDLE_CENTS } from '../orders/model.js';
@@ -152,7 +152,9 @@ function actionForm(ctx: PageContext, o: OrderDetail, to: OrderStatus): Html {
 <label>Return postage (A$)${quote.ok ? ', calculated' : ', required'}
   <input name="postage" inputmode="decimal" pattern="\\d{1,5}(\\.\\d{1,2})?" value="${postageValue}"${quote.ok ? '' : ' required'}></label>
 <label>Reason, only if you change the postage${quote.ok ? '' : ' (required)'} (kept in the history, never shown to the customer)
-  <input name="postageReason" maxlength="2000"${quote.ok ? '' : ' required'}></label>`;
+  <input name="postageReason" maxlength="2000"${quote.ok ? '' : ' required'}></label>
+<label>Turnaround, in business days from arrival (${TURNAROUND_MIN} to ${TURNAROUND_MAX}). It goes in the email the customer gets, and sets the back-in-post date. It can’t be changed once the order is in the queue.
+  <input type="number" name="turnaround" min="${TURNAROUND_MIN}" max="${TURNAROUND_MAX}" step="1" value="${TURNAROUND_BUSINESS_DAYS}" required inputmode="numeric"></label>`;
   } else if (to === 'rejected') {
     fields = html`<label>Reason, sent to the customer as you type it (required)
   <textarea name="reason" required maxlength="2000"></textarea></label>`;

@@ -15,6 +15,7 @@ import { v0_1 } from './agreements/v0.1.js';
 import { v0_2 } from './agreements/v0.2.js';
 import { v0_3 } from './agreements/v0.3.js';
 import { v0_4 } from './agreements/v0.4.js';
+import { v0_5 } from './agreements/v0.5.js';
 
 export type AgreementBlock = { p: string } | { list: string[] };
 export interface AgreementSection {
@@ -35,7 +36,7 @@ export interface AgreementVersion {
 }
 
 /** Oldest first. A new version is appended, with the next number. */
-export const AGREEMENT_VERSIONS: readonly AgreementVersion[] = [v0_1, v0_2, v0_3, v0_4];
+export const AGREEMENT_VERSIONS: readonly AgreementVersion[] = [v0_1, v0_2, v0_3, v0_4, v0_5];
 
 export const versionByNumber = (n: number, versions: readonly AgreementVersion[] = AGREEMENT_VERSIONS) => versions.find((v) => v.version === n) ?? null;
 

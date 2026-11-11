@@ -15,7 +15,7 @@ import { enqueueCrmSync } from '../crm/sync.js';
 import type { Db, Queryable } from '../db/db.js';
 import { enqueueOrderEmail, type EmailPayload } from '../email/outbox.js';
 import type { TemplateName } from '../email/templates.js';
-import { backInPostBy, ISO_DATE_RE, sydneyDate } from './dates.js';
+import { backInPostBy, ISO_DATE_RE, parseTurnaround, sydneyDate, TURNAROUND_BUSINESS_DAYS, TURNAROUND_MAX, TURNAROUND_MIN } from './dates.js';
 import type { PostageTable } from '../pricing/postage-data.js';
 import { quotePostage } from '../pricing/postage.js';
 import { gstIncluded, termsOn, type TaxSettings } from '../pricing/terms.js';
@@ -81,6 +81,11 @@ export interface TransitionRequest {
   postageCents?: number;
   /** Accepted: why the postage differs from the calculation (kept in the history). */
   postageReason?: string;
+  /**
+   * Accepted: the turnaround in business days for this order (default TURNAROUND_BUSINESS_DAYS, 1 to 65), told
+   * to the customer in the acceptance email and used for the back-in-post date when the paddles arrive (SCRUM-105).
+   */
+  turnaroundDays?: number;
   /** An internal note for the history, never shown to the customer. */
   note?: string;
   /** SCRUM-83: set only by reinstateLatePayment, the one way admin may set Paid. */
@@ -133,14 +138,17 @@ export async function transitionWith(q: Queryable, deps: Omit<TransitionDeps, 'd
     throw new TransitionError(400, 'postage_invalid', 'The postage must be between A$0 and A$1,000.');
   }
   if (postageReason && postageReason.length > MAX_REASON) throw new TransitionError(400, 'reason_too_long', `Keep the reason under ${MAX_REASON} characters.`);
+  if (req.turnaroundDays !== undefined && req.to === 'accepted' && parseTurnaround(req.turnaroundDays) === null) {
+    throw new TransitionError(400, 'turnaround_invalid', `The turnaround is a whole number of business days, ${TURNAROUND_MIN} to ${TURNAROUND_MAX}.`);
+  }
   const arrivedOn = req.to === 'in_queue' ? (req.arrivedOn ?? sydneyDate(deps.now)) : undefined;
   if (arrivedOn !== undefined && (!ISO_DATE_RE.test(arrivedOn) || arrivedOn > sydneyDate(deps.now))) {
     throw new TransitionError(400, 'arrival_invalid', 'The arrival date must be today or earlier (YYYY-MM-DD).');
   }
 
   {
-    const { rows } = await q.query<{ id: string; status: OrderStatus }>(
-      'SELECT id, status FROM orders WHERE reference = $1 FOR UPDATE',
+    const { rows } = await q.query<{ id: string; status: OrderStatus; turnaround_days: number | null }>(
+      'SELECT id, status, turnaround_days FROM orders WHERE reference = $1 FOR UPDATE',
       [req.reference],
     );
     const order = rows[0];
@@ -154,11 +162,13 @@ export async function transitionWith(q: Queryable, deps: Omit<TransitionDeps, 'd
     }
 
     // SCRUM-73: the promise is fixed when the order enters the queue, and the email says the same.
-    const promiseOn = arrivedOn ? backInPostBy(arrivedOn) : undefined;
+    // SCRUM-105: with the number Attila set at Accept (the default when he set none).
+    const promiseOn = arrivedOn ? backInPostBy(arrivedOn, order.turnaround_days ?? TURNAROUND_BUSINESS_DAYS) : undefined;
+    const turnaround = req.to === 'accepted' ? (req.turnaroundDays ?? TURNAROUND_BUSINESS_DAYS) : undefined;
     // SCRUM-75/81: what the customer is asked to pay, and the terms it was worked out on, are
     // frozen on the order at Accept (the tax record), not only written into the email.
     let priceNote: string | undefined;
-    let payloadPrice: Pick<EmailPayload, 'amountCents' | 'subtotalCents' | 'discountCents' | 'discountCode' | 'postageCents' | 'gstCents' | 'taxTreatment'> = {};
+    let payloadPrice: Pick<EmailPayload, 'amountCents' | 'subtotalCents' | 'discountCents' | 'discountCode' | 'postageCents' | 'gstCents' | 'taxTreatment' | 'turnaroundDays'> = {};
     if (req.to === 'accepted') {
       const { rows: facts } = await q.query<{ paddles: number; postcode: string; discount_code: string | null; discount_kind: DiscountKind | null; discount_value: number | null }>(
         `SELECT (SELECT count(*)::int FROM paddles p WHERE p.order_id = o.id) AS paddles, o.postcode,
@@ -200,13 +210,13 @@ export async function transitionWith(q: Queryable, deps: Omit<TransitionDeps, 'd
       await q.query(
         `UPDATE orders SET amount_cents = $2, subtotal_cents = $3, discount_cents = $4, postage_cents = $5,
                 postage_quoted_cents = $6, postage_override_reason = $7, postage_detail = $8, gst_cents = $9,
-                tax_treatment = $10, terms_version = $11, terms_date = $12::date
+                tax_treatment = $10, terms_version = $11, terms_date = $12::date, turnaround_days = $13
           WHERE id = $1`,
         [order.id, total, subtotal, discount, postage, quote.ok ? quote.cents : null, priceNote ? postageReason : null, detail, gst,
-          terms.treatment, terms.version, today],
+          terms.treatment, terms.version, today, turnaround],
       );
       payloadPrice = {
-        amountCents: total, subtotalCents: subtotal, postageCents: postage, gstCents: gst, taxTreatment: terms.treatment,
+        amountCents: total, subtotalCents: subtotal, postageCents: postage, gstCents: gst, taxTreatment: terms.treatment, turnaroundDays: turnaround,
         ...(discount > 0 && code ? { discountCents: discount, discountCode: code } : {}),
       };
     }
@@ -219,7 +229,8 @@ export async function transitionWith(q: Queryable, deps: Omit<TransitionDeps, 'd
     );
     // SCRUM-63: Paid consumes the order's reserved code use; Rejected, Withdrawn and Lapsed release it.
     await settleUseForStatus(q, order.id, req.to, deps.now);
-    const note = [req.note?.trim(), priceNote, reason ? `Reason sent to the customer: ${reason}` : undefined].filter(Boolean).join('\n') || null;
+    const turnaroundNote = turnaround !== undefined && turnaround !== TURNAROUND_BUSINESS_DAYS ? `Turnaround set to ${turnaround} business days (default ${TURNAROUND_BUSINESS_DAYS}).` : undefined;
+    const note = [req.note?.trim(), priceNote, turnaroundNote, reason ? `Reason sent to the customer: ${reason}` : undefined].filter(Boolean).join('\n') || null;
     await q.query('INSERT INTO status_history (order_id, status, at, actor, note) VALUES ($1, $2, $3, $4, $5)', [
       order.id, req.to, deps.now, req.actor, note,
     ]);

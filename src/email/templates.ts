@@ -12,6 +12,7 @@
  */
 import { taxWording, type TaxTreatment } from '../pricing/terms.js';
 import { PRICE_PER_PADDLE_CENTS } from '../orders/model.js';
+import { TURNAROUND_BUSINESS_DAYS } from '../orders/dates.js';
 import { describeDiscount, discountCents, type DiscountBenefit } from '../orders/rules.js';
 
 export const TEMPLATES = [
@@ -77,6 +78,8 @@ export interface TemplateContext {
   arrivedOn?: string;
   /** In queue: YYYY-MM-DD. */
   backInPostBy?: string;
+  /** SCRUM-105: business days from arrival to back in the post; the default when absent. */
+  turnaroundDays?: number;
   /** Posted back. */
   trackingNumber?: string;
   /** Rejected: Attila's reason, shown to the customer as typed. */
@@ -361,7 +364,7 @@ function build(name: TemplateName, ctx: TemplateContext): { subject: string; blo
           { button: { label: 'View or print your receipt', url: doc.url } },
           { h: 'Now post your ' + paddleWord(n) },
           { p: '[To confirm: postal address and packing tips]' },
-          { p: `We’ll email you when ${plural(n, 'it arrives', 'they arrive')}, and ${plural(n, 'it’ll', 'they’ll')} be back in the post within 10 business days of arriving.` },
+          { p: `We’ll email you when ${plural(n, 'it arrives', 'they arrive')}, and ${plural(n, 'it’ll', 'they’ll')} be back in the post within ${ctx.turnaroundDays ?? TURNAROUND_BUSINESS_DAYS} business days of arriving.` },
           ...statusBlocks(need(ctx, 'statusUrl', name)),
           { p: 'Thanks,\nPickleMyPaddle' },
         ],
@@ -547,7 +550,7 @@ function build(name: TemplateName, ctx: TemplateContext): { subject: string; blo
           { button: { label: 'Pay now on your order page', url: need(ctx, 'statusUrl', name) } },
           { h: 'Then post your ' + paddleWord(n) },
           { p: '[To confirm: postal address and packing tips]' },
-          { p: `We’ll email you when ${plural(n, 'it arrives', 'they arrive')}, and ${plural(n, 'it’ll', 'they’ll')} be back in the post within 10 business days of arriving.` },
+          { p: `We’ll email you when ${plural(n, 'it arrives', 'they arrive')}, and ${plural(n, 'it’ll', 'they’ll')} be back in the post within ${ctx.turnaroundDays ?? TURNAROUND_BUSINESS_DAYS} business days of arriving.` },
           // The Pay now button above is the order page link; just the privacy note here.
           statusBlocks(need(ctx, 'statusUrl', name))[1]!,
           { p: 'Thanks,\nPickleMyPaddle' },

@@ -1,6 +1,6 @@
 /**
- * Calendar dates for the turnaround promise: back in the post within 10 business days of the
- * paddles arriving (decided 6 Oct 2026).
+ * Calendar dates for the turnaround promise: back in the post within 10 business days (by default;
+ * Attila can set another number per order, SCRUM-105) of the paddles arriving (decided 6 Oct 2026).
  *
  * Business days skip weekends and NSW public holidays (SCRUM-73, ./holidays.ts). Dates are plain
  * YYYY-MM-DD calendar dates in Sydney, counted with UTC arithmetic so daylight-saving changes
@@ -8,7 +8,22 @@
  */
 import { NSW_HOLIDAY_DATES } from './holidays.js';
 
+/**
+ * The default turnaround, in business days: the ONE place to change it. Emails and the club
+ * agreement read it; the website's copy says "usually 10" in `siteData` (a test there fails if
+ * this number moves without it). Attila can set another number for one order or batch when he
+ * accepts it, within TURNAROUND_MIN to TURNAROUND_MAX (SCRUM-105).
+ */
 export const TURNAROUND_BUSINESS_DAYS = 10;
+export const TURNAROUND_MIN = 1;
+/** About three months of business days. */
+export const TURNAROUND_MAX = 65;
+
+/** A turnaround typed in a form or sent: a whole number from TURNAROUND_MIN to TURNAROUND_MAX, or null. */
+export function parseTurnaround(v: unknown): number | null {
+  const n = typeof v === 'number' ? v : typeof v === 'string' && /^\d{1,3}$/.test(v.trim()) ? Number(v.trim()) : NaN;
+  return Number.isInteger(n) && n >= TURNAROUND_MIN && n <= TURNAROUND_MAX ? n : null;
+}
 
 /** Today's date in Sydney, as YYYY-MM-DD. */
 export function sydneyDate(at: Date): string {
@@ -31,7 +46,7 @@ export function addBusinessDays(start: string, days: number, holidays: ReadonlyS
   return date.toISOString().slice(0, 10);
 }
 
-export const backInPostBy = (arrivedOn: string) => addBusinessDays(arrivedOn, TURNAROUND_BUSINESS_DAYS);
+export const backInPostBy = (arrivedOn: string, days: number = TURNAROUND_BUSINESS_DAYS) => addBusinessDays(arrivedOn, days);
 
 /** Is this calendar date a business day (not a weekend, not an NSW public holiday)? */
 export function isBusinessDay(iso: string, holidays: ReadonlySet<string> = NSW_HOLIDAY_DATES): boolean {
